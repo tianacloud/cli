@@ -1,0 +1,231 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/releaseasset"
+	"github.com/tianacloud/cli/internal/supervisor"
+)
+
+var (
+	version = "dev"
+	// SQLite's pinned SDK still uses a build-selected physical Gateway port.
+	gatewayPort = "443"
+)
+
+func main() {
+	args := os.Args[1:]
+	os.Exit(run(args))
+}
+
+func run(args []string) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runCLI(ctx, args, os.Stdin, os.Stdout, os.Stderr)
+}
+
+func runConnect(ctx context.Context, args []string, output, diagnostics io.Writer) int {
+	for _, arg := range args[1:] {
+		if arg == "--" {
+			break
+		}
+		name := strings.SplitN(arg, "=", 2)[0]
+		switch name {
+		case "--token-env", "--token-file", "--token-stdin", "--non-interactive":
+			fmt.Fprintln(diagnostics, "tiana: removed option; use TIANA_TOKEN for connect authentication")
+			return 2
+		}
+	}
+	parsed, err := supervisor.ParseCLI(args)
+	if err != nil {
+		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
+		return 2
+	}
+	if parsed.Help {
+		fmt.Fprintln(output, "Credentials: TIANA_TOKEN; when unset, connect retains its hidden-input terminal prompt.")
+		for _, line := range strings.Split(supervisor.Usage(), "\n") {
+			if strings.Contains(line, "--token-env") || strings.Contains(line, "--token-file") || strings.Contains(line, "--token-stdin") || strings.Contains(line, "--non-interactive") {
+				continue
+			}
+			fmt.Fprintln(output, line)
+		}
+		return 0
+	}
+	if parsed.Connect == nil {
+		fmt.Fprintln(diagnostics, "tiana: invalid connect command")
+		return 2
+	}
+
+	if trust := clientconfig.FromContext(ctx); trust != nil {
+		parsed.Connect.Gateway.CACertificates = trust.Certificates
+		parsed.Connect.Gateway.CAFile = ""
+	}
+	launcher, _, err := resolveHelperLauncher()
+	if err != nil {
+		fmt.Fprintln(diagnostics, "tiana: trusted helper is unavailable")
+		return 1
+	}
+
+	status, runErr := supervisor.NewSupervisor(launcher).Run(ctx, *parsed.Connect)
+	if runErr != nil {
+		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(runErr.Error()))
+		if status == 0 {
+			return 1
+		}
+	}
+	return status
+}
+
+func runLogin(ctx context.Context, output, errorOutput io.Writer) int {
+	client, err := newAuthClient(ctx, output, false)
+	if err != nil {
+		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
+		return 1
+	}
+	if _, err = client.Login(ctx); err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
+	return 0
+}
+
+func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
+	client, err := newAuthClient(ctx, output, false)
+	if err == nil {
+		err = client.Logout(ctx)
+	}
+	if err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
+	fmt.Fprintln(output, "✓ Signed out")
+	return 0
+}
+
+func runWhoami(ctx context.Context, output, errorOutput io.Writer) int {
+	client, err := newAuthClient(ctx, output, false)
+	if err != nil {
+		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
+		return 1
+	}
+	user, err := client.Whoami(ctx)
+	if err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
+	fmt.Fprintf(output, "Signed in as %s\n", safeDisplay(authUserLabel(user)))
+	return 0
+}
+
+func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (*authclient.Client, error) {
+	origin := authclient.DefaultOrigin()
+	if origin == "" {
+		return nil, errors.New("set TIANA_MGR_ORIGIN to your HTTPS management origin")
+	}
+	var store authclient.CredentialStore
+	if path := strings.TrimSpace(os.Getenv("TIANA_CREDENTIALS_FILE")); path != "" {
+		store = authclient.NewFileStore(path, origin)
+	} else {
+		var err error
+		store, err = authclient.NewCredentialStore(origin)
+		if err != nil {
+			return nil, err
+		}
+	}
+	config := authclient.Config{Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive}
+	if trust := clientconfig.FromContext(ctx); trust != nil {
+		config.RootCAs = trust.Roots
+	}
+	return authclient.NewWithConfig(config)
+}
+
+func newInstanceTokenStore() (authclient.InstanceTokenStore, error) {
+	origin := authclient.DefaultOrigin()
+	if origin == "" {
+		return nil, errors.New("set TIANA_MGR_ORIGIN to your HTTPS management origin")
+	}
+	if path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE")); path != "" {
+		return authclient.NewFileInstanceTokenStore(path, origin), nil
+	}
+	return authclient.NewInstanceTokenStore(origin)
+}
+
+func newPendingStore() (*authclient.FilePendingCommandStore, error) {
+	path := strings.TrimSpace(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
+	if path == "" {
+		var err error
+		path, err = authclient.DefaultPendingCommandPath()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return authclient.NewFilePendingCommandStore(path), nil
+}
+
+func authUserLabel(user authclient.User) string {
+	if user.Email != "" {
+		return user.Email
+	}
+	if user.DisplayName != "" {
+		return user.DisplayName
+	}
+	if user.Username != "" {
+		return user.Username
+	}
+	return user.ID
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func writeCommandError(output io.Writer, err error) {
+	if errors.Is(err, authclient.ErrAuthenticationRequired) {
+		fmt.Fprintln(output, "tiana: authentication required; run tiana login")
+		return
+	}
+	fmt.Fprintln(output, "tiana:", safeDisplay(err.Error()))
+}
+
+func resolveHelperLauncher() (supervisor.HelperLauncher, string, error) {
+	assets := releaseasset.Current()
+	if assets.Available() {
+		launcher, err := supervisor.NewEmbeddedHelperLauncher(assets.Helper, assets.HelperSHA256)
+		if err != nil {
+			return nil, "", err
+		}
+		return launcher, "embedded", nil
+	}
+	helper, err := resolveInstalledHelper()
+	if err != nil {
+		return nil, "", err
+	}
+	return supervisor.ProcessHelperLauncher{Helper: helper}, "system", nil
+}
+
+func resolveInstalledHelper() (supervisor.TrustedHelper, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return supervisor.TrustedHelper{}, err
+	}
+	installRoot := filepath.Dir(filepath.Dir(executable))
+	return supervisor.ResolveTrustedHelper(installRoot)
+}
