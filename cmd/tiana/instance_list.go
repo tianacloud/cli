@@ -168,7 +168,7 @@ func writeInstanceTable(output io.Writer, instances []authclient.Instance) {
 func writeInstancePage(output io.Writer, instances []authclient.Instance) {
 	rows := make([][]string, 0, len(instances))
 	for _, instance := range instances {
-		rows = append(rows, []string{instance.ID, instance.DisplayName, instance.Engine, instance.ProductState, connectionURLColumn(instance)})
+		rows = append(rows, []string{instance.ID, instance.DisplayName, instance.Engine, instanceDisplayState(instance), connectionURLColumn(instance)})
 	}
 	widths := tableWidths(append([][]string{instanceTableHeader}, rows...))
 	fmt.Fprintln(output, formatTableRow(instanceTableHeader, widths))

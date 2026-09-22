@@ -6,9 +6,9 @@ func newChildIdentity(pid int) (ChildIdentity, error) {
 	if pid <= 0 {
 		return ChildIdentity{}, ErrHelperProtocol
 	}
-	// macOS has no pidfd and no /proc starttime. The helper therefore treats
-	// the private control pipe as its lifetime authority and requires this
-	// explicit zero identity. This does not upgrade the loopback listener's
-	// honest loopback_unisolated security claim.
+	// macOS has no pidfd or /proc starttime; contract 3 uses an explicit zero
+	// identity. The built-in helper watches kqueue owner-exit notifications
+	// in addition to the private control pipe. Neither mechanism upgrades
+	// the listener's honest loopback_unisolated security claim.
 	return ChildIdentity{PID: pid, StartTime: 0}, nil
 }

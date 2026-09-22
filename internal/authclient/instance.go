@@ -27,6 +27,8 @@ type Instance struct {
 	Engine              string              `json:"engine"`
 	EndpointID          string              `json:"endpoint_id,omitempty"`
 	ProductState        string              `json:"product_state"`
+	DeletionPending     bool                `json:"deletion_pending"`
+	LifecycleState      string              `json:"lifecycle_state,omitempty"`
 	DesiredState        string              `json:"desired_state,omitempty"`
 	ObservedState       string              `json:"observed_state,omitempty"`
 	RuntimeStatusStale  bool                `json:"runtime_status_stale"`

@@ -61,6 +61,22 @@ func connectionURLColumn(instance authclient.Instance) string {
 	return "-"
 }
 
+// instanceDisplayState projects deletion progress without changing MGR's
+// product state. Stale runtime observations cannot override durable MGR facts.
+func instanceDisplayState(instance authclient.Instance) string {
+	lifecycle := instance.LifecycleState
+	if instance.RuntimeStatusStale {
+		lifecycle = ""
+	}
+	if instance.ProductState == "DELETED" || lifecycle == "DELETED" {
+		return "DELETED"
+	}
+	if instance.DeletionPending || lifecycle == "DELETING" {
+		return "DELETING"
+	}
+	return instance.ProductState
+}
+
 func runtimeStateDescription(instance authclient.Instance) string {
 	if instance.RuntimeStatusStale {
 		reason := instance.StaleReason

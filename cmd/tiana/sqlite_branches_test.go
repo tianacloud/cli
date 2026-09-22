@@ -83,8 +83,8 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 			child := "ep-1abcdefghjkmnpqrstvwxyz012"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
-				case "/api/v1/me":
-					io.WriteString(w, `{"principal_id":"usr_branch","tenant_id":"tenant","email":"branch@example.test"}`)
+				case "/api/v1/auth/transactions/whoami":
+					io.WriteString(w, `{"user":{"user_id":"usr_branch","tenant_id":"tenant","email":"branch@example.test"}}`)
 				case "/api/v1/instances/" + testInstanceID + "/endpoints/" + child + "/credential-candidates":
 					if mode == "saved-child" {
 						io.WriteString(w, `{"token_ids":["`+child+`"]}`)

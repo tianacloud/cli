@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 type sqliteOptions struct {
 	command, reference, branch, sql, file, format, output string
+	endpoint, port                                        string
 	timeout                                               time.Duration
 	nonInteractive                                        bool
 }
@@ -67,6 +69,37 @@ func sqliteEndpoint(instance authclient.Instance) (string, string, error) {
 		if parsed.Port() != "" {
 			port = parsed.Port()
 		}
+	}
+	return host, port, nil
+}
+
+// A direct locator selects the Gateway authority, never an arbitrary HTTP route.
+// Keep diagnostics constant: malformed URLs can contain accidentally pasted secrets.
+func parseSQLiteDirectEndpoint(raw string) (string, string, error) {
+	invalid := func() (string, string, error) {
+		return "", "", errors.New("invalid --endpoint; use an HTTPS Endpoint URL or hostname[:port], without credentials, paths, queries or fragments")
+	}
+	if raw == "" || strings.TrimSpace(raw) != raw || strings.ContainsAny(raw, "?#") {
+		return invalid()
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || strings.ContainsAny(u.Host, "[]") || u.Opaque != "" || (u.Path != "" && u.Path != "/") || u.RawPath != "" {
+		return invalid()
+	}
+	host, err := tiana.ParseEndpoint(u.Hostname())
+	if err != nil {
+		return invalid()
+	}
+	port := "443"
+	if strings.Contains(u.Host, ":") {
+		n, err := strconv.ParseUint(u.Port(), 10, 16)
+		if err != nil || n == 0 {
+			return invalid()
+		}
+		port = strconv.FormatUint(n, 10)
 	}
 	return host, port, nil
 }
@@ -129,59 +162,81 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 	}
 	var token *tiana.Token
 	var e *sqlitecli.Error
-	_, explicitToken := os.LookupEnv("TIANA_TOKEN")
+	rawToken, explicitToken := os.LookupEnv("TIANA_TOKEN")
+	if o.endpoint != "" && explicitToken && rawToken == "" {
+		fmt.Fprintln(diagnostics, "tiana: TIANA_TOKEN is empty; set a valid Token or unset it to use a saved InstanceToken")
+		return 2
+	}
 	if explicitToken {
 		token, e = sqlitecli.ReadTokenContext(ctx, "env", "TIANA_TOKEN", nil)
 		if e != nil {
 			return emit(e)
 		}
 	}
-	resolution, err := resolve(ctx, o.reference, o.nonInteractive)
-	if err != nil {
-		if ctx.Err() != nil {
-			return emit(&sqlitecli.Error{Code: "INTERRUPTED", Message: "interrupted before SQL was sent", Outcome: "not_sent", ExitCode: 130})
-		}
-		reportResolveError(diagnostics, o.reference, err)
-		return 1
-	}
-	instance := resolution.instance
-	endpoint, port, err := sqliteEndpoint(instance)
-	if err != nil {
-		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
-		return 2
-	}
-	if !explicitToken {
-		store, err := newInstanceTokenStore()
+	endpoint, port := o.endpoint, o.port
+	var instance authclient.Instance
+	var resolution sqliteResolution
+	if endpoint == "" {
+		resolution, err = resolve(ctx, o.reference, o.nonInteractive)
 		if err != nil {
-			fmt.Fprintln(diagnostics, "tiana: cannot open local InstanceToken store")
-			return 2
-		}
-		endpointID := instance.EndpointID
-		if endpointID == "" {
-			endpointID = strings.SplitN(endpoint, ".", 2)[0]
-		}
-		session, err := resolution.client.CurrentSession(ctx)
-		if err != nil {
-			fmt.Fprintln(diagnostics, "tiana: cannot resolve current tenant")
+			if ctx.Err() != nil {
+				return emit(&sqlitecli.Error{Code: "INTERRUPTED", Message: "interrupted before SQL was sent", Outcome: "not_sent", ExitCode: 130})
+			}
+			reportResolveError(diagnostics, o.reference, err)
 			return 1
 		}
-		ids, err := store.CandidateIDs(session.TenantID, time.Now())
+		instance = resolution.instance
+		endpoint, port, err = sqliteEndpoint(instance)
 		if err != nil {
 			fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
 			return 2
 		}
-		if resolution.client == nil {
-			fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
-			return 2
+	}
+	if !explicitToken {
+		endpointID := instance.EndpointID
+		if endpointID == "" {
+			endpointID = strings.SplitN(endpoint, ".", 2)[0]
 		}
-		eligible, err := resolution.client.CredentialCandidates(ctx, instance.ID, endpointID, ids)
-		if err != nil {
-			fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
-			return 1
+		var credential authclient.InstanceTokenCredential
+		if o.endpoint != "" {
+			path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
+			if path == "" {
+				path, err = authclient.DefaultInstanceTokenPath()
+			}
+			if err == nil {
+				credential, err = authclient.LookupEndpointToken(path, authclient.DefaultOrigin(), endpointID, time.Now())
+			}
+		} else {
+			store, storeErr := newInstanceTokenStore()
+			if storeErr != nil {
+				fmt.Fprintln(diagnostics, "tiana: cannot open local InstanceToken store")
+				return 2
+			}
+			if resolution.client == nil {
+				fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
+				return 2
+			}
+			session, sessionErr := resolution.client.CurrentSession(ctx)
+			if sessionErr != nil {
+				fmt.Fprintln(diagnostics, "tiana: cannot resolve current tenant")
+				return 1
+			}
+			ids, candidateErr := store.CandidateIDs(session.TenantID, time.Now())
+			if candidateErr != nil {
+				fmt.Fprintln(diagnostics, "tiana:", safeDisplay(candidateErr.Error()))
+				return 2
+			}
+			eligible, authorizeErr := resolution.client.CredentialCandidates(ctx, instance.ID, endpointID, ids)
+			if authorizeErr != nil {
+				fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
+				return 1
+			}
+			credential, err = store.LookupCandidates(session.TenantID, eligible, time.Now())
 		}
-		credential, err := store.LookupCandidates(session.TenantID, eligible, time.Now())
 		if err != nil {
-			if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
+			if errors.Is(err, authclient.ErrInstanceTokenNotFound) && o.endpoint != "" {
+				fmt.Fprintln(diagnostics, "tiana: no usable local InstanceToken for endpoint; set TIANA_TOKEN or explicitly create/save a Token for this endpoint")
+			} else if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
 				command := "tiana sqlite tokens create " + quoteCommandArgs([]string{instance.ID})
 				if o.branch != "" {
 					command += " --branch " + quoteCommandArgs([]string{o.branch})

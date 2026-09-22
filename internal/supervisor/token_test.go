@@ -81,7 +81,7 @@ func TestConnectCredentialSourcesDoNotFallBack(t *testing.T) {
 	t.Run("noninteractive absent", func(t *testing.T) {
 		os.Unsetenv("TIANA_TOKEN")
 		_, err := readConnectCredential(context.Background(), ConnectOptions{Credential: DefaultCredentialSource()}, nil)
-		if err == nil || !strings.Contains(err.Error(), "--token-file") {
+		if err == nil || !strings.Contains(err.Error(), "TIANA_TOKEN") || strings.Contains(err.Error(), "--token-file") {
 			t.Fatalf("missing actionable error: %v", err)
 		}
 	})

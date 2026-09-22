@@ -54,7 +54,7 @@ func (r *AdapterRegistry) Select(program, explicitID string) (Adapter, error) {
 
 // SQLDAdapter is the registered HTTP/WebSocket native-client adapter. It
 // accepts only the reviewed `turso db shell` grammar, replaces its remote URL,
-// and scrubs route-affecting environment values. The Rust helper remains the
+// and scrubs route-affecting environment values. The helper process remains the
 // classifier/relay owner.
 type SQLDAdapter struct{}
 

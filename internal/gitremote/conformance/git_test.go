@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/tianacloud/cli/internal/authclient"
 )
 
 type flushWriter struct{ http.ResponseWriter }
@@ -166,7 +168,8 @@ func TestNativeGitOverConnect(t *testing.T) {
 	server.TLS = &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	server.StartTLS()
 	defer server.Close()
-	env := append(append([]string{}, baseEnv...), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
+	localStore := filepath.Join(dir, "instance-tokens.json")
+	env := append(append([]string{}, baseEnv...), "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
 	url := "tiana://" + hostname + ":" + strings.Split(server.Listener.Addr().String(), ":")[1] + "/repo.git"
 	must := func(args ...string) string {
 		t.Helper()
@@ -234,6 +237,26 @@ func TestNativeGitOverConnect(t *testing.T) {
 		t.Fatalf("denial must fail without retry: %v %s", err, out)
 	}
 	denied.Store(false)
+	// A saved Token must reach the real CONNECT header without MGR or a
+	// credential prompt. Explicit env/file sources below override this Token.
+	savedToken := "tia_" + strings.Repeat("B", 42) + "A"
+	_, err = authclient.NewFileInstanceTokenStore(localStore, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "git-one", TokenID: "one", EndpointID: strings.SplitN(hostname, ".", 2)[0], Token: savedToken, ExpiresAt: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeStore, err := os.ReadFile(localStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedToken.Store("Bearer " + savedToken)
+	out, err = run(env, "ls-remote", url)
+	if err != nil || bytes.Contains(out, []byte(savedToken)) {
+		t.Fatalf("saved Token: %v %s", err, out)
+	}
+	afterStore, err := os.ReadFile(localStore)
+	if err != nil || !bytes.Equal(beforeStore, afterStore) {
+		t.Fatal("helper mutated local Token store", err)
+	}
 	token := "tia_" + strings.Repeat("A", 43)
 	expectedToken.Store("Bearer " + token)
 	tokenEnv := append(append([]string{}, env...), "TIANA_TOKEN="+token)
@@ -279,6 +302,9 @@ func TestNativeGitOverConnect(t *testing.T) {
 	}
 	rejectBeforeConnect(append(append([]string{}, env...), "TIANA_TOKEN_FILE="+fifo))
 	rejectBeforeConnect(append(append([]string{}, env...), "TIANA_TOKEN=invalid"))
+	if err := os.Remove(localStore); err != nil {
+		t.Fatal(err)
+	}
 	expectedToken.Store("")
 	reset.Store(true)
 	before = calls.Load()

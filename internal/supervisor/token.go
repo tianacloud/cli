@@ -3,12 +3,15 @@ package supervisor
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
+	"github.com/tianacloud/cli/internal/authclient"
+	"golang.org/x/net/http/httpguts"
 	"io"
 	"os"
 	"path/filepath"
-
-	"golang.org/x/net/http/httpguts"
+	"strings"
+	"time"
 )
 
 const (
@@ -173,5 +176,32 @@ func readConnectCredential(ctx context.Context, options ConnectOptions, input io
 }
 
 func missingCredentialError() error {
-	return fmt.Errorf("connection Token is required; set TIANA_TOKEN, use --token-env NAME, --token-file PATH or --token-stdin, or run in an interactive terminal")
+	return fmt.Errorf("connection Token is required; set TIANA_TOKEN, save an InstanceToken for this endpoint, or run in an interactive terminal")
+}
+
+// A default, unset environment source permits endpoint-scoped local lookup.
+// Explicit sources and malformed stores never fall through to another source.
+func readConnectEndpointCredential(ctx context.Context, options ConnectOptions, input io.Reader, endpoint Endpoint) (*SecretToken, error) {
+	_, present := os.LookupEnv("TIANA_TOKEN")
+	if options.TokenSourceSet || options.Credential != DefaultCredentialSource() || present {
+		return readConnectCredential(ctx, options, input)
+	}
+	path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
+	if path == "" {
+		var err error
+		path, err = authclient.DefaultInstanceTokenPath()
+		if err != nil {
+			return nil, err
+		}
+	}
+	credential, err := authclient.LookupEndpointToken(path, authclient.DefaultOrigin(), endpoint.ID(), time.Now())
+	if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
+		return readConnectCredential(ctx, options, input)
+	}
+	if err != nil {
+		return nil, err
+	}
+	value := []byte(credential.Token)
+	defer clear(value)
+	return ParseToken(value)
 }

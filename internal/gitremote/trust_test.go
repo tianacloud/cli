@@ -4,11 +4,13 @@ import (
 	"crypto/x509"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestGlobalTrustOverridesEnvironmentWithoutMutation(t *testing.T) {
 	t.Setenv("TIANA_CA_FILE", "/missing/ca")
+	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("TIANA_TOKEN", "")
 	os.Unsetenv("TIANA_TOKEN")
 	t.Setenv("TIANA_TOKEN_FILE", "")

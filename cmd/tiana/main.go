@@ -25,6 +25,14 @@ var (
 
 func main() {
 	args := os.Args[1:]
+	if len(args) == 1 && args[0] == supervisor.BuiltinHelperArgument {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := supervisor.ServeBuiltinHelper(ctx, os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	os.Exit(run(args))
 }
 
@@ -52,7 +60,7 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		return 2
 	}
 	if parsed.Help {
-		fmt.Fprintln(output, "Credentials: TIANA_TOKEN; when unset, connect retains its hidden-input terminal prompt.")
+		fmt.Fprintln(output, "Credentials: TIANA_TOKEN; when unset, look up a saved InstanceToken by endpoint_id, then prompt in an interactive terminal if none is available.")
 		for _, line := range strings.Split(supervisor.Usage(), "\n") {
 			if strings.Contains(line, "--token-env") || strings.Contains(line, "--token-file") || strings.Contains(line, "--token-stdin") || strings.Contains(line, "--non-interactive") {
 				continue
@@ -214,11 +222,7 @@ func resolveHelperLauncher() (supervisor.HelperLauncher, string, error) {
 		}
 		return launcher, "embedded", nil
 	}
-	helper, err := resolveInstalledHelper()
-	if err != nil {
-		return nil, "", err
-	}
-	return supervisor.ProcessHelperLauncher{Helper: helper}, "system", nil
+	return supervisor.BuiltinHelperLauncher{}, "builtin", nil
 }
 
 func resolveInstalledHelper() (supervisor.TrustedHelper, error) {

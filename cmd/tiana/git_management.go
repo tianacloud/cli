@@ -19,6 +19,7 @@ func newGitCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 		newGitCreateCommand(output, diagnostics),
 		newGitListCommand(input, output, diagnostics),
 		newGitShowCommand(output, diagnostics),
+		newInstanceDeleteCommand(input, output, diagnostics, gitManagementScope),
 		{Name: "remote-helper", Usage: "Run the Git remote helper", ArgsUsage: "<remote> [url]", SkipFlagParsing: true,
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				if cmd.NArg() == 1 && isHelp(cmd.Args().Slice()) {

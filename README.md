@@ -7,7 +7,7 @@ Flags accept `--name=value` and may follow positional arguments; duplicate
 options are rejected. Parser diagnostics do not echo user-provided values.
 Unset `URFAVE_CLI_TRACING`: the CLI rejects this framework debug mode because
 it would log raw SQL and potentially credentials.
-The `connect` adapter retains its strict native-client ownership boundary:
+The `connect` adapter retains its strict native-client argument boundary:
 arguments after `--` are passed unchanged. Git remote-helper argv is also opaque.
 
 ## SDK dependencies
@@ -25,9 +25,10 @@ credential-file checks, redacted diagnostics and coordinated refresh/writes.
 ## Build with Go modules
 
 Use Go 1.25+; dependency versions and checksums are tracked in `go.mod` and
-`go.sum`. There is no checked-in vendor tree or local `replace`. SQLite and Git
-source builds do not require Rust; packaging legacy `connect` still needs its
-matching helper as described below.
+`go.sum`. There is no checked-in vendor tree or local `replace`. SQLite, Git
+and `connect` source builds do not require Rust. On Linux and macOS the CLI
+re-executes itself as a private Go helper. Optional legacy embedded-helper
+packaging is described below.
 
 The SDK dependency is now `github.com/tianacloud/sdk-go`. Account login,
 refresh/logout and local credential stores are provided by its `auth` package;
@@ -110,10 +111,68 @@ commands never consume the other engine's pending record. Do not delete an
 unresolved record or use an older binary to resume Git creation.
 
 Native clone/fetch/push still use the existing `git-remote-tiana` helper; both
-it and `tiana` must be installed together. The helper continues to accept
-`TIANA_TOKEN` or `TIANA_TOKEN_FILE`; it does not read the saved Token store.
+it and `tiana` must be installed together. Explicit `TIANA_TOKEN` and
+`TIANA_TOKEN_FILE` are mutually exclusive and take priority. When neither is
+set, the helper matches the remote URL's `endpoint_id` in the local
+`instance-tokens.json` (override with `TIANA_INSTANCE_TOKENS_FILE`). It uses the
+same scoped selection as SQLite direct mode: optional management origin filter,
+unique environment/tenant/instance, newest usable Token. It never calls MGR,
+prompts for credentials or writes the store. Missing/expired Tokens retain
+unauthenticated access for auth-disabled Endpoints; ambiguous, corrupt or unsafe
+stores fail before CONNECT. Gateway retains the final authorization decision.
+
+Git remote-helper 会自动读取本地 `instance-tokens.json`，按远端 URL 的
+`endpoint_id` 选择 Token。显式 `TIANA_TOKEN` 或 `TIANA_TOKEN_FILE` 优先，
+两者不能同时设置；无效的显式来源不会回退。环境、租户、实例隔离与 SQLite
+直连一致，不访问 MGR、不改写凭据。没有可用 Token 时保留无 Token 连接，
+由 Gateway 决定是否允许访问；本地记录歧义、损坏或权限不安全时直接报错。
 See [Git transport setup](internal/gitremote/README.md) for installation and
 credential configuration. Management commands do not clone or push Git data.
+
+## Delete an instance
+
+```sh
+tiana sqlite delete my-db
+tiana git delete my-repo
+
+# Skip confirmation for scripts or an intentional immediate request:
+tiana sqlite delete my-db -f
+tiana git delete my-repo --force
+```
+
+`delete INSTANCE` accepts an instance ID or exact name and deletes the entire
+instance, including its branches and data. SQLite and Git commands validate
+the corresponding engine; duplicate names require an explicit instance ID.
+There is no `--branch` option. Without `-f`/`--force`, stdin must be a terminal:
+the prompt shows the resolved name and ID, and only `y` or `yes` (case-insensitive)
+followed by Enter confirms. Enter, a negative answer or EOF cancels; Ctrl-C exits
+with code 130. Piped input cannot approve deletion; scripts must use `-f`.
+The flag only skips confirmation, not authentication or instance checks.
+
+MGR processes deletion asynchronously. Exit 0 with `Deletion accepted` means
+HTTP 202 returned a matching instance ID and an operation ID; it does not mean
+background cleanup has finished. Cancellation also exits 0, with no deletion
+request. Errors exit nonzero; if the result is unconfirmed, check the instance
+status and retry only with the printed immutable ID, not a potentially reused
+name. The CLI does not add a command-level retry loop. The SDK retains its 401
+refresh policy with the same request identity, and MGR deduplicates deletion
+by instance ID. Local Tokens are not removed by this command.
+
+SQLite/Git `list` and `show` display deletion progress: `DELETED` takes
+priority, then `deletion_pending=true` or a current `lifecycle_state=DELETING`
+displays `DELETING`. Other states retain the reported `product_state`. Runtime
+lifecycle observations marked stale are ignored; MGR's deletion-pending flag
+still applies. Older responses without these fields retain their old display.
+An old deletion operation ID alone does not mean deletion is running.
+
+Plain `sqlite show INSTANCE` displays the instance directly while deleting or
+deleted, since its default branch may already be gone. Explicit `--branch` and
+`--url` retain their branch lookup behavior. `DELETED` rows remain in the list
+when MGR returns them; the CLI does not hide them or infer physical storage
+reclamation from this state.
+
+An existing unresolved create/Token operation blocks deletion and is preserved.
+`-f` cannot bypass this guard. Finish the original operation first.
 
 ## Native SQLite commands
 
@@ -175,7 +234,7 @@ TLS 1.3 / HTTP/2 CONNECT with the `hrana-http` profile and Hrana 3
 It does not launch the helper, Turso or the standalone App CLI. Account login
 is used only for MGR; the InstanceToken goes only to outer CONNECT.
 
-Token selection: a set `TIANA_TOKEN` is an explicit override. Empty/invalid values
+Token selection in INSTANCE mode: a set `TIANA_TOKEN` is an explicit override. Empty/invalid values
 fail without fallback; unset it to use the local store. Otherwise, CLI first
 resolves the instance through the currently authenticated MGR account, then
 selects a saved Token matching origin, instance ID and endpoint. Tenant metadata
@@ -270,6 +329,54 @@ Exit codes: 0 success, 1 MGR initialization/resolution, 2 arguments/input,
 status even if a complete JSON result document was printed.
 
 Verification is described in [SQLITE_VALIDATION.md](SQLITE_VALIDATION.md).
+
+## Direct SQLite Endpoint connection / SQLite Endpoint 直连
+
+```sh
+# Uses a saved InstanceToken matching endpoint_id, or an explicit TIANA_TOKEN.
+tiana sqlite shell --endpoint https://ep-00000000000000000000000000.db.example.test:9443
+tiana sqlite shell --endpoint ep-00000000000000000000000000.db.example.test -e 'SELECT 1' --format json
+tiana --ca-file ./gateway-ca.pem sqlite shell --endpoint https://ep-00000000000000000000000000.db.example.test:9443 -f query.sql
+```
+
+`--endpoint` accepts a canonical Endpoint hostname, optionally with a port, or
+an HTTPS URL with no path except an optional trailing `/`. Default port: `443`;
+explicit ports must be in `1..65535`. Plain HTTP, IP addresses, aliases, bare
+Endpoint IDs, URL credentials, query strings and fragments are rejected.
+It is mutually exclusive with positional `INSTANCE` and `--branch`: the Endpoint
+already selects the target branch. Interactive shell, piped SQL, `-e`, `-f`,
+output formatting and timeout options remain available.
+
+Direct mode uses `TIANA_TOKEN` when set; an empty or invalid explicit value is
+an error and never falls back. Otherwise, it matches `endpoint_id` in the local
+InstanceToken store (`TIANA_INSTANCE_TOKENS_FILE` or the SDK's default config
+path). The configured `TIANA_MGR_ORIGIN` (or legacy `TIANA_AUTH_ORIGIN`) restricts
+selection to that environment. Without an origin, the matching environment,
+tenant and instance must be unique. Ambiguous matches are rejected; within one
+scope the newest usable Token is selected, excluding expired or soon-expiring
+Tokens. Unset `TIANA_TOKEN` to enable this lookup.
+
+It does not call MGR, prompt for account login, read account credentials, or
+create/save Tokens. No management origin is required for a unique local match.
+Gateway verifies the Token and target policy; selecting the correct deployment
+Endpoint remains the caller's responsibility.
+TLS verification stays enabled; use `--ca-file` or `TIANA_CA_FILE` for your
+Gateway CA. SQL session/transaction cleanup and no-replay behavior are unchanged.
+
+`--endpoint` 支持完整 HTTPS 地址或 Endpoint 主机名，可带端口，默认 `443`。
+仅允许空路径或末尾 `/`，拒绝 HTTP、IP、别名、裸 Endpoint ID，以及含账号、查询参数、片段的 URL。
+它与实例 ID/名称、`--branch` 互斥：分支由 Endpoint 决定。
+交互 shell、管道输入、`-e`、`-f`、输出格式和超时参数均可继续使用。
+
+直连优先使用 `TIANA_TOKEN`；显式设置为空或无效时直接报错，不回退。
+未设置时按 `endpoint_id` 匹配本地 InstanceToken，读取 `TIANA_INSTANCE_TOKENS_FILE`
+或 SDK 默认配置路径。配置了 `TIANA_MGR_ORIGIN`（或兼容的 `TIANA_AUTH_ORIGIN`）
+时仅匹配该环境；未配置时要求环境、租户和实例匹配唯一，否则拒绝连接。
+同一范围中选择最新可用的 Token，排除已过期或将在 30 秒内过期的记录；使用本地 Token 前请 `unset TIANA_TOKEN`。
+直连不访问 MGR、不触发账号登录、不读取账号凭据，也不创建或改写 Token。
+调用方应选择正确部署的 Endpoint；Gateway 继续执行鉴权。
+自签名证书使用 `--ca-file` 或 `TIANA_CA_FILE`，TLS 校验始终保留。
+事务清理、未知结果处理及不自动重放 SQL 的行为不变。
 
 ## Existing CLI features
 
@@ -371,7 +478,7 @@ Displayed finite expiry dates remain UTC.
 
 ## Native Turso command
 
-With the default `TIANA_TOKEN` environment source:
+With `TIANA_TOKEN` or a locally saved InstanceToken matching the Endpoint:
 
 ```sh
 tiana connect -- \
@@ -399,10 +506,22 @@ release does not implement it.
 
 ## Legacy connect credentials
 
-`connect` reads `TIANA_TOKEN`. When unset, it retains its hidden-input terminal
-prompt; no terminal means missing credentials fail. It does not auto-select the
-SQLite local store because it operates on an Endpoint URL rather than an
-account-resolved instance. A set but invalid/empty value never falls back.
+`connect` uses `TIANA_TOKEN` when set; empty/invalid explicit values never fall
+back. Otherwise it looks up a saved InstanceToken by the native URL's
+`endpoint_id`, using `TIANA_INSTANCE_TOKENS_FILE` or the SDK default path.
+The optional management origin filter and unique origin/tenant/instance scope
+rules are the same as SQLite direct mode. No MGR request or account login occurs.
+If no usable Token exists, an interactive terminal receives the hidden-input
+prompt; non-interactive execution reports missing credentials. Ambiguous,
+corrupt, unsafe or invalid saved credentials fail before helper launch, without
+prompting. Lookup never consumes native stdin or writes the store.
+
+`connect` 优先读取 `TIANA_TOKEN`；未设置时，按原生客户端 URL 的 `endpoint_id`
+查找本地 `instance-tokens.json`，也支持 `TIANA_INSTANCE_TOKENS_FILE` 自定义路径。
+环境、租户、实例隔离和过期筛选与 SQLite 直连一致，不访问 MGR。
+没有可用记录时，交互终端保留隐藏输入提示，非交互模式报错；文件损坏、
+权限不安全、匹配歧义或选中 Token 无效时直接报错，不提示输入替代凭据。
+
 Raw `--token` and the removed Token-source flags are rejected before the native
 `--` separator; arguments after it remain the native client's responsibility.
 The Token is not saved by connect.
@@ -424,7 +543,9 @@ release scripts default `TIANA_INSECURE_TLS` to `false`. The explicit build-time
 override `TIANA_INSECURE_TLS=true` disables certificate verification for MGR
 requests and legacy helper tunnels while retaining TLS encryption. It is for
 controlled testing only and must not be used in distributed artifacts. Native
-Git and SDK-backed SQLite connections retain their certificate verification.
+Git, SDK-backed SQLite and the built-in Go helper retain certificate verification.
+The built-in helper rejects an insecure TLS configuration; this override applies
+only to the legacy helper path and MGR.
 
 Without `--profile`, the helper's bounded classifier selects Hrana HTTP or
 WebSocket from the native client's complete initial request header. The
@@ -432,17 +553,57 @@ diagnostic `--profile hrana-http|hrana-websocket` option can force one reviewed
 profile. The CLI does not automatically retry or replay a database session
 after CONNECT 200.
 
+## Built-in connect helper / 内置连接 helper
+
+A normal `go build -o bin/tiana ./cmd/tiana` includes the connect helper on
+Linux and macOS. No separate `tiana-helper`, Rust build, or installation manifest
+is required. The supervisor launches the same CLI executable as a private child
+process, with the existing contract-3 control pipes. The helper owns its loopback
+listener and SDK transport; it accepts connections only after the native child
+handoff. Account credentials and `TIANA_TOKEN` are removed from the native child
+and helper environments; the outer InstanceToken reaches the helper only through
+the private control pipe and Gateway only through TLS CONNECT.
+
+```sh
+# Uses TIANA_TOKEN or a saved endpoint Token; omit --ca-file for a publicly trusted CA.
+tiana --ca-file ./gateway-ca.pem connect --allow-unisolated-loopback -- \
+  turso db shell https://ep-00000000000000000000000000.db.example.test:9443 'SELECT 1'
+```
+
+The reviewed native adapter remains `turso db shell`; the native client itself
+must be installed. The local listener reports `loopback_unisolated`, not
+`same_user` or `strict_process`. Non-interactive use still requires
+`--allow-unisolated-loopback` or an explicit compatible minimum-security policy.
+Linux requires pidfd support to pin/monitor the native process identity; macOS
+uses process-exit notifications. Parent control EOF, owner exit, cancellation or
+drain closes listeners and active sessions.
+
+The bounded classifier accepts HTTP/1.1 POST `/v2/pipeline`, `/v3/pipeline`,
+`/v3/cursor`, or the Hrana WebSocket upgrade at `/`. It allows at most 16 KiB
+of headers, 64 fields and one second to receive the header. At most 32 local
+sessions run concurrently; excess connections are closed. The retained prefix
+and all following bytes remain opaque and are forwarded once, only after a
+validated CONNECT 200. The CLI does not replay failed requests. HTTP framing,
+SQL and transaction semantics remain the native client/App's responsibility.
+
+普通 Go 构建已包含 helper，无需安装独立 `tiana-helper` 或编译 Rust。
+CLI 以自身二进制启动独立 helper 子进程，保留私有控制管道、Token 隔离、TLS 校验
+和 CONNECT 200 前不发送数据库请求的约束；`verify-install` 会实际握手并报告 `mode=builtin`。
+仍需安装 `turso` 原生客户端；非交互模式继续显式使用 `--allow-unisolated-loopback`。
+内置 helper 不提供比 `loopback_unisolated` 更强的本地访问隔离，也不关闭 TLS 校验。
+
 ## Verify installation
 
 ```sh
 tiana verify-install
-# Must include: helper-contract=3 mode=embedded
+# A normal Go build reports: helper-contract=3 mode=builtin
+# A legacy embedded-helper build reports: helper-contract=3 mode=embedded
 
 tiana --version
 tiana --help
 ```
 
-## Release build
+## Optional legacy embedded-helper release build
 
 For a native release build from both source checkouts, run:
 
@@ -529,7 +690,7 @@ tiana sqlite tokens create INSTANCE --branch development --name cli
 
 列表只取一页，输出的下一页游标可传给 `--after`。连接时通过 MGR 的精确名称查询定位分支，再从分支详情读取 `connection`；名称不存在或查询期间改变时报告错误。
 
-`TIANA_TOKEN` 优先于本地凭据；未设置时，按管理入口、实例和所选 Endpoint 查找已保存的数据库 Token。账号登录会话用于 MGR 查询，即使提供数据库 Token，首次访问该管理环境仍需登录。shell 不自动创建 Token；显式签发会保存目标 Endpoint 和 Token，结果未确认时重试保持原 Endpoint、幂等键和 Operation。
+`TIANA_TOKEN` 优先于本地凭据；未设置时，按管理入口、实例和所选 Endpoint 查找已保存的数据库 Token。实例连接模式下，账号登录会话用于 MGR 查询，即使提供数据库 Token，首次访问该管理环境仍需登录。shell 不自动创建 Token；显式签发会保存目标 Endpoint 和 Token，结果未确认时重试保持原 Endpoint、幂等键和 Operation。
 
 使用 `TIANA_CREDENTIALS_FILE`、`TIANA_INSTANCE_TOKENS_FILE` 和 `TIANA_PENDING_COMMAND_FILE` 可将三类状态放在独立目录；`TIANA_MGR_ORIGIN` 选择管理环境，`--ca-file` 或 `TIANA_CA_FILE` 选择该环境 CA。
 

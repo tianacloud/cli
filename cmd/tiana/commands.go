@@ -154,11 +154,14 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			{Name: "login", Usage: "Sign in through a browser", Description: "Sign in or create an account. The CLI prints a URL and waits for approval.", Action: noArgs(runLogin)},
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Action: noArgs(runLogout)},
 			{Name: "whoami", Usage: "Show the signed-in account", Action: noArgs(runWhoami)},
-			{Name: "verify-install", Usage: "Verify the embedded or trusted legacy helper", Action: func(ctx context.Context, cmd *cli.Command) error {
+			{Name: "verify-install", Usage: "Verify the built-in or embedded helper", Action: func(ctx context.Context, cmd *cli.Command) error {
 				if cmd.NArg() != 0 {
 					return argumentFailure(ctx, cmd, "verify-install does not accept arguments")
 				}
-				_, mode, err := resolveHelperLauncher()
+				launcher, mode, err := resolveHelperLauncher()
+				if err == nil {
+					err = supervisor.VerifyHelper(ctx, launcher)
+				}
 				if err != nil {
 					fmt.Fprintln(diagnostics, "tiana: trusted helper is unavailable")
 					return statusError(1)
@@ -167,7 +170,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 				return nil
 			}},
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
-			{Name: "connect", Usage: "Connect a native client through the legacy helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
+			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
 				Description: "Arguments after -- belong to the native client and are passed unchanged.",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
@@ -285,12 +288,13 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			return statusError(executeSQLiteBranchesList(ctx, cmd.Args().First(), cmd.String("after"), cmd.String("search"), output, diagnostics))
 		}},
 	}}
-	commands := []*cli.Command{create, list, show, branches, tokens, newSQLCommand(sqlAction)}
+	commands := []*cli.Command{create, list, show, newInstanceDeleteCommand(input, output, diagnostics, sqliteManagementScope), branches, tokens, newSQLCommand(sqlAction)}
 	return &cli.Command{Name: "sqlite", Usage: "Manage SQLite instances and execute SQL", Description: "Use an MGR instance ID, not an ep-... Endpoint ID. Name lookup requires MGR display_name support. SQL uses native sdk-go with verified TLS; no SQL replay. --atomic is unavailable.", Action: groupAction, Commands: commands}
 }
 
 func newSQLCommand(action sqlCommandAction) *cli.Command {
 	flags := []cli.Flag{
+		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; uses TIANA_TOKEN or a saved endpoint Token", ""),
 		branchOption(),
 		stringOption("format", "table, json, ndjson or csv", "table"),
 		stringOption("output", "Exclusively create a private result file", ""),
@@ -299,17 +303,29 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 		&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Preflight and execute a SQL script, then exit", Local: true},
 		&cli.BoolFlag{Name: "atomic", Hidden: true, Local: true},
 	}
-	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "INSTANCE",
-		Description: "Use TIANA_TOKEN if set; otherwise use a saved Token for an instance accessible to the current account. Missing Tokens must be created explicitly.",
+	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "[INSTANCE | --endpoint ENDPOINT]",
+		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR. Direct mode cannot use INSTANCE or --branch. TIANA_TOKEN takes priority; otherwise select a saved Token by instance or endpoint_id. Missing Tokens must be created explicitly.",
 		Flags:       flags, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.IsSet("atomic") {
 				return argumentFailure(ctx, cmd, "--atomic is unavailable until SQLite grammar equivalence is verified")
 			}
-			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
-				return argumentFailure(ctx, cmd, "one instance ID or name is required")
-			}
-			if positionalWasTrimmed(cmd, cmd.Args().First()) {
-				return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
+			var endpoint, port string
+			if cmd.IsSet("endpoint") {
+				if cmd.NArg() != 0 || cmd.IsSet("branch") {
+					return argumentFailure(ctx, cmd, "--endpoint cannot be combined with INSTANCE or --branch")
+				}
+				var err error
+				endpoint, port, err = parseSQLiteDirectEndpoint(cmd.String("endpoint"))
+				if err != nil {
+					return argumentFailure(ctx, cmd, err.Error())
+				}
+			} else {
+				if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
+					return argumentFailure(ctx, cmd, "one instance ID or name, or --endpoint, is required")
+				}
+				if positionalWasTrimmed(cmd, cmd.Args().First()) {
+					return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
+				}
 			}
 			if !sqlitecli.ValidFormat(cmd.String("format")) || cmd.Uint("timeout") < 1 || cmd.Uint("timeout") > 3600000 {
 				return argumentFailure(ctx, cmd, "invalid SQL format or timeout")
@@ -322,7 +338,7 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 					return argumentFailure(ctx, cmd, "option value must not be empty")
 				}
 			}
-			o := sqliteOptions{command: "shell", reference: cmd.Args().First(), branch: cmd.String("branch"), format: cmd.String("format"), output: cmd.String("output"), timeout: time.Duration(cmd.Uint("timeout")) * time.Millisecond}
+			o := sqliteOptions{command: "shell", endpoint: endpoint, port: port, reference: cmd.Args().First(), branch: cmd.String("branch"), format: cmd.String("format"), output: cmd.String("output"), timeout: time.Duration(cmd.Uint("timeout")) * time.Millisecond}
 			if cmd.IsSet("execute") {
 				o.command = "exec"
 				o.sql = cmd.String("execute")

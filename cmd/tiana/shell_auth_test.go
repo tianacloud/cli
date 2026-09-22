@@ -26,8 +26,8 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 			config, dials := sqlitepeer.Gateway(t, func(io.Reader, io.Writer) { t.Error("SQL after refusal") }, true)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
-				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/me" {
-					io.WriteString(w, `{"principal_id":"usr_auto","tenant_id":"tenant","email":"auto@example.test"}`)
+				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/auth/transactions/whoami" {
+					io.WriteString(w, `{"user":{"user_id":"usr_auto","tenant_id":"tenant","email":"auto@example.test"}}`)
 					return
 				}
 				if r.Method == http.MethodPost && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/credential-candidates" {
@@ -115,7 +115,7 @@ func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 			t.Fatalf("code=%d error=%s", code, &diag)
 		}
 	}
-	for _, args := range [][]string{{"--ca-file", path, "sqlite", "shell", "id"}, {"sqlite", "--ca-file", path, "shell", "id"}, {"sqlite", "shell", "id", "--ca-file", path}} {
+	for _, args := range [][]string{{"--ca-file", path, "sqlite", "shell", "id"}, {"sqlite", "--ca-file", path, "shell", "id"}, {"sqlite", "shell", "id", "--ca-file", path}, {"sqlite", "shell", "--endpoint", sqlitepeer.Endpoint, "--ca-file", path}} {
 		var out, diag bytes.Buffer
 		called := false
 		code := runCLIWithSQL(context.Background(), args, strings.NewReader(""), &out, &diag, func(ctx context.Context, _ sqliteOptions) int {
