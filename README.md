@@ -35,10 +35,10 @@ refresh/logout and local credential stores are provided by its `auth` package;
 CLI resource operations and deployment defaults remain here. Existing local
 credential paths/JSON and TIANA_TOKEN priority are unchanged.
 
-SDK dependencies are pinned to GitHub commit pseudo-versions in go.mod:
+SDK dependencies are pinned to published GitHub candidates in go.mod:
 
-- sdk-go: `v0.0.0-20260921154600-3a503ed25585`
-- sdk-go-sqlite: `v0.0.0-20260921133545-2636f0ee5047`
+- sdk-go: `v0.1.0-rc.2`
+- sdk-go-sqlite: `v0.1.0-rc.2`
 
 A standalone build downloads those published sources and verifies the recorded
 go.sum hashes. The CLI selects the fixed sdk-go version for both its own
