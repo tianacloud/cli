@@ -23,7 +23,7 @@ sdk-go/auth provides login/refresh/logout, credential storage and InstanceToken
 lookup. CLI keeps resource models, pending idempotent operations and formatting.
 Maintain existing per-origin keys, credential paths/JSON, token expiry/-1 sentinel,
 30s selection skew, tenant/instance/endpoint checks and TIANA_TOKEN priority.
-Authorize with MGR before local token selection. Account credentials never enter
+Authorize with MGR before local token selection (INSTANCE mode). Account credentials never enter
 Gateway CONNECT; InstanceTokens never enter inner SQL/Git HTTP. No implicit Token
 creation, rotation or alternate-token retry. Constructors do not access real stores.
 The security hardening below supersedes earlier store locking/diagnostic risks;
@@ -281,3 +281,31 @@ commands, deletion precedence, stale runtime, old/failed operation metadata,
 legacy field omission, and deleted default branch absence; run full race/vet,
 source scans and macOS/Linux builds. Preserve preexisting uncommitted delete
 work; no actual instance mutation or automatic commit/push.
+
+## Direct SQLite Endpoint selection
+
+User requested shell --endpoint after the explicit-token direct mode was proposed.
+Accept a canonical SDK Endpoint hostname with optional TCP port, or an HTTPS
+URL (only empty/root path). Validate before SQL action; reject userinfo, queries,
+fragments, non-HTTPS, aliases/IPs/bare IDs and invalid/empty ports. Normalize DNS
+case and default TCP port 443. The canonical host remains SNI/CONNECT authority;
+the optional port changes only TCP destination, not the logical CONNECT port.
+INSTANCE and --branch conflict with --endpoint even if branch is explicitly empty.
+The Endpoint selects its branch; no MGR product/branch resolution is available.
+
+Direct mode requires explicit TIANA_TOKEN, never opens local account/Token stores,
+never logs in or calls MGR, and never mints/saves credentials. Gateway retains
+Token/endpoint authorization and verified TLS. This additive opt-in capability
+leaves account authorization before automatic local Token selection in INSTANCE
+mode unchanged. The caller chooses the target; canonical DNS syntax is not a
+trusted-deployment allowlist. Keep raw endpoint/Token values out of diagnostics.
+
+Reuse the existing SDK session for interactive/piped shell, -e and -f, CA roots,
+timeouts, bounded IO and output. No replay/reconnect, transport fallback, storage
+migration, persistence change or new management calls/locks. Rollback removes the
+flag only; existing instance-mode commands/stores remain compatible. Test real
+Hrana execution over a synthetic TLS/H2 Gateway, zero resolution in direct mode,
+argument conflicts, redaction, target normalization, missing/invalid Tokens,
+TLS failures and refusals without retries, shell/script cleanup, and existing
+instance-mode authorization regressions. Run full race/vet, source scan and
+macOS/Linux builds. Actual deployment acceptance remains separately verified.

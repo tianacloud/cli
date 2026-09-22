@@ -291,6 +291,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 
 func newSQLCommand(action sqlCommandAction) *cli.Command {
 	flags := []cli.Flag{
+		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; requires TIANA_TOKEN", ""),
 		branchOption(),
 		stringOption("format", "table, json, ndjson or csv", "table"),
 		stringOption("output", "Exclusively create a private result file", ""),
@@ -299,17 +300,29 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 		&cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Preflight and execute a SQL script, then exit", Local: true},
 		&cli.BoolFlag{Name: "atomic", Hidden: true, Local: true},
 	}
-	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "INSTANCE",
-		Description: "Use TIANA_TOKEN if set; otherwise use a saved Token for an instance accessible to the current account. Missing Tokens must be created explicitly.",
+	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "[INSTANCE | --endpoint ENDPOINT]",
+		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR with an explicit TIANA_TOKEN. Direct mode cannot use INSTANCE or --branch. Instance mode uses TIANA_TOKEN if set, otherwise a saved Token; missing Tokens must be created explicitly.",
 		Flags:       flags, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.IsSet("atomic") {
 				return argumentFailure(ctx, cmd, "--atomic is unavailable until SQLite grammar equivalence is verified")
 			}
-			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
-				return argumentFailure(ctx, cmd, "one instance ID or name is required")
-			}
-			if positionalWasTrimmed(cmd, cmd.Args().First()) {
-				return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
+			var endpoint, port string
+			if cmd.IsSet("endpoint") {
+				if cmd.NArg() != 0 || cmd.IsSet("branch") {
+					return argumentFailure(ctx, cmd, "--endpoint cannot be combined with INSTANCE or --branch")
+				}
+				var err error
+				endpoint, port, err = parseSQLiteDirectEndpoint(cmd.String("endpoint"))
+				if err != nil {
+					return argumentFailure(ctx, cmd, err.Error())
+				}
+			} else {
+				if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
+					return argumentFailure(ctx, cmd, "one instance ID or name, or --endpoint, is required")
+				}
+				if positionalWasTrimmed(cmd, cmd.Args().First()) {
+					return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
+				}
 			}
 			if !sqlitecli.ValidFormat(cmd.String("format")) || cmd.Uint("timeout") < 1 || cmd.Uint("timeout") > 3600000 {
 				return argumentFailure(ctx, cmd, "invalid SQL format or timeout")
@@ -322,7 +335,7 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 					return argumentFailure(ctx, cmd, "option value must not be empty")
 				}
 			}
-			o := sqliteOptions{command: "shell", reference: cmd.Args().First(), branch: cmd.String("branch"), format: cmd.String("format"), output: cmd.String("output"), timeout: time.Duration(cmd.Uint("timeout")) * time.Millisecond}
+			o := sqliteOptions{command: "shell", endpoint: endpoint, port: port, reference: cmd.Args().First(), branch: cmd.String("branch"), format: cmd.String("format"), output: cmd.String("output"), timeout: time.Duration(cmd.Uint("timeout")) * time.Millisecond}
 			if cmd.IsSet("execute") {
 				o.command = "exec"
 				o.sql = cmd.String("execute")

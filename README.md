@@ -220,7 +220,7 @@ TLS 1.3 / HTTP/2 CONNECT with the `hrana-http` profile and Hrana 3
 It does not launch the helper, Turso or the standalone App CLI. Account login
 is used only for MGR; the InstanceToken goes only to outer CONNECT.
 
-Token selection: a set `TIANA_TOKEN` is an explicit override. Empty/invalid values
+Token selection in INSTANCE mode: a set `TIANA_TOKEN` is an explicit override. Empty/invalid values
 fail without fallback; unset it to use the local store. Otherwise, CLI first
 resolves the instance through the currently authenticated MGR account, then
 selects a saved Token matching origin, instance ID and endpoint. Tenant metadata
@@ -315,6 +315,41 @@ Exit codes: 0 success, 1 MGR initialization/resolution, 2 arguments/input,
 status even if a complete JSON result document was printed.
 
 Verification is described in [SQLITE_VALIDATION.md](SQLITE_VALIDATION.md).
+
+## Direct SQLite Endpoint connection / SQLite Endpoint 直连
+
+```sh
+# Set TIANA_TOKEN securely in the environment before connecting.
+tiana sqlite shell --endpoint https://ep-00000000000000000000000000.db.example.test:9443
+tiana sqlite shell --endpoint ep-00000000000000000000000000.db.example.test -e 'SELECT 1' --format json
+tiana --ca-file ./gateway-ca.pem sqlite shell --endpoint https://ep-00000000000000000000000000.db.example.test:9443 -f query.sql
+```
+
+`--endpoint` accepts a canonical Endpoint hostname, optionally with a port, or
+an HTTPS URL with no path except an optional trailing `/`. Default port: `443`;
+explicit ports must be in `1..65535`. Plain HTTP, IP addresses, aliases, bare
+Endpoint IDs, URL credentials, query strings and fragments are rejected.
+It is mutually exclusive with positional `INSTANCE` and `--branch`: the Endpoint
+already selects the target branch. Interactive shell, piped SQL, `-e`, `-f`,
+output formatting and timeout options remain available.
+
+Direct mode requires a valid InstanceToken in `TIANA_TOKEN`. It does not call
+MGR, prompt for account login, read local account/Token stores, or create/save
+Tokens. No management origin is needed. Gateway verifies the Token and target
+policy; selecting the correct Endpoint and Token is the caller's responsibility.
+TLS verification stays enabled; use `--ca-file` or `TIANA_CA_FILE` for your
+Gateway CA. SQL session/transaction cleanup and no-replay behavior are unchanged.
+
+`--endpoint` 支持完整 HTTPS 地址或 Endpoint 主机名，可带端口，默认 `443`。
+仅允许空路径或末尾 `/`，拒绝 HTTP、IP、别名、裸 Endpoint ID，以及含账号、查询参数、片段的 URL。
+它与实例 ID/名称、`--branch` 互斥：分支由 Endpoint 决定。
+交互 shell、管道输入、`-e`、`-f`、输出格式和超时参数均可继续使用。
+
+直连必须在环境中设置有效的 `TIANA_TOKEN`，不访问 MGR、不触发账号登录、
+不读取本地账号/Token，也不创建或保存 Token，因此无需配置 `TIANA_MGR_ORIGIN`。
+调用方应选择正确的 Endpoint 和 Token；Gateway 继续执行鉴权。
+自签名证书使用 `--ca-file` 或 `TIANA_CA_FILE`，TLS 校验始终保留。
+事务清理、未知结果处理及不自动重放 SQL 的行为不变。
 
 ## Existing CLI features
 
@@ -574,7 +609,7 @@ tiana sqlite tokens create INSTANCE --branch development --name cli
 
 列表只取一页，输出的下一页游标可传给 `--after`。连接时通过 MGR 的精确名称查询定位分支，再从分支详情读取 `connection`；名称不存在或查询期间改变时报告错误。
 
-`TIANA_TOKEN` 优先于本地凭据；未设置时，按管理入口、实例和所选 Endpoint 查找已保存的数据库 Token。账号登录会话用于 MGR 查询，即使提供数据库 Token，首次访问该管理环境仍需登录。shell 不自动创建 Token；显式签发会保存目标 Endpoint 和 Token，结果未确认时重试保持原 Endpoint、幂等键和 Operation。
+`TIANA_TOKEN` 优先于本地凭据；未设置时，按管理入口、实例和所选 Endpoint 查找已保存的数据库 Token。实例连接模式下，账号登录会话用于 MGR 查询，即使提供数据库 Token，首次访问该管理环境仍需登录。shell 不自动创建 Token；显式签发会保存目标 Endpoint 和 Token，结果未确认时重试保持原 Endpoint、幂等键和 Operation。
 
 使用 `TIANA_CREDENTIALS_FILE`、`TIANA_INSTANCE_TOKENS_FILE` 和 `TIANA_PENDING_COMMAND_FILE` 可将三类状态放在独立目录；`TIANA_MGR_ORIGIN` 选择管理环境，`--ca-file` 或 `TIANA_CA_FILE` 选择该环境 CA。
 

@@ -116,7 +116,7 @@ func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 			t.Fatalf("code=%d error=%s", code, &diag)
 		}
 	}
-	for _, args := range [][]string{{"--ca-file", path, "sqlite", "shell", "id"}, {"sqlite", "--ca-file", path, "shell", "id"}, {"sqlite", "shell", "id", "--ca-file", path}} {
+	for _, args := range [][]string{{"--ca-file", path, "sqlite", "shell", "id"}, {"sqlite", "--ca-file", path, "shell", "id"}, {"sqlite", "shell", "id", "--ca-file", path}, {"sqlite", "shell", "--endpoint", sqlitepeer.Endpoint, "--ca-file", path}} {
 		var out, diag bytes.Buffer
 		called := false
 		code := runCLIWithSQL(context.Background(), args, strings.NewReader(""), &out, &diag, func(ctx context.Context, _ sqliteOptions) int {
