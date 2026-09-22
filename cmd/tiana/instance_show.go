@@ -22,11 +22,28 @@ func executeSQLiteShow(ctx context.Context, options showOptions, output, errorOu
 		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
 		return 1
 	}
-	instance, detail, err := resolveSQLiteBranchWithLogin(ctx, client, options.reference, options.branch)
+	instance, err := resolveInstanceWithLogin(ctx, client, options.reference)
 	if err != nil {
 		reportResolveError(errorOutput, options.reference, err)
 		return 1
 	}
+	if err := sqliteManagementScope.check(instance); err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
+	state := instanceDisplayState(instance)
+	if !options.urlOnly && options.branch == "" && (state == "DELETING" || state == "DELETED") {
+		// The instance remains inspectable after its default branch is removed.
+		printInstanceDetail(output, instance)
+		return 0
+	}
+	detail, err := client.ResolveBranch(ctx, instance.ID, options.branch)
+	if err != nil {
+		reportResolveError(errorOutput, options.reference, err)
+		return 1
+	}
+	instance.EndpointID = detail.Branch.EndpointID
+	instance.Connection = detail.Connection
 	if options.urlOnly {
 		url, ready := instanceConnectionURL(instance)
 		if !ready {
@@ -46,7 +63,7 @@ func printInstanceDetail(output io.Writer, instance authclient.Instance) {
 	fmt.Fprintf(output, "Name:           %s\n", safeDisplay(instance.DisplayName))
 	fmt.Fprintf(output, "ID:             %s\n", safeDisplay(instance.ID))
 	fmt.Fprintf(output, "Engine:         %s\n", safeDisplay(instance.Engine))
-	fmt.Fprintf(output, "Product state:  %s\n", safeDisplay(instance.ProductState))
+	fmt.Fprintf(output, "Product state:  %s\n", safeDisplay(instanceDisplayState(instance)))
 	fmt.Fprintf(output, "Runtime status: %s\n", safeDisplay(runtimeStateDescription(instance)))
 	fmt.Fprintf(output, "Connection URL: %s\n", safeDisplay(connection))
 	if instance.CreatedAt != "" {

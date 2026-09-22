@@ -285,7 +285,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			return statusError(executeSQLiteBranchesList(ctx, cmd.Args().First(), cmd.String("after"), cmd.String("search"), output, diagnostics))
 		}},
 	}}
-	commands := []*cli.Command{create, list, show, branches, tokens, newSQLCommand(sqlAction)}
+	commands := []*cli.Command{create, list, show, newInstanceDeleteCommand(input, output, diagnostics, sqliteManagementScope), branches, tokens, newSQLCommand(sqlAction)}
 	return &cli.Command{Name: "sqlite", Usage: "Manage SQLite instances and execute SQL", Description: "Use an MGR instance ID, not an ep-... Endpoint ID. Name lookup requires MGR display_name support. SQL uses native sdk-go with verified TLS; no SQL replay. --atomic is unavailable.", Action: groupAction, Commands: commands}
 }
 

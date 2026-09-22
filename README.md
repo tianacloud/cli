@@ -115,6 +115,51 @@ it and `tiana` must be installed together. The helper continues to accept
 See [Git transport setup](internal/gitremote/README.md) for installation and
 credential configuration. Management commands do not clone or push Git data.
 
+## Delete an instance
+
+```sh
+tiana sqlite delete my-db
+tiana git delete my-repo
+
+# Skip confirmation for scripts or an intentional immediate request:
+tiana sqlite delete my-db -f
+tiana git delete my-repo --force
+```
+
+`delete INSTANCE` accepts an instance ID or exact name and deletes the entire
+instance, including its branches and data. SQLite and Git commands validate
+the corresponding engine; duplicate names require an explicit instance ID.
+There is no `--branch` option. Without `-f`/`--force`, stdin must be a terminal:
+the prompt shows the resolved name and ID, and only `y` or `yes` (case-insensitive)
+followed by Enter confirms. Enter, a negative answer or EOF cancels; Ctrl-C exits
+with code 130. Piped input cannot approve deletion; scripts must use `-f`.
+The flag only skips confirmation, not authentication or instance checks.
+
+MGR processes deletion asynchronously. Exit 0 with `Deletion accepted` means
+HTTP 202 returned a matching instance ID and an operation ID; it does not mean
+background cleanup has finished. Cancellation also exits 0, with no deletion
+request. Errors exit nonzero; if the result is unconfirmed, check the instance
+status and retry only with the printed immutable ID, not a potentially reused
+name. The CLI does not add a command-level retry loop. The SDK retains its 401
+refresh policy with the same request identity, and MGR deduplicates deletion
+by instance ID. Local Tokens are not removed by this command.
+
+SQLite/Git `list` and `show` display deletion progress: `DELETED` takes
+priority, then `deletion_pending=true` or a current `lifecycle_state=DELETING`
+displays `DELETING`. Other states retain the reported `product_state`. Runtime
+lifecycle observations marked stale are ignored; MGR's deletion-pending flag
+still applies. Older responses without these fields retain their old display.
+An old deletion operation ID alone does not mean deletion is running.
+
+Plain `sqlite show INSTANCE` displays the instance directly while deleting or
+deleted, since its default branch may already be gone. Explicit `--branch` and
+`--url` retain their branch lookup behavior. `DELETED` rows remain in the list
+when MGR returns them; the CLI does not hide them or infer physical storage
+reclamation from this state.
+
+An existing unresolved create/Token operation blocks deletion and is preserved.
+`-f` cannot bypass this guard. Finish the original operation first.
+
 ## Native SQLite commands
 
 Build using the Go modules instructions above.

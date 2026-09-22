@@ -225,3 +225,59 @@ supersedes the unpublished compatibility limitation above. Validate the exact
 public source independently with GOWORK=off, downloaded GitHub modules, race,
 vet, public-source/uninstall checks and macOS/Linux builds before publication.
 No default-branch merge, tag, release or repository visibility change is implied.
+
+## Instance deletion commands
+
+User requested sqlite/git delete INSTANCE with default confirmation and -f
+to skip it. Both use the existing MGR DELETE /api/v1/instances/{id} contract.
+Resolve an ID or product-scoped exact name, reject ambiguous names/engine
+mismatches, and pin the resolved immutable ID before prompting. Require a
+terminal without --force; only a complete y/yes line confirms. EOF/empty/no
+cancel, and context cancellation exits 130. Bound input to 64 bytes and poll
+for cancellation without a reader goroutine; restore stdin descriptor flags.
+Terminal metadata must pass presentation sanitization. The flag does not bypass
+authentication, product checks, or existing pending-command protection.
+
+Acquire the existing private pending lock through resolve/confirm/request; any
+unresolved pending record blocks deletion unchanged. This intentionally also
+serializes a human prompt with cooperating create/Token commands. No local
+delete pending schema or token-store migration is introduced: MGR durably
+stores deletion request/operation identity per tenant and immutable instance.
+SDK auth refresh retains one stable request key and target; CLI adds no retry
+loop after failure. Unknown outcomes instruct retry by ID after inspection,
+never by re-resolving a possibly reused name. Receipt validation requires 202,
+matching instance_id and nonempty operation_id. Report acceptance, not completed
+cleanup; no polling or storage durability claims. Local Tokens remain unchanged.
+
+Deletion applies to the whole instance and all branches; no branch flag. This
+is additive CLI behavior and leaves API/storage formats unchanged. Rollback to
+an earlier CLI removes these commands without altering pending records. Checks
+cover real PTY confirmation/refusal/EOF/cancellation, -f with piped stdin, scoped
+resolution and duplicates, auth refresh identity, failed/invalid/lost receipts,
+pending preservation, race/vet and native/Linux builds. Never delete actual
+instances during automated validation; use synthetic HTTP peers and stores.
+
+## Deletion state presentation
+
+User requested exposing deleting state after the delete command was added.
+Consume MGR deletion_pending and lifecycle_state without changing server wire
+semantics or stored product_state. A shared display projection serves both
+SQLite/Git list (including interactive pagination) and details. DELETED product
+state or fresh DELETED lifecycle takes priority over pending; otherwise pending
+or fresh DELETING lifecycle displays DELETING, with all other states preserved.
+Ignore lifecycle when runtime_status_stale=true; durable MGR pending still
+applies. Historical deletion_operation_id alone is not evidence of progress.
+Absent new fields preserve legacy presentation. Do not claim physical S3
+reclamation has completed from the displayed lifecycle state.
+
+Plain SQLite show resolves and checks the instance first, and directly prints
+metadata during deletion/after deletion, avoiding dependence on a removed
+default branch. Explicit branch or URL requests retain existing lookup/error
+semantics. Shared shell/token branch resolution and persisted intents stay
+unchanged. This is an additive read-only projection with no extra list requests
+or mutations, constant per-row work, and no storage migration. Rollback only
+loses progress visibility. Validate literal JSON through both product list/show
+commands, deletion precedence, stale runtime, old/failed operation metadata,
+legacy field omission, and deleted default branch absence; run full race/vet,
+source scans and macOS/Linux builds. Preserve preexisting uncommitted delete
+work; no actual instance mutation or automatic commit/push.
