@@ -38,4 +38,6 @@ type PendingCommand struct {
 	// OperationID is set when a token write returned COMMIT_STATUS_UNKNOWN
 	// and must be read back before any retry.
 	OperationID string `json:"operation_id,omitempty"`
+	JobID       uint64 `json:"job_id,omitempty"`
+	TokenID     string `json:"token_id,omitempty"`
 }

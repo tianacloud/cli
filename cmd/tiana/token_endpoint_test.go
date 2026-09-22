@@ -51,7 +51,7 @@ func TestTokenEndpointRecovery(t *testing.T) {
 					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 						t.Error(err)
 					}
-					if r.Header.Get("Idempotency-Key") != "token-key" || request.RequestID != "request-id" || request.ExpiresAt != authclient.InstanceTokenNoExpiry {
+					if r.Header.Get("Idempotency-Key") != "" || request.RequestID != "request-id" || request.ExpiresAt != authclient.InstanceTokenNoExpiry {
 						t.Error("recovery changed write identity")
 					}
 					pending, err := store.Load()
@@ -62,9 +62,9 @@ func TestTokenEndpointRecovery(t *testing.T) {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					io.WriteString(w, `{"error":{"code":"UNAVAILABLE","message":"temporary"}}`)
 				})
-				mux.HandleFunc("GET /api/v1/gateway-auth-operations/{operation_id}", func(w http.ResponseWriter, r *http.Request) {
+				mux.HandleFunc("GET /api/v1/jobs/{job_id}", func(w http.ResponseWriter, r *http.Request) {
 					reads++
-					io.WriteString(w, `{"operation_id":"op-pending","status":"PENDING"}`)
+					io.WriteString(w, `{"job_id":7,"request_id":"request-id","job_kind":"token_create","status":"running"}`)
 				})
 				server := httptest.NewServer(mux)
 				defer server.Close()
@@ -79,7 +79,8 @@ func TestTokenEndpointRecovery(t *testing.T) {
 					pending.EndpointID = "ep-1abcdefghjkmnpqrstvwxyz012"
 				}
 				if scenario == "readback" {
-					pending.OperationID = "op-pending"
+					pending.JobID = 7
+					pending.TokenID = testTokenID
 				}
 				if err := store.Save(pending); err != nil {
 					t.Fatal(err)

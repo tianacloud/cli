@@ -26,7 +26,7 @@ func TestBuildReleaseBuildsNativeSupportedPlatform(t *testing.T) {
 			fixture, logPath := newBuildReleaseFixture(t, test.kernel, test.machine)
 			expectedMuslCC := ""
 			if test.goos == "linux" {
-				expectedMuslCC = filepath.Join(fixture, "bin", "musl-gcc")
+				expectedMuslCC = filepath.Join(fixture, "bin", "x86_64-linux-musl-gcc")
 				writeExecutable(t, expectedMuslCC, "#!/bin/sh\nexit 0\n")
 			}
 			command := exec.Command(filepath.Join(fixture, "cli", "scripts", "build-release.sh"))

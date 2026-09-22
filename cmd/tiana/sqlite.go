@@ -24,15 +24,20 @@ type sqliteOptions struct {
 	nonInteractive                                        bool
 }
 
-type sqliteResolver func(context.Context, string, bool) (authclient.Instance, error)
+type sqliteResolution struct {
+	instance authclient.Instance
+	client   *authclient.Client
+}
 
-func resolveSQLite(ctx context.Context, reference, branch string, nonInteractive bool, diagnostics io.Writer) (authclient.Instance, error) {
+type sqliteResolver func(context.Context, string, bool) (sqliteResolution, error)
+
+func resolveSQLite(ctx context.Context, reference, branch string, nonInteractive bool, diagnostics io.Writer) (sqliteResolution, error) {
 	client, err := newAuthClient(ctx, diagnostics, nonInteractive)
 	if err != nil {
-		return authclient.Instance{}, err
+		return sqliteResolution{}, err
 	}
 	instance, _, err := resolveSQLiteBranchWithLogin(ctx, client, reference, branch)
-	return instance, err
+	return sqliteResolution{instance: instance, client: client}, err
 }
 func sqliteEndpoint(instance authclient.Instance) (string, string, error) {
 	if instance.Engine != "sqlite" {
@@ -131,7 +136,7 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 			return emit(e)
 		}
 	}
-	instance, err := resolve(ctx, o.reference, o.nonInteractive)
+	resolution, err := resolve(ctx, o.reference, o.nonInteractive)
 	if err != nil {
 		if ctx.Err() != nil {
 			return emit(&sqlitecli.Error{Code: "INTERRUPTED", Message: "interrupted before SQL was sent", Outcome: "not_sent", ExitCode: 130})
@@ -139,6 +144,7 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 		reportResolveError(diagnostics, o.reference, err)
 		return 1
 	}
+	instance := resolution.instance
 	endpoint, port, err := sqliteEndpoint(instance)
 	if err != nil {
 		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
@@ -154,7 +160,26 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 		if endpointID == "" {
 			endpointID = strings.SplitN(endpoint, ".", 2)[0]
 		}
-		credential, err := store.Lookup(instance.ID, endpointID, time.Now())
+		session, err := resolution.client.CurrentSession(ctx)
+		if err != nil {
+			fmt.Fprintln(diagnostics, "tiana: cannot resolve current tenant")
+			return 1
+		}
+		ids, err := store.CandidateIDs(session.TenantID, time.Now())
+		if err != nil {
+			fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
+			return 2
+		}
+		if resolution.client == nil {
+			fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
+			return 2
+		}
+		eligible, err := resolution.client.CredentialCandidates(ctx, instance.ID, endpointID, ids)
+		if err != nil {
+			fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
+			return 1
+		}
+		credential, err := store.LookupCandidates(session.TenantID, eligible, time.Now())
 		if err != nil {
 			if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
 				command := "tiana sqlite tokens create " + quoteCommandArgs([]string{instance.ID})

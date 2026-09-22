@@ -216,7 +216,7 @@ func TestCreateInstanceRefreshesOnceAndPreservesIdempotencyKey(t *testing.T) {
 			_, _ = io.WriteString(w, `{"error":"expired_access","detail":"sensitive server detail"}`)
 			return
 		}
-		if requests[1].Token != "Bearer fresh" || requests[1].Key != "stable-create-key" || !strings.Contains(string(body), "database") {
+		if requests[1].Token != "Bearer fresh" || requests[1].Key != "" || !strings.Contains(string(body), `"request_id":"stable-create-key"`) || !strings.Contains(string(body), "database") {
 			t.Errorf("retry token/key/body=%q/%q/%s", requests[1].Token, requests[1].Key, body)
 		}
 		w.Header().Set("Content-Type", "application/json")

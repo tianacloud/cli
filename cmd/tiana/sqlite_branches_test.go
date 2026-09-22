@@ -83,6 +83,14 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 			child := "ep-1abcdefghjkmnpqrstvwxyz012"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
+				case "/api/v1/me":
+					io.WriteString(w, `{"principal_id":"usr_branch","tenant_id":"tenant","email":"branch@example.test"}`)
+				case "/api/v1/instances/" + testInstanceID + "/endpoints/" + child + "/credential-candidates":
+					if mode == "saved-child" {
+						io.WriteString(w, `{"token_ids":["`+child+`"]}`)
+					} else {
+						io.WriteString(w, `{"token_ids":[]}`)
+					}
 				case "/api/v1/instances/" + testInstanceID:
 					io.WriteString(w, sqliteInstanceResponse())
 				case "/api/v1/instances/" + testInstanceID + "/branches":
@@ -128,7 +136,7 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 					if o.branch != "development" {
 						t.Fatalf("branch=%q", o.branch)
 					}
-					return executeSQLite(ctx, o, strings.NewReader("SELECT 1;\n"), &out, &diag, func(ctx context.Context, ref string, ni bool) (authclient.Instance, error) {
+					return executeSQLite(ctx, o, strings.NewReader("SELECT 1;\n"), &out, &diag, func(ctx context.Context, ref string, ni bool) (sqliteResolution, error) {
 						return resolveSQLite(ctx, ref, o.branch, ni, &diag)
 					}, &config)
 				})
@@ -142,7 +150,7 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 			}
 			if mode == "saved-child" {
 				for _, ep := range []string{testEndpointID, child} {
-					v, err := store.Lookup(testInstanceID, ep, time.Now())
+					v, err := store.LookupCandidates("tenant", []string{ep}, time.Now())
 					if err != nil || v.EndpointID != ep {
 						t.Fatalf("lookup target=%s err=%v", ep, err)
 					}

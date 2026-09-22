@@ -10,16 +10,17 @@ import (
 
 // CreateInstanceWithReceipt accepts both a legacy Instance response and MGR's
 // asynchronous creation receipt. Callers persist ID before observing completion.
-func (c *Client) CreateInstanceWithReceipt(ctx context.Context, input CreateInstanceRequest, key string) (Instance, error) {
-	if strings.TrimSpace(key) == "" {
-		return Instance{}, errors.New("Idempotency-Key is required")
+func (c *Client) CreateInstanceWithReceipt(ctx context.Context, input CreateInstanceRequest, requestID string) (Instance, error) {
+	if strings.TrimSpace(requestID) == "" {
+		return Instance{}, errors.New("request_id is required")
 	}
 	var response struct {
 		Instance
 		AcceptedID  string `json:"instance_id"`
 		OperationID string `json:"operation_id"`
 	}
-	status, err := c.DoJSON(ctx, http.MethodPost, "/api/v1/instances", input, map[string]string{"Idempotency-Key": key}, &response)
+	input.RequestID = requestID
+	status, err := c.DoJSON(ctx, http.MethodPost, "/api/v1/instances", input, nil, &response)
 	if err != nil {
 		return Instance{}, err
 	}

@@ -41,6 +41,7 @@ func NewWithConfig(config Config) (*Client, error) {
 }
 
 type CreateInstanceRequest struct {
+	RequestID   string                 `json:"request_id"`
 	DisplayName string                 `json:"display_name"`
 	Labels      map[string]string      `json:"labels,omitempty"`
 	Notes       string                 `json:"notes,omitempty"`

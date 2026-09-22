@@ -118,7 +118,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 	if sqlAction == nil {
 		sqlAction = func(ctx context.Context, o sqliteOptions) int {
 			return executeSQLite(ctx, o, input, output, diagnostics,
-				func(ctx context.Context, ref string, nonInteractive bool) (authclient.Instance, error) {
+				func(ctx context.Context, ref string, nonInteractive bool) (sqliteResolution, error) {
 					return resolveSQLite(ctx, ref, o.branch, nonInteractive, diagnostics)
 				}, nil)
 		}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -26,8 +27,9 @@ type CreateTokenRequest struct {
 // contains Token.
 type TokenResult struct {
 	HTTPStatus        int    `json:"-"`
-	OperationID       string `json:"operation_id"`
+	JobID             uint64 `json:"job_id,omitempty"`
 	Status            string `json:"status"`
+	SyncStatus        string `json:"sync_status"`
 	TenantID          string `json:"tenant_id"`
 	InstanceID        string `json:"instance_id"`
 	EndpointID        string `json:"endpoint_id"`
@@ -48,28 +50,28 @@ func (r TokenResult) DeliveredSecret() bool {
 // CommittedWithoutSecret reports a committed write whose raw Token cannot be
 // recovered in this response.
 func (r TokenResult) CommittedWithoutSecret() bool {
-	return r.Token == "" && r.Status == "COMMITTED"
+	return r.Token == "" && r.SyncStatus == "complete"
 }
 
-// Rejected reports a definitive lifecycle rejection. The write did not commit.
-func (r TokenResult) Rejected() bool {
-	return r.Status == "REJECTED"
+// AcceptedFailed reports a persisted Token definition whose delivery job failed.
+func (r TokenResult) AcceptedFailed() bool {
+	return r.SyncStatus == "fail"
 }
 
 // CreateInstanceToken creates one InstanceToken. A nil error means MGR
 // answered; inspect TokenResult for whether the one-time secret was delivered.
 // An APIError with Code COMMIT_STATUS_UNKNOWN means the result is not yet
 // authoritative and carries the operation ID to read back.
-func (c *Client) CreateInstanceToken(ctx context.Context, instanceID, endpointID string, request CreateTokenRequest, idempotencyKey string) (TokenResult, error) {
+func (c *Client) CreateInstanceToken(ctx context.Context, instanceID, endpointID string, request CreateTokenRequest) (TokenResult, error) {
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(endpointID) == "" {
 		return TokenResult{}, errors.New("instance_id and endpoint_id are required for Token creation")
 	}
-	if strings.TrimSpace(idempotencyKey) == "" {
-		return TokenResult{}, errors.New("Idempotency-Key is required")
+	if strings.TrimSpace(request.RequestID) == "" {
+		return TokenResult{}, errors.New("request_id is required")
 	}
 	path := "/api/v1/instances/" + url.PathEscape(instanceID) + "/endpoints/" + url.PathEscape(endpointID) + "/tokens"
 	var response TokenResult
-	status, err := c.DoJSON(ctx, http.MethodPost, path, request, map[string]string{"Idempotency-Key": idempotencyKey}, &response)
+	status, err := c.DoJSON(ctx, http.MethodPost, path, request, nil, &response)
 	if err != nil {
 		return TokenResult{}, err
 	}
@@ -79,8 +81,8 @@ func (c *Client) CreateInstanceToken(ctx context.Context, instanceID, endpointID
 
 // GetTokenOperation reads back a lifecycle operation without returning or
 // recovering a secret.
-func (c *Client) GetTokenOperation(ctx context.Context, operationID string) (TokenResult, error) {
-	path := "/api/v1/gateway-auth-operations/" + url.PathEscape(operationID)
+func (c *Client) GetScopedToken(ctx context.Context, instanceID, endpointID, tokenID string) (TokenResult, error) {
+	path := "/api/v1/instances/" + url.PathEscape(instanceID) + "/endpoints/" + url.PathEscape(endpointID) + "/tokens/" + url.PathEscape(tokenID)
 	var response TokenResult
 	status, err := c.DoJSON(ctx, http.MethodGet, path, nil, nil, &response)
 	if err != nil {
@@ -88,6 +90,21 @@ func (c *Client) GetTokenOperation(ctx context.Context, operationID string) (Tok
 	}
 	response.HTTPStatus = status
 	return response, nil
+}
+
+type Job struct {
+	JobID          uint64 `json:"job_id"`
+	RequestID      string `json:"request_id"`
+	JobKind        string `json:"job_kind"`
+	Status         string `json:"status"`
+	RetryJobID     uint64 `json:"retry_job_id,omitempty"`
+	RetryCompleted bool   `json:"retry_completed,omitempty"`
+}
+
+func (c *Client) GetJob(ctx context.Context, jobID uint64) (Job, error) {
+	var response Job
+	_, err := c.DoJSON(ctx, http.MethodGet, "/api/v1/jobs/"+strconv.FormatUint(jobID, 10), nil, nil, &response)
+	return response, err
 }
 
 // NewRequestID returns an MGR-valid request identifier for one token write.

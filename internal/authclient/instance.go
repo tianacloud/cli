@@ -21,6 +21,7 @@ type InstanceConnection struct {
 // response. Unknown fields, including Web-only metadata, are ignored.
 type Instance struct {
 	CreationOperationID string              `json:"creation_operation_id,omitempty"`
+	CurrentJobID        uint64              `json:"current_job_id,omitempty"`
 	ID                  string              `json:"id"`
 	DisplayName         string              `json:"display_name"`
 	Engine              string              `json:"engine"`
@@ -56,8 +57,8 @@ func (e *DuplicateInstanceNameError) Error() string {
 	return fmt.Sprintf("instance name %q matches %d instances", e.Name, e.Count)
 }
 
-func (c *Client) CreateInstance(ctx context.Context, input CreateInstanceRequest, idempotencyKey string) (Instance, error) {
-	return c.CreateInstanceWithReceipt(ctx, input, idempotencyKey)
+func (c *Client) CreateInstance(ctx context.Context, input CreateInstanceRequest, requestID string) (Instance, error) {
+	return c.CreateInstanceWithReceipt(ctx, input, requestID)
 }
 
 func (c *Client) GetInstance(ctx context.Context, instanceID string) (Instance, error) {

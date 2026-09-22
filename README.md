@@ -10,17 +10,17 @@ it would log raw SQL and potentially credentials.
 The `connect` adapter retains its strict native-client ownership boundary:
 arguments after `--` are passed unchanged. Git remote-helper argv is also opaque.
 
-## Security update status
+## SDK dependencies
 
-The SDK dependency is pinned to published commit `3a503ed25585`, including
-the authentication security fixes and legacy Token file compatibility.
-Its auth package supplies HTTPS enforcement, private credential-file validation,
-redacted diagnostics and coordinated credential refresh/writes. Standalone
-builds use that version directly; no local workspace or replace is required.
+The CLI pins `github.com/tianacloud/sdk-go` and `sdk-go-sqlite` to the
+published `v0.1.0-rc.1` candidates. Standalone builds use these immutable
+versions directly, without a local workspace or replacement module.
 
-Pre-SDK timestamp-string InstanceToken files are supported by this published
-dependency. Standalone builds include the same compatibility fix as the local
-development binary; no session workspace is needed.
+Tokens are opaque credentials. Automatic selection asks MGR for candidate
+Token IDs for the target and chooses a saved credential under the current
+management origin and tenant. Explicit SQL and Git credentials are passed
+through without this selection request. The SDK auth package retains its
+credential-file checks, redacted diagnostics and coordinated refresh/writes.
 
 ## Build with Go modules
 

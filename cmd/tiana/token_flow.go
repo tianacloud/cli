@@ -11,8 +11,9 @@ import (
 // tokenClient is the subset of the MGR client needed to create a Token and to
 // read back an operation whose commit result is unknown.
 type tokenClient interface {
-	CreateInstanceToken(ctx context.Context, instanceID, endpointID string, request authclient.CreateTokenRequest, idempotencyKey string) (authclient.TokenResult, error)
-	GetTokenOperation(ctx context.Context, operationID string) (authclient.TokenResult, error)
+	CreateInstanceToken(ctx context.Context, instanceID, endpointID string, request authclient.CreateTokenRequest) (authclient.TokenResult, error)
+	GetScopedToken(ctx context.Context, instanceID, endpointID, tokenID string) (authclient.TokenResult, error)
+	GetJob(ctx context.Context, jobID uint64) (authclient.Job, error)
 }
 
 type tokenOutcome int
@@ -21,6 +22,7 @@ const (
 	tokenDelivered tokenOutcome = iota
 	tokenUnknown
 	tokenCommittedWithoutSecret
+	tokenAcceptedFailed
 	tokenRejected
 	tokenFailed
 )
@@ -28,50 +30,63 @@ const (
 // tokenAttempt is one token write with the identifiers that must stay stable
 // across retries.
 type tokenAttempt struct {
-	InstanceID     string
-	EndpointID     string
-	Name           string
-	ExpiresAt      int64
-	IdempotencyKey string
-	RequestID      string
-	OperationID    string
+	InstanceID string
+	EndpointID string
+	Name       string
+	ExpiresAt  int64
+	RequestID  string
+	JobID      uint64
+	TokenID    string
 }
 
 type tokenResult struct {
-	Outcome     tokenOutcome
-	Result      authclient.TokenResult
-	OperationID string
-	Err         error
+	Outcome tokenOutcome
+	Result  authclient.TokenResult
+	JobID   uint64
+	TokenID string
+	Err     error
 }
 
 // attemptInstanceToken performs at most one write. When a previous operation
 // ID is known it reads that result back first; it never issues a second write
 // before the first result is known.
 func attemptInstanceToken(ctx context.Context, client tokenClient, attempt tokenAttempt) tokenResult {
-	if attempt.OperationID != "" {
-		operation, err := client.GetTokenOperation(ctx, attempt.OperationID)
+	if attempt.JobID != 0 {
+		job, err := client.GetJob(ctx, attempt.JobID)
 		if err != nil {
-			if classifyWriteError(err) == tokenUnknown {
-				return tokenResult{Outcome: tokenUnknown, OperationID: operationIDFromError(err, attempt.OperationID), Err: err}
+			var apiErr *authclient.APIError
+			if errors.As(err, &apiErr) && apiErr.Status == 404 && attempt.TokenID != "" {
+				resource, resourceErr := client.GetScopedToken(ctx, attempt.InstanceID, attempt.EndpointID, attempt.TokenID)
+				if resourceErr != nil {
+					return tokenResult{Outcome: tokenUnknown, JobID: attempt.JobID, TokenID: attempt.TokenID, Err: resourceErr}
+				}
+				if resource.CommittedWithoutSecret() {
+					return tokenResult{Outcome: tokenCommittedWithoutSecret, Result: resource}
+				}
 			}
-			return tokenResult{Outcome: tokenFailed, Err: err}
+			return tokenResult{Outcome: tokenUnknown, JobID: attempt.JobID, TokenID: attempt.TokenID, Err: err}
 		}
-		switch {
-		case operation.CommittedWithoutSecret():
-			return tokenResult{Outcome: tokenCommittedWithoutSecret, Result: operation}
-		case operation.Rejected():
-			return tokenResult{Outcome: tokenRejected, Result: operation}
-		default:
-			return tokenResult{Outcome: tokenUnknown, OperationID: attempt.OperationID, Err: errors.New("Token operation result is not yet authoritative")}
+		if job.Status == "fail" {
+			if job.RetryCompleted && attempt.TokenID != "" {
+				resource, resourceErr := client.GetScopedToken(ctx, attempt.InstanceID, attempt.EndpointID, attempt.TokenID)
+				if resourceErr != nil {
+					return tokenResult{Outcome: tokenUnknown, JobID: attempt.JobID, TokenID: attempt.TokenID, Err: resourceErr}
+				}
+				if resource.CommittedWithoutSecret() {
+					return tokenResult{Outcome: tokenCommittedWithoutSecret, Result: resource}
+				}
+			}
+			return tokenResult{Outcome: tokenAcceptedFailed, JobID: job.JobID, TokenID: attempt.TokenID, Err: errors.New("Token job failed; retry it in the console")}
 		}
+		return tokenResult{Outcome: tokenUnknown, JobID: attempt.JobID, TokenID: attempt.TokenID, Err: errors.New("Token job is not yet complete")}
 	}
 	result, err := client.CreateInstanceToken(ctx, attempt.InstanceID, attempt.EndpointID, authclient.CreateTokenRequest{
 		RequestID: attempt.RequestID, Name: attempt.Name, ExpiresAt: attempt.ExpiresAt,
-	}, attempt.IdempotencyKey)
+	})
 	if err != nil {
 		switch classifyWriteError(err) {
 		case tokenUnknown:
-			return tokenResult{Outcome: tokenUnknown, OperationID: operationIDFromError(err, ""), Err: err}
+			return tokenResult{Outcome: tokenUnknown, Err: err}
 		case tokenRejected:
 			return tokenResult{Outcome: tokenRejected, Err: err}
 		default:
@@ -83,17 +98,17 @@ func attemptInstanceToken(ctx context.Context, client tokenClient, attempt token
 		return tokenResult{Outcome: tokenDelivered, Result: result}
 	case result.CommittedWithoutSecret():
 		return tokenResult{Outcome: tokenCommittedWithoutSecret, Result: result}
-	case result.Rejected():
-		return tokenResult{Outcome: tokenRejected, Result: result}
+	case result.AcceptedFailed():
+		return tokenResult{Outcome: tokenAcceptedFailed, Result: result, JobID: result.JobID, TokenID: result.TokenID}
 	default:
-		return tokenResult{Outcome: tokenUnknown, OperationID: result.OperationID, Err: errors.New("Token result was not confirmed")}
+		return tokenResult{Outcome: tokenUnknown, JobID: result.JobID, TokenID: result.TokenID, Err: errors.New("Token result was not confirmed")}
 	}
 }
 
 // Bind only before a write. An existing operation ID is read back without
 // issuing a POST, even if current instance metadata no longer has its endpoint.
-func bindTokenEndpoint(saved *string, current, operationID string) error {
-	if operationID != "" {
+func bindTokenEndpoint(saved *string, current string, jobID uint64) error {
+	if jobID != 0 {
 		return nil
 	}
 	if strings.TrimSpace(current) == "" {

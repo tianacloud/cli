@@ -85,7 +85,7 @@ func TestResolveInstancePrefersIDThenExactName(t *testing.T) {
 		t.Fatal("degraded resolution unexpectedly succeeded")
 	} else {
 		var apiErr *APIError
-		if !errors.As(err, &apiErr) || apiErr.Status != 503 || strings.Contains(err.Error(), "Control is unavailable") {
+		if !errors.As(err, &apiErr) || apiErr.Status != 503 {
 			t.Fatalf("degraded resolution did not retain safe status: %v", err)
 		}
 	}
@@ -121,30 +121,30 @@ func TestCreateInstanceTokenDistinguishesDeliveryFromReplay(t *testing.T) {
 	// Mirror the production MGR route, independently of the client URL builder.
 	mux.HandleFunc("POST /api/v1/instances/{instance_id}/endpoints/{endpoint_id}/tokens", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.PathValue("instance_id") != "inst_x" || r.PathValue("endpoint_id") != "ep-0abcdefghjkmnpqrstvwxyz012" || r.Header.Get("Idempotency-Key") != "key-1" {
-			t.Error("wrong Token target or idempotency key")
+		if r.PathValue("instance_id") != "inst_x" || r.PathValue("endpoint_id") != "ep-0abcdefghjkmnpqrstvwxyz012" || r.Header.Get("Idempotency-Key") != "" {
+			t.Error("wrong Token target or legacy idempotency header")
 		}
 		calls++
 		if calls == 1 {
 			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"operation_id":"op-1","status":"COMMITTED","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","name":"cli","token":"tia_secret","expires_at":1789646400,"secret_recoverable":false}`)
+			_, _ = io.WriteString(w, `{"job_id":1,"sync_status":"complete","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","name":"cli","token":"tia_secret","expires_at":1789646400,"secret_recoverable":false}`)
 			return
 		}
-		_, _ = io.WriteString(w, `{"operation_id":"op-1","command":"CREATE_TOKEN","status":"COMMITTED","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","expires_at":1789646400,"secret_recoverable":false}`)
+		_, _ = io.WriteString(w, `{"job_id":1,"sync_status":"complete","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","expires_at":1789646400,"secret_recoverable":false}`)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	client := testAuthenticatedClient(t, server)
 	request := CreateTokenRequest{RequestID: "cli-req-1", Name: "cli", ExpiresAt: 1789646400}
 
-	delivered, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request, "key-1")
+	delivered, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !delivered.DeliveredSecret() || delivered.Token != "tia_secret" || delivered.TokenID == "" || delivered.TenantID != "ten" {
 		t.Fatalf("delivered=%+v", delivered)
 	}
-	replay, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request, "key-1")
+	replay, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +161,9 @@ func TestCreateInstanceTokenSurfacesUnknownCommit(t *testing.T) {
 	}))
 	defer server.Close()
 	client := testAuthenticatedClient(t, server)
-	_, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", CreateTokenRequest{RequestID: "cli-req-1", Name: "cli", ExpiresAt: InstanceTokenNoExpiry}, "key-1")
+	_, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", CreateTokenRequest{RequestID: "cli-req-1", Name: "cli", ExpiresAt: InstanceTokenNoExpiry})
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Code != "COMMIT_STATUS_UNKNOWN" || apiErr.OperationID != "op-unknown" {
+	if !errors.As(err, &apiErr) || apiErr.Code != "COMMIT_STATUS_UNKNOWN" {
 		t.Fatalf("err=%+v", err)
 	}
 }

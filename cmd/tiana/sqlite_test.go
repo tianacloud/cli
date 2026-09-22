@@ -65,9 +65,9 @@ func TestSQLiteParseAndEndpoint(t *testing.T) {
 }
 
 func TestSQLitePreflightBeforeResolve(t *testing.T) {
-	resolve := func(context.Context, string, bool) (authclient.Instance, error) {
+	resolve := func(context.Context, string, bool) (sqliteResolution, error) {
 		t.Error("preflight performed network lookup")
-		return authclient.Instance{}, io.EOF
+		return sqliteResolution{}, io.EOF
 	}
 	for _, sql := range []string{"SELECT 1; SELECT FROM;", "BEGIN", "SELECT 1; SELECT 2"} {
 		var out, errout bytes.Buffer
@@ -101,11 +101,11 @@ func TestSQLitePreflightBeforeResolve(t *testing.T) {
 func TestSQLiteCommandExecWithoutHelper(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	// No helper path or install is configured; this exercises the native branch.
-	resolve := func(_ context.Context, ref string, nonInteractive bool) (authclient.Instance, error) {
+	resolve := func(_ context.Context, ref string, nonInteractive bool) (sqliteResolution, error) {
 		if ref != "db" || nonInteractive {
 			t.Error("wrong resolution arguments")
 		}
-		return authclient.Instance{Engine: "sqlite", Connection: &authclient.InstanceConnection{Hostname: "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"}}, nil
+		return sqliteResolution{instance: authclient.Instance{Engine: "sqlite", Connection: &authclient.InstanceConnection{Hostname: "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"}}}, nil
 	}
 	config, count := sqlitepeer.Gateway(t, func(r io.Reader, w io.Writer) {
 		req, err := http.ReadRequest(bufio.NewReader(r))

@@ -19,14 +19,15 @@ type tokensCreateOptions struct {
 }
 
 type tokensCreateState struct {
-	reference   string
-	instanceID  string
-	endpointID  string
-	name        string
-	key         string
-	requestID   string
-	expiresAt   int64
-	operationID string
+	reference  string
+	instanceID string
+	endpointID string
+	name       string
+	key        string
+	requestID  string
+	expiresAt  int64
+	jobID      uint64
+	tokenID    string
 }
 
 func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions, args []string, output, errorOutput io.Writer) int {
@@ -85,7 +86,8 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 		state.key = pending.TokenIdempotencyKey
 		state.requestID = pending.TokenRequestID
 		state.expiresAt = pending.ExpiresAt
-		state.operationID = pending.OperationID
+		state.jobID = pending.JobID
+		state.tokenID = pending.TokenID
 		if pending.UserID != "" {
 			initialUserID = pending.UserID
 		}
@@ -118,7 +120,7 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 			Origin: origin, UserID: userID, CreatedAt: createdAt,
 			Step: "token", InstanceID: state.instanceID, EndpointID: state.endpointID,
 			TokenIdempotencyKey: state.key, TokenRequestID: state.requestID,
-			TokenName: state.name, ExpiresAt: state.expiresAt, OperationID: state.operationID,
+			TokenName: state.name, ExpiresAt: state.expiresAt, JobID: state.jobID, TokenID: state.tokenID,
 		})
 	}
 	// Persist the intent before authentication and before the write, so a lost
@@ -164,7 +166,7 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 				_ = pendingStore.Delete()
 				return err
 			}
-			if err := bindTokenEndpoint(&state.endpointID, detail.Branch.EndpointID, state.operationID); err != nil {
+			if err := bindTokenEndpoint(&state.endpointID, detail.Branch.EndpointID, state.jobID); err != nil {
 				_ = pendingStore.Delete()
 				return err
 			}
@@ -182,7 +184,7 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 				if err != nil {
 					return err
 				}
-				if err = bindTokenEndpoint(&state.endpointID, detail.Branch.EndpointID, state.operationID); err != nil {
+				if err = bindTokenEndpoint(&state.endpointID, detail.Branch.EndpointID, state.jobID); err != nil {
 					return err
 				}
 			}
@@ -192,7 +194,7 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 		}
 		outcome := attemptInstanceToken(operationContext, client, tokenAttempt{
 			InstanceID: state.instanceID, EndpointID: state.endpointID, Name: state.name, ExpiresAt: state.expiresAt,
-			IdempotencyKey: state.key, RequestID: state.requestID, OperationID: state.operationID,
+			RequestID: state.requestID, JobID: state.jobID, TokenID: state.tokenID,
 		})
 		switch outcome.Outcome {
 		case tokenDelivered:
@@ -202,17 +204,28 @@ func executeSQLiteTokensCreate(ctx context.Context, options tokensCreateOptions,
 			}
 			return errCommandReported
 		case tokenUnknown:
-			state.operationID = outcome.OperationID
+			state.jobID = outcome.JobID
+			state.tokenID = outcome.TokenID
 			_ = savePending(credential.User.ID)
 			fmt.Fprintln(errorOutput, "tiana: Token result is not yet confirmed; re-run the command to confirm it")
-			if outcome.OperationID != "" {
-				fmt.Fprintf(errorOutput, "Operation ID: %s\n", safeDisplay(outcome.OperationID))
+			if outcome.JobID != 0 {
+				fmt.Fprintf(errorOutput, "Job ID: %d\n", outcome.JobID)
 			}
 			exitCode = 1
 			return errCommandReported
 		case tokenCommittedWithoutSecret:
 			_ = pendingStore.Delete()
 			reportTokenWithoutSecret(errorOutput, outcome.Result)
+			exitCode = 1
+			return errCommandReported
+		case tokenAcceptedFailed:
+			state.jobID = outcome.JobID
+			state.tokenID = outcome.TokenID
+			_ = savePending(credential.User.ID)
+			fmt.Fprintln(errorOutput, "tiana: Token creation was accepted, but its delivery job failed; retry the job in the Console, then re-run this command to confirm it")
+			if outcome.JobID != 0 {
+				fmt.Fprintf(errorOutput, "Job ID: %d\n", outcome.JobID)
+			}
 			exitCode = 1
 			return errCommandReported
 		case tokenRejected, tokenFailed:

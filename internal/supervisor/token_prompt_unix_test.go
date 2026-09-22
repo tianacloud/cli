@@ -18,7 +18,7 @@ import (
 )
 
 func TestTerminalCredentialHiddenInputAndRestoration(t *testing.T) {
-	for _, mode := range []string{"valid", "bracketed", "invalid", "empty", "eof", "cancel"} {
+	for _, mode := range []string{"valid", "bracketed", "opaque", "empty", "eof", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			master, slave := openTestPTY(t)
 			defer master.Close()
@@ -71,7 +71,7 @@ func TestTerminalCredentialHiddenInputAndRestoration(t *testing.T) {
 				master.WriteString("tia_" + strings.Repeat("A", 43) + "\n")
 			case "bracketed":
 				master.WriteString("\x1b[200~tia_" + strings.Repeat("A", 43) + "\x1b[201~\n")
-			case "invalid":
+			case "opaque":
 				master.WriteString("not-a-token\n")
 			case "empty":
 				master.WriteString("\n")
@@ -82,7 +82,7 @@ func TestTerminalCredentialHiddenInputAndRestoration(t *testing.T) {
 			}
 			select {
 			case err := <-done:
-				maySucceed := mode == "valid" || mode == "bracketed"
+				maySucceed := mode == "valid" || mode == "bracketed" || mode == "opaque"
 				if maySucceed && err != nil {
 					t.Fatal(err)
 				}

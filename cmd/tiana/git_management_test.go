@@ -134,7 +134,7 @@ func TestGitCreateResumesAndSeparatesSQLiteIntent(t *testing.T) {
 						t.Errorf("unexpected create: %+v %v", request, err)
 					}
 					if failure == "instance" {
-						keys = append(keys, r.Header.Get("Idempotency-Key"))
+						keys = append(keys, request.RequestID)
 					}
 					pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
 					if err != nil || pending.Command != "git.create" {
@@ -151,13 +151,15 @@ func TestGitCreateResumesAndSeparatesSQLiteIntent(t *testing.T) {
 				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens" && r.Method == "POST":
 					tokens++
 					pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
-					if err != nil || pending.EndpointID != testEndpointID || pending.TokenIdempotencyKey != r.Header.Get("Idempotency-Key") {
+					if err != nil || pending.EndpointID != testEndpointID || r.Header.Get("Idempotency-Key") != "" {
 						t.Error("Token target not persisted before POST")
 					}
 					if failure == "token" {
-						keys = append(keys, r.Header.Get("Idempotency-Key"))
 						b, _ := io.ReadAll(r.Body)
 						bodies = append(bodies, string(b))
+						var request authclient.CreateTokenRequest
+						_ = json.Unmarshal(b, &request)
+						keys = append(keys, request.RequestID)
 					}
 					if failure == "token" && tokens == 1 {
 						http.Error(w, `{"error":{"code":"INTERNAL"}}`, 500)

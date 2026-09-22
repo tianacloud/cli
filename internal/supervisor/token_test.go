@@ -63,7 +63,7 @@ func TestConnectCredentialSourcesDoNotFallBack(t *testing.T) {
 		value    string
 	}{
 		{"default empty", DefaultCredentialSource(), false, ""},
-		{"default invalid", DefaultCredentialSource(), false, "invalid"},
+		{"default empty value", DefaultCredentialSource(), false, ""},
 		{"explicit missing env", CredentialSource{Kind: CredentialFromEnvironment, Value: "TIANA_TEST_MISSING"}, true, ""},
 		{"missing file", CredentialSource{Kind: CredentialFromFile, Value: t.TempDir() + "/absent"}, true, ""},
 		{"empty stdin", CredentialSource{Kind: CredentialFromStdin}, true, ""},

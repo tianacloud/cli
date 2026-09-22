@@ -119,7 +119,12 @@ func TestSQLiteManagementCreateCreatesInstanceAndFirstTokenWithLogin(t *testing.
 			_, _ = io.WriteString(w, appTypesResponse("sqlite"))
 		case "/api/v1/instances/" + testInstanceID + "/endpoints/" + testEndpointID + "/tokens":
 			tokenRequests++
-			tokenKey = r.Header.Get("Idempotency-Key")
+			var request authclient.CreateTokenRequest
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			tokenKey = request.RequestID
+			if r.Header.Get("Idempotency-Key") != "" {
+				t.Error("legacy idempotency header sent")
+			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(w, tokenCreateResponse())
 		default:
@@ -180,7 +185,9 @@ func TestSQLiteManagementCreateResumesTokenStepAfterUnknownWrite(t *testing.T) {
 			_, _ = io.WriteString(w, instanceResponse(testInstanceID, "Tiana database", testEndpointID))
 		case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens":
 			tokenRequests++
-			tokenKeys = append(tokenKeys, r.Header.Get("Idempotency-Key"))
+			var request authclient.CreateTokenRequest
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			tokenKeys = append(tokenKeys, request.RequestID)
 			if tokenRequests == 1 {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = io.WriteString(w, `{"error":{"code":"INTERNAL","message":"temporary failure"}}`)
@@ -236,9 +243,9 @@ func TestSQLiteManagementCreateResumesTokenStepAfterUnknownWrite(t *testing.T) {
 	}
 }
 
-func TestSQLiteManagementCreateReadsBackUnknownCommitAndReportsMissingSecret(t *testing.T) {
+func TestSQLiteManagementCreateConfirmsDeletedJobFromCurrentToken(t *testing.T) {
 	var instanceRequests, tokenRequests int
-	var operationRequests int
+	var jobRequests, resourceRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -251,11 +258,15 @@ func TestSQLiteManagementCreateReadsBackUnknownCommitAndReportsMissingSecret(t *
 			_, _ = io.WriteString(w, instanceResponse(testInstanceID, "Tiana database", testEndpointID))
 		case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens":
 			tokenRequests++
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = io.WriteString(w, `{"error":{"code":"COMMIT_STATUS_UNKNOWN","message":"not authoritative","retryable":true,"operation_id":"op-unknown","command_not_after":"2026-09-10T12:00:30.000Z","secret_recoverable":false}}`)
-		case r.URL.Path == "/api/v1/gateway-auth-operations/op-unknown":
-			operationRequests++
-			_, _ = io.WriteString(w, fmt.Sprintf(`{"operation_id":"op-unknown","command":"CREATE_TOKEN","status":"COMMITTED","tenant_id":"ten_cli","instance_id":"%s","endpoint_id":"%s","token_id":"%s","expires_at":-1,"secret_recoverable":false}`, testInstanceID, testEndpointID, testTokenID))
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = io.WriteString(w, fmt.Sprintf(`{"job_id":17,"sync_status":"pending","tenant_id":"ten_cli","instance_id":"%s","endpoint_id":"%s","token_id":"%s","expires_at":-1,"secret_recoverable":false}`, testInstanceID, testEndpointID, testTokenID))
+		case r.URL.Path == "/api/v1/jobs/17":
+			jobRequests++
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":{"code":"NOT_FOUND"}}`)
+		case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens/"+testTokenID:
+			resourceRequests++
+			_, _ = io.WriteString(w, fmt.Sprintf(`{"job_id":17,"sync_status":"complete","tenant_id":"ten_cli","instance_id":"%s","endpoint_id":"%s","token_id":"%s","expires_at":-1,"secret_recoverable":false}`, testInstanceID, testEndpointID, testTokenID))
 		default:
 			http.NotFound(w, r)
 		}
@@ -270,7 +281,7 @@ func TestSQLiteManagementCreateReadsBackUnknownCommitAndReportsMissingSecret(t *
 	}
 	pendingStore := authclient.NewFilePendingCommandStore(env.pendingPath)
 	pending, err := pendingStore.Load()
-	if err != nil || pending.OperationID != "op-unknown" || pending.Step != "token" {
+	if err != nil || pending.JobID != 17 || pending.TokenID != testTokenID || pending.Step != "token" {
 		t.Fatalf("pending=%+v err=%v", pending, err)
 	}
 
@@ -278,8 +289,8 @@ func TestSQLiteManagementCreateReadsBackUnknownCommitAndReportsMissingSecret(t *
 	if status := runSQLite(context.Background(), []string{"create", "my-db"}, strings.NewReader(""), &secondOutput, &secondError); status != 1 {
 		t.Fatalf("second status=%d stdout=%q stderr=%q", status, secondOutput.String(), secondError.String())
 	}
-	if instanceRequests != 1 || tokenRequests != 1 || operationRequests != 1 {
-		t.Fatalf("instance=%d token=%d operation=%d", instanceRequests, tokenRequests, operationRequests)
+	if instanceRequests != 1 || tokenRequests != 1 || jobRequests != 1 || resourceRequests != 1 {
+		t.Fatalf("instance=%d token=%d job=%d resource=%d", instanceRequests, tokenRequests, jobRequests, resourceRequests)
 	}
 	if secondOutput.Len() != 0 {
 		t.Fatalf("second stdout=%q, want empty", secondOutput.String())
@@ -299,7 +310,9 @@ func TestSQLiteManagementCreateDoesNotReusePendingOperationForAnotherAccount(t *
 			_, _ = io.WriteString(w, appTypesResponse("sqlite"))
 		case r.URL.Path == "/api/v1/instances" && r.Method == http.MethodPost:
 			createRequests++
-			createKey = r.Header.Get("Idempotency-Key")
+			var request authclient.CreateInstanceRequest
+			_ = json.NewDecoder(r.Body).Decode(&request)
+			createKey = request.RequestID
 			_, _ = io.WriteString(w, instanceResponse("inst_new", "Tiana database", testEndpointID))
 		case r.URL.Path == "/api/v1/instances/inst_new/endpoints/"+testEndpointID+"/tokens":
 			w.WriteHeader(http.StatusCreated)

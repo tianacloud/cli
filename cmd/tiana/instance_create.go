@@ -26,7 +26,8 @@ type createState struct {
 	tokenKey    string
 	requestID   string
 	expiresAt   int64
-	operationID string
+	jobID       uint64
+	tokenID     string
 	instance    authclient.Instance
 }
 
@@ -88,7 +89,8 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 		if pending.ExpiresAt != 0 {
 			state.expiresAt = pending.ExpiresAt
 		}
-		state.operationID = pending.OperationID
+		state.jobID = pending.JobID
+		state.tokenID = pending.TokenID
 		if !pending.CreatedAt.IsZero() {
 			createdAt = pending.CreatedAt
 		}
@@ -105,7 +107,7 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 			Origin: origin, UserID: userID, CreatedAt: createdAt,
 			Step: state.step, InstanceID: state.instanceID, EndpointID: state.endpointID,
 			TokenIdempotencyKey: state.tokenKey, TokenRequestID: state.requestID,
-			TokenName: defaultFirstTokenName, ExpiresAt: state.expiresAt, OperationID: state.operationID,
+			TokenName: defaultFirstTokenName, ExpiresAt: state.expiresAt, JobID: state.jobID, TokenID: state.tokenID,
 		})
 	}
 	deletePending := func() { _ = pendingStore.Delete() }
@@ -221,7 +223,7 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 			}
 			state.requestID = requestID
 		}
-		if err := bindTokenEndpoint(&state.endpointID, state.instance.EndpointID, state.operationID); err != nil {
+		if err := bindTokenEndpoint(&state.endpointID, state.instance.EndpointID, state.jobID); err != nil {
 			return err
 		}
 		// Persist the endpoint and identifiers before a possible Token write,
@@ -232,7 +234,7 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 		fmt.Fprintln(errorOutput, "Creating first Token...")
 		outcome := attemptInstanceToken(operationContext, client, tokenAttempt{
 			InstanceID: state.instanceID, EndpointID: state.endpointID, Name: defaultFirstTokenName, ExpiresAt: state.expiresAt,
-			IdempotencyKey: state.tokenKey, RequestID: state.requestID, OperationID: state.operationID,
+			RequestID: state.requestID, JobID: state.jobID, TokenID: state.tokenID,
 		})
 		switch outcome.Outcome {
 		case tokenDelivered:
@@ -242,17 +244,19 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 			}
 			return errCommandReported
 		case tokenUnknown:
-			state.operationID = outcome.OperationID
+			state.jobID = outcome.JobID
+			state.tokenID = outcome.TokenID
 			_ = savePending(credential.User.ID)
 			fmt.Fprintln(errorOutput, "tiana: instance created, but the first Token result is not yet confirmed")
 			fmt.Fprintf(errorOutput, "Instance ID: %s\n", safeDisplay(state.instanceID))
-			if outcome.OperationID != "" {
-				fmt.Fprintf(errorOutput, "Operation ID: %s\n", safeDisplay(outcome.OperationID))
+			if outcome.JobID != 0 {
+				fmt.Fprintf(errorOutput, "Job ID: %d\n", outcome.JobID)
 			}
 			exitCode = 1
 			return errCommandReported
 		case tokenCommittedWithoutSecret:
-			state.tokenKey, state.requestID, state.operationID = "", "", ""
+			state.tokenKey, state.requestID, state.tokenID = "", "", ""
+			state.jobID = 0
 			_ = savePending(credential.User.ID)
 			fmt.Fprintln(errorOutput, "tiana: instance created, but the first Token secret was not delivered")
 			fmt.Fprintf(errorOutput, "Instance ID: %s\n", safeDisplay(state.instanceID))
@@ -262,8 +266,20 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 			fmt.Fprintln(errorOutput, "Revoke that Token in the existing console, confirm the revocation, then re-run to create a replacement.")
 			exitCode = 1
 			return errCommandReported
+		case tokenAcceptedFailed:
+			state.jobID = outcome.JobID
+			state.tokenID = outcome.TokenID
+			_ = savePending(credential.User.ID)
+			fmt.Fprintln(errorOutput, "tiana: instance created, but the first Token delivery job failed; retry the job in the Console, then re-run this command to confirm it")
+			fmt.Fprintf(errorOutput, "Instance ID: %s\n", safeDisplay(state.instanceID))
+			if outcome.JobID != 0 {
+				fmt.Fprintf(errorOutput, "Job ID: %d\n", outcome.JobID)
+			}
+			exitCode = 1
+			return errCommandReported
 		case tokenRejected, tokenFailed:
-			state.tokenKey, state.requestID, state.operationID = "", "", ""
+			state.tokenKey, state.requestID, state.tokenID = "", "", ""
+			state.jobID = 0
 			_ = savePending(credential.User.ID)
 			fmt.Fprintf(errorOutput, "tiana: instance created, but the first Token failed: %s\n", safeDisplay(tokenFailureReason(outcome)))
 			fmt.Fprintf(errorOutput, "Instance ID: %s\n", safeDisplay(state.instanceID))

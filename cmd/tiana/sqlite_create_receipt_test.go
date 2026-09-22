@@ -30,8 +30,8 @@ func TestSQLiteCreateAcceptedOperationRecovery(t *testing.T) {
 					io.WriteString(w, appTypesResponse("sqlite"))
 				case r.URL.Path == "/api/v1/instances" && r.Method == "POST":
 					creates++
-					if mode == "legacy-missing-id" && r.Header.Get("Idempotency-Key") != "existing-create-key" {
-						t.Error("recovery replaced create idempotency key")
+					if r.Header.Get("Idempotency-Key") != "" {
+						t.Error("legacy create idempotency header sent")
 					}
 					w.WriteHeader(202)
 					fmt.Fprintf(w, `{"instance_id":%q,"operation_id":"17"}`, testInstanceID)
@@ -74,8 +74,8 @@ func TestSQLiteCreateAcceptedOperationRecovery(t *testing.T) {
 						t.Error("Token before successful creation")
 					}
 					tokens++
-					if mode == "legacy-missing-id" && r.Header.Get("Idempotency-Key") != "existing-token-key" {
-						t.Error("recovery replaced token idempotency key")
+					if r.Header.Get("Idempotency-Key") != "" {
+						t.Error("legacy token idempotency header sent")
 					}
 					if mode == "legacy-missing-id" {
 						var request authclient.CreateTokenRequest

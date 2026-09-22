@@ -79,9 +79,9 @@ func configurationWithTrust(repo supervisor.Endpoint, trust *clientconfig.Trust)
 		value = []byte(env)
 	} else if hasFile {
 		var err error
-		value, err = readRegular(path, 49, true)
+		value, err = readRegular(path, 129, true)
 		if err != nil {
-			return c, errors.New("token file must be owned regular mode 0600, at most 49 bytes, without symlinks")
+			return c, errors.New("token file must be owned regular mode 0600, at most 129 bytes, without symlinks")
 		}
 		if len(value) > 0 && value[len(value)-1] == '\n' {
 			value = value[:len(value)-1]

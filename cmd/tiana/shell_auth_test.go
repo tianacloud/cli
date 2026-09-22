@@ -18,7 +18,7 @@ import (
 )
 
 func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
-	for _, mode := range []string{"saved", "legacy-saved", "missing", "denied", "explicit", "invalid-explicit", "empty-explicit"} {
+	for _, mode := range []string{"saved", "missing", "denied", "explicit", "opaque-explicit", "empty-explicit"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("TIANA_TOKEN", "")
 			os.Unsetenv("TIANA_TOKEN")
@@ -26,6 +26,18 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 			config, dials := sqlitepeer.Gateway(t, func(io.Reader, io.Writer) { t.Error("SQL after refusal") }, true)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
+				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/me" {
+					io.WriteString(w, `{"principal_id":"usr_auto","tenant_id":"tenant","email":"auto@example.test"}`)
+					return
+				}
+				if r.Method == http.MethodPost && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/credential-candidates" {
+					if mode == "missing" {
+						io.WriteString(w, `{"token_ids":[]}`)
+					} else {
+						io.WriteString(w, `{"token_ids":["one"]}`)
+					}
+					return
+				}
 				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/branches/main" {
 					io.WriteString(w, sqliteBranchResponse(testInstanceID, "main", "production", testEndpointID))
 					return
@@ -52,35 +64,22 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if mode == "legacy-saved" {
-				contents, err := os.ReadFile(env.tokensPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				legacy := bytes.Replace(contents, []byte(`"expires_at": -1`), []byte(`"expires_at": "9999-12-31T23:59:59.999Z"`), 1)
-				if bytes.Equal(contents, legacy) {
-					t.Fatal("fixture did not become legacy format")
-				}
-				if err := os.WriteFile(env.tokensPath, legacy, 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
 			if mode == "explicit" {
 				t.Setenv("TIANA_TOKEN", "tia_"+strings.Repeat("A", 43))
 				os.WriteFile(env.tokensPath, []byte("corrupt"), 0600)
 			}
-			if mode == "invalid-explicit" {
+			if mode == "opaque-explicit" {
 				t.Setenv("TIANA_TOKEN", "SECRET_INVALID")
 			}
 			if mode == "empty-explicit" {
 				t.Setenv("TIANA_TOKEN", "")
 			}
 			var out, diag bytes.Buffer
-			status := runSQLiteWith(context.Background(), []string{"shell", testInstanceID, "-e", "SELECT 1"}, strings.NewReader(""), &out, &diag, func(ctx context.Context, ref string, ni bool) (authclient.Instance, error) {
+			status := runSQLiteWith(context.Background(), []string{"shell", testInstanceID, "-e", "SELECT 1"}, strings.NewReader(""), &out, &diag, func(ctx context.Context, ref string, ni bool) (sqliteResolution, error) {
 				return resolveSQLite(ctx, ref, "", ni, &diag)
 			}, &config)
 			want := 3
-			if mode == "missing" || mode == "invalid-explicit" || mode == "empty-explicit" {
+			if mode == "missing" || mode == "empty-explicit" {
 				want = 2
 			}
 			if mode == "denied" {
@@ -89,10 +88,10 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 			if status != want || strings.Contains(diag.String(), "SECRET_INVALID") {
 				t.Fatalf("status=%d diagnostics=%s", status, &diag)
 			}
-			if (mode == "saved" || mode == "legacy-saved" || mode == "explicit") != (dials.Load() == 1) {
+			if (mode == "saved" || mode == "explicit" || mode == "opaque-explicit") != (dials.Load() == 1) {
 				t.Fatalf("wrong dial count: %d", dials.Load())
 			}
-			if (mode == "invalid-explicit" || mode == "empty-explicit") && requests != 0 {
+			if mode == "empty-explicit" && requests != 0 {
 				t.Fatal("invalid explicit credential fell back")
 			}
 		})

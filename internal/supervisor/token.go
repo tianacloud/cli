@@ -1,20 +1,18 @@
 package supervisor
 
 import (
-	"bytes"
 	"context"
 	"crypto/subtle"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 const (
-	tokenPrefix = "tia_"
-	tokenLen    = 47
-	maxTokenIn  = 128
+	maxTokenIn = 128
 )
 
 // SecretToken owns a validated outer InstanceToken. Bytes are never exposed
@@ -25,25 +23,9 @@ type SecretToken struct {
 }
 
 func ParseToken(value []byte) (*SecretToken, error) {
-	if len(value) != tokenLen || !bytes.HasPrefix(value, []byte(tokenPrefix)) {
+	if len(value) == 0 || !httpguts.ValidHeaderFieldValue(string(value)) {
 		return nil, ErrInvalidToken
 	}
-	encoded := value[len(tokenPrefix):]
-	decoded := make([]byte, base64.RawURLEncoding.DecodedLen(len(encoded)))
-	n, err := base64.RawURLEncoding.Decode(decoded, encoded)
-	if err != nil || n != 32 {
-		zeroBytes(decoded)
-		return nil, ErrInvalidToken
-	}
-	canonical := make([]byte, base64.RawURLEncoding.EncodedLen(n))
-	base64.RawURLEncoding.Encode(canonical, decoded[:n])
-	if !bytes.Equal(canonical, encoded) {
-		zeroBytes(decoded)
-		zeroBytes(canonical)
-		return nil, ErrInvalidToken
-	}
-	zeroBytes(decoded)
-	zeroBytes(canonical)
 	owned := append([]byte(nil), value...)
 	return &SecretToken{bytes: owned}, nil
 }
@@ -124,7 +106,7 @@ func ReadCredential(source CredentialSource, input io.Reader) (*SecretToken, err
 // readCredentialLine consumes exactly one line without buffered read-ahead so
 // the native client can inherit and continue reading the remaining stdin.
 func readCredentialLine(input io.Reader) ([]byte, error) {
-	value := make([]byte, 0, tokenLen+1)
+	value := make([]byte, 0, maxTokenIn)
 	var one [1]byte
 	for {
 		n, err := input.Read(one[:])

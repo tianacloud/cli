@@ -140,9 +140,11 @@ func TestSQLiteCreateResumesWithLegacyPendingKey(t *testing.T) {
 					io.WriteString(w, sqliteInstanceResponse())
 				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens":
 					tokens++
-					keys = append(keys, r.Header.Get("Idempotency-Key"))
 					body, _ := io.ReadAll(r.Body)
 					bodies = append(bodies, string(body))
+					var request authclient.CreateTokenRequest
+					_ = json.Unmarshal(body, &request)
+					keys = append(keys, request.RequestID)
 					if tokens == 1 {
 						w.WriteHeader(500)
 						io.WriteString(w, `{"error":{"code":"INTERNAL","message":"temporary"}}`)

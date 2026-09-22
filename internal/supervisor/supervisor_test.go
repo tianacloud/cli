@@ -115,9 +115,6 @@ func TestSupervisorDestroysTokenAtCredentialBoundary(t *testing.T) {
 	program := writeNativeFixture(t, 7)
 	const sourceName = "TIANA_TEST_TOKEN"
 	token := "tia_" + strings.Repeat("A", 43)
-	if len(token) != tokenLen {
-		t.Fatalf("test token length=%d", len(token))
-	}
 	if err := os.Setenv(sourceName, token); err != nil {
 		t.Fatal(err)
 	}

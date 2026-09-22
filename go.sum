@@ -14,10 +14,10 @@ github.com/rqlite/sql v0.0.0-20260224021119-1b2524a41372 h1:2V0y6mzmPj7vQKad76nT
 github.com/rqlite/sql v0.0.0-20260224021119-1b2524a41372/go.mod h1:ib9zVtNgRKiGuoMyUqqL5aNpk+r+++YlyiVIkclVqPg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/tianacloud/sdk-go v0.0.0-20260921154600-3a503ed25585 h1:Sb7u+54ujt4qoE30NnXu0Fwsa+KQJcgVK7s3bES0HEY=
-github.com/tianacloud/sdk-go v0.0.0-20260921154600-3a503ed25585/go.mod h1:AOZaHOcz4zQs0GoLGOCTyAA4qr5om9xyJtFUylrlvw4=
-github.com/tianacloud/sdk-go-sqlite v0.0.0-20260921133545-2636f0ee5047 h1:YUIjabo0TJ+yPb1EqLWsgSm7Ktj5A2sppEXVuC+Ftb0=
-github.com/tianacloud/sdk-go-sqlite v0.0.0-20260921133545-2636f0ee5047/go.mod h1:uwza4niHEHAtQlvyxtEaP7Y2fRdhEoLffHlB0x7s2+Q=
+github.com/tianacloud/sdk-go v0.1.0-rc.1 h1:r8wTp78QnHNZId8tyUDL6VV0T+quqNs20sgvbrloWoE=
+github.com/tianacloud/sdk-go v0.1.0-rc.1/go.mod h1:AOZaHOcz4zQs0GoLGOCTyAA4qr5om9xyJtFUylrlvw4=
+github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.1 h1:ZrOEcv3vnvlwftcGZ9+TPwYCa/ZjZLSw0Kl1jYqXTMU=
+github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.1/go.mod h1:2dSuq3MPoLRxirFxQAeDcfUPt9HN8l4hXv0hWEHmJE8=
 github.com/urfave/cli/v3 v3.11.0 h1:P/euJp99kb9p0tlVY+iYTLYYTAQlfl0hR2gUO1Img1Q=
 github.com/urfave/cli/v3 v3.11.0/go.mod h1:ysVLtOEmg2tOy6PknnYVhDoouyC/6N42TMeoMzskhso=
 golang.org/x/net v0.57.0 h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=
