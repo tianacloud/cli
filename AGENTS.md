@@ -293,8 +293,9 @@ the optional port changes only TCP destination, not the logical CONNECT port.
 INSTANCE and --branch conflict with --endpoint even if branch is explicitly empty.
 The Endpoint selects its branch; no MGR product/branch resolution is available.
 
-Direct mode requires explicit TIANA_TOKEN, never opens local account/Token stores,
-never logs in or calls MGR, and never mints/saves credentials. Gateway retains
+Direct mode prefers explicit TIANA_TOKEN; the endpoint-local selection decision
+below adds saved Token lookup when it is unset. Never open account credentials,
+log in, call MGR, or mint/save credentials. Gateway retains
 Token/endpoint authorization and verified TLS. This additive opt-in capability
 leaves account authorization before automatic local Token selection in INSTANCE
 mode unchanged. The caller chooses the target; canonical DNS syntax is not a
@@ -309,3 +310,130 @@ argument conflicts, redaction, target normalization, missing/invalid Tokens,
 TLS failures and refusals without retries, shell/script cleanup, and existing
 instance-mode authorization regressions. Run full race/vet, source scan and
 macOS/Linux builds. Actual deployment acceptance remains separately verified.
+
+## Built-in Go connect helper
+
+User explicitly requested implementing tiana-helper inside the CLI to fix ordinary
+Go builds failing connect. This supersedes the Rust-only helper requirement above,
+while retaining the independent helper process and frozen contract-3 framed pipes.
+BuiltinHelperLauncher re-executes the current executable (Linux /proc/self/exe),
+never a PATH helper. Embedded release assets retain their existing verified path.
+Normal builds use mode=builtin instead of requiring a trusted installation manifest;
+verify-install probes an actual private HELLO exchange without dialing Gateway.
+The built-in helper owns database bytes; the supervisor still handles only control.
+
+Maintain HELLO/config/credential/BOUND/READY/CHILD_STARTED/SERVING ordering. Bind
+loopback only and accept only after child identity handoff; report honestly as
+loopback_unisolated. Linux validates starttime around pidfd_open and monitors the
+pidfd, requiring kernel support; macOS requires the existing zero identity and
+uses kqueue process-exit notifications. Parent pipe EOF, owner exit and drain stop
+accepts and cancel all sessions. On owner exit, keep the control pipe until the
+supervisor sends DRAIN/EOF so final cleanup cannot race an EPIPE. Never inherit outer Tokens/control pipes into the
+native client. Credential frames and bounded byte buffers are cleared; sdk-go's
+immutable Token strings may remain in helper memory until process exit (Go does
+not guarantee allocator zeroization). Helper stderr and raw peer messages stay
+out of terminal diagnostics. No credentials are persisted by connect.
+
+Reuse published sdk-go for verified TLS 1.3/H2 CONNECT; no insecure fallback. An
+insecure legacy helper config is explicitly rejected by built-in mode. Optional
+embedded Rust builds retain their separate verification/policy. Classifier limits
+stay 16 KiB headers, 64 fields, one second and at most 64 KiB retained before 200.
+Support existing Hrana v2 pipeline/WebSocket plus App v3 pipeline/cursor, preserving
+opaque bytes. Explicit profile must match. Maximum 32 active local sessions with
+bounded copy buffers; overflow connections close. No request/SQL replay on failure.
+CONNECT errors marked committed by SDK must remain after-200/unknown outcomes.
+Keep native exit status and distinguish local closure from upstream interruption.
+
+No wire/dependency/storage migration or server durability change. Rollback only
+loses built-in helper availability; existing embedded helper and private-control
+vectors stay compatible. Verify real pipes/processes, Token filtering, HELLO/state
+rejections, prefix integrity/pre-200 barrier, HTTP/WebSocket, half-close, TLS and
+Gateway failures, drain/EOF/owner cleanup, resource bounds, full race/vet and both
+platform builds. Actual Turso/deployed Gateway acceptance is separate from fake
+native/synthetic Gateway verification. Do not publish private-history sources.
+
+
+## Endpoint-local InstanceToken selection
+
+The user requested direct Endpoint access with a locally saved InstanceToken.
+Explicit TIANA_TOKEN (including empty/invalid values) remains authoritative;
+only an unset variable enables lookup. Match the normalized endpoint_id exactly.
+Restrict to configured DefaultOrigin when present; otherwise require one unique
+origin/tenant/instance scope across matching records, including expired records.
+Never guess across scopes. Direct mode is explicitly user-directed; no MGR
+account authorization is performed and hostname syntax does not verify deployment
+ownership. Gateway authentication and verified TLS remain mandatory.
+
+CLI authclient reads a bounded (8 MiB), owned regular mode-0600 nonsymlink file
+as an identity index, validates storage keys, then delegates credential decoding,
+legacy expiry compatibility, 30-second expiry skew and newest selection to the
+published SDK. This avoids an unpublished SDK dependency or duplicated expiry
+logic. Two bounded reads add local I/O; pin and recheck origin/tenant/instance/
+endpoint after SDK lookup so concurrent atomic replacement cannot change scope.
+No store writes, locks, migrations or network fallback. Errors omit secrets and
+raw input. The on-disk index shape is a compatibility dependency covered by tests.
+Instance mode retains its existing MGR authorization before lookup.
+
+Rollback removes only the fallback; existing stored credentials remain unchanged.
+Verify explicit precedence, unset/empty/invalid inputs, ambiguous scopes, origin
+filtering, expired/legacy records, corrupt identity, unsafe files, zero MGR calls,
+read-only lookup, full race/vet and macOS/Linux builds. No live deployment writes.
+
+
+## Git remote-helper local InstanceTokens
+
+User requested the same endpoint_id-based local Token selection for native Git.
+Keep TIANA_TOKEN and TIANA_TOKEN_FILE mutually exclusive and authoritative,
+including empty/invalid explicit inputs. Only when both are unset, resolve the
+SDK default instance-tokens.json path (or TIANA_INSTANCE_TOKENS_FILE) and call the
+shared authclient.LookupEndpointToken with repo.ID and optional DefaultOrigin.
+This reuses SQLite's bounded private-file read, identity checks, scope uniqueness,
+legacy expiry decoding, newest usable selection and second-read scope validation.
+No new file format, SDK version, dependency, MGR call, login, write or lock.
+
+Missing/no-usable saved records preserve the existing auth-disabled Endpoint
+capability by dialing without a Token once; Gateway decides access. Store errors,
+ambiguous scopes and invalid selected Tokens fail before dialing. No retry after
+rejection and no secret diagnostics. The canonical remote remains the TLS/SNI
+identity; physical address override never affects Token selection. Users choose
+the deployment; endpoint_id is not a domain trust allowlist. Git wire format,
+pre-200 barrier, streaming/backpressure and half-close remain unchanged. Small
+bounded local reads occur once per helper connection, outside the relay hot path.
+
+Rollback removes fallback only and leaves credential stores untouched. Tests
+must isolate local paths, verify explicit precedence/no fallback, default path,
+missing/expired/mismatched records, ambiguity/unsafe data and read-only behavior.
+Run actual compiled CLI/launcher + native Git over synthetic TLS/H2 Gateway to
+verify the saved secret in CONNECT and explicit overrides; then full race/vet,
+public-source scan and macOS/Linux builds. No live repository mutation is needed.
+
+
+## Connect local InstanceToken selection
+
+User requested the native Turso connect flow also read instance-tokens.json.
+After adapter/Endpoint and Gateway trust validation, but before helper launch,
+resolve default credentials in this order: explicit TIANA_TOKEN; shared
+endpoint_id-based local lookup; then the existing hidden TTY prompt only when
+no usable saved record exists. Non-interactive absence is an actionable error.
+An invalid/empty explicit source never falls back; legacy internal explicit
+source APIs retain their existing behavior. CLI still rejects removed Token flags.
+Fix missing-credential guidance so it no longer recommends those removed flags.
+
+Use authclient.LookupEndpointToken with the original resolved Endpoint ID,
+TIANA_INSTANCE_TOKENS_FILE/default SDK path and optional DefaultOrigin. Reuse all
+scope, expiry, file limits/permissions, legacy decoding and atomic-replacement
+checks. No account login, MGR requests, token issuance, writes, migrations or
+retries. Ambiguity, unsafe/corrupt storage or invalid selected Token fails before
+helper/child creation and must not prompt. Preserve native stdin and hidden-input
+terminal restoration; secret bytes use SecretToken and existing private pipes.
+Original hostname remains TLS identity even with an explicit TCP address override.
+The prompt fallback preserves existing missing-credential behavior; store errors
+now fail closed instead of being ignored. Lookup adds bounded local reads outside
+the forwarding hot path. Rollback changes selection only; stores remain compatible.
+
+Validate local/default path, explicit precedence including empty/invalid values,
+missing/expired/out-of-scope records, ambiguity and file errors, untouched stdin,
+and read-only behavior. Exercise missing-store prompt cancellation through a PTY,
+full CLI with built-in helper, actual Turso + compiled helper over synthetic TLS
+Gateway, full race/vet/source scan and macOS/Linux builds. Preserve all earlier
+uncommitted work; no real deployment access or commit/push required.

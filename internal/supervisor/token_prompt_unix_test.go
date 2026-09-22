@@ -118,7 +118,12 @@ func TestDefaultPromptRestoresTerminalOnInterrupt(t *testing.T) {
 		defer stop()
 		// The prompt uses /dev/tty even when the native input is a separate stream.
 		input := strings.NewReader("SELECT 1;\n")
-		_, err = readConnectCredential(ctx, ConnectOptions{Credential: DefaultCredentialSource(), Interactive: true}, input)
+		t.Setenv("TIANA_INSTANCE_TOKENS_FILE", t.TempDir()+"/missing-tokens.json")
+		endpoint, err := ParseEndpoint("ep-00000000000000000000000000.db.example.test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = readConnectEndpointCredential(ctx, ConnectOptions{Credential: DefaultCredentialSource(), Interactive: true}, input, endpoint)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("interrupt result: %v", err)
 		}

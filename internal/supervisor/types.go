@@ -82,8 +82,8 @@ func (s SecurityLevel) String() string {
 	}
 }
 
-// LocalEndpoint is only a locator/capability report. Go never opens it or
-// relays database bytes; the Rust helper owns the listener and sessions.
+// LocalEndpoint is only a locator/capability report. The supervisor never
+// relays database bytes; the helper process owns the listener and sessions.
 type LocalEndpoint struct {
 	Network       string
 	Address       string
@@ -290,8 +290,8 @@ type ChildIdentity struct {
 	StartTime uint64
 }
 
-// HelperClient is the semantic boundary between Go and Rust. Implementations
-// must not expose a Tunnel or local database bytes to Go.
+// HelperClient is the semantic boundary between supervisor and helper process.
+// Implementations must not expose a Tunnel or database bytes to the supervisor.
 type HelperClient interface {
 	Handshake(context.Context, []uint16, string) (HelperCapabilities, error)
 	Configure(context.Context, HelperConfig) error

@@ -13,12 +13,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/testutil/sqlitepeer"
 )
 
-// Direct mode must not resolve an instance or open account/local Token stores.
+// Explicit Token mode must not resolve an instance or open account/local Token stores.
 func TestSQLiteDirectEndpointExecute(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", sqlitepeer.Token)
 	t.Setenv("TIANA_MGR_ORIGIN", "not-an-origin")
@@ -81,7 +82,7 @@ func TestSQLiteDirectEndpointRejectsUnsafeArguments(t *testing.T) {
 	}
 }
 
-func TestSQLiteDirectEndpointRequiresExplicitToken(t *testing.T) {
+func TestSQLiteDirectEndpointRequiresUsableToken(t *testing.T) {
 	for _, value := range []string{"unset", "", "PRIVATE_TOKEN_SECRET"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("TIANA_TOKEN", value)
@@ -91,6 +92,7 @@ func TestSQLiteDirectEndpointRequiresExplicitToken(t *testing.T) {
 				}
 			}
 			t.Setenv("TIANA_MGR_ORIGIN", "invalid-origin")
+			t.Setenv("TIANA_INSTANCE_TOKENS_FILE", filepath.Join(t.TempDir(), "absent"))
 			resolve := func(context.Context, string, bool) (authclient.Instance, error) {
 				t.Error("missing token attempted MGR lookup")
 				return authclient.Instance{}, io.EOF
@@ -100,7 +102,7 @@ func TestSQLiteDirectEndpointRequiresExplicitToken(t *testing.T) {
 			if code != 2 || strings.Contains(diag.String(), "PRIVATE_TOKEN_SECRET") {
 				t.Fatalf("code=%d diag=%s", code, &diag)
 			}
-			if (value == "unset" || value == "") && (!strings.Contains(diag.String(), "TIANA_TOKEN") || strings.Contains(diag.String(), "unset it")) {
+			if (value == "unset" || value == "") && (!strings.Contains(diag.String(), "TIANA_TOKEN")) {
 				t.Fatalf("missing token guidance: %s", &diag)
 			}
 		})
@@ -215,6 +217,60 @@ func TestSQLiteDirectEndpointShellAndScript(t *testing.T) {
 			code := runSQLiteWith(context.Background(), args, strings.NewReader(input), &out, &diag, nil, &config)
 			if code != 0 || queries.Load() != 1 || count.Load() != 1 || !json.Valid(out.Bytes()) {
 				t.Fatalf("code=%d queries=%d connects=%d out=%s diag=%s", code, queries.Load(), count.Load(), &out, &diag)
+			}
+		})
+	}
+}
+
+func TestSQLiteDirectEndpointUsesLocalTokenWithoutMGR(t *testing.T) {
+	t.Setenv("TIANA_TOKEN", "")
+	if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TIANA_MGR_ORIGIN", "")
+	t.Setenv("TIANA_AUTH_ORIGIN", "")
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
+	t.Setenv("TIANA_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "absent-account"))
+	_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", EndpointID: "ep-01j5c9m7q2v8x4k6n3r0t1w2yz", TokenID: "one", Token: sqlitepeer.Token, ExpiresAt: -1, SavedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, count := sqlitepeer.Gateway(t, func(io.Reader, io.Writer) { t.Error("SQL after refusal") }, true)
+	resolve := func(context.Context, string, bool) (authclient.Instance, error) {
+		t.Error("endpoint-local mode called MGR")
+		return authclient.Instance{}, io.EOF
+	}
+	var out, diag bytes.Buffer
+	code := runSQLiteWith(context.Background(), []string{"shell", "--endpoint", sqlitepeer.Endpoint, "-e", "SELECT 1"}, strings.NewReader(""), &out, &diag, resolve, &config)
+	if code != 3 || count.Load() != 1 || !strings.Contains(diag.String(), "GATEWAY_REJECTED") {
+		t.Fatalf("local Token not used: code=%d connects=%d diag=%s", code, count.Load(), &diag)
+	}
+	after, _ := os.ReadFile(path)
+	if !bytes.Equal(before, after) {
+		t.Fatal("direct connection rewrote Token store")
+	}
+}
+
+func TestSQLiteDirectEndpointExplicitTokenNeverFallsBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
+	_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", EndpointID: strings.SplitN(sqlitepeer.Endpoint, ".", 2)[0], TokenID: "one", Token: sqlitepeer.Token, ExpiresAt: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"", "PRIVATE_TOKEN_SECRET"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("TIANA_TOKEN", value)
+			config, count := sqlitepeer.Gateway(t, func(io.Reader, io.Writer) { t.Error("unexpected SQL") }, true)
+			var out, diag bytes.Buffer
+			code := runSQLiteWith(context.Background(), []string{"shell", "--endpoint", sqlitepeer.Endpoint, "-e", "SELECT 1"}, strings.NewReader(""), &out, &diag, nil, &config)
+			if code != 2 || count.Load() != 0 || strings.Contains(diag.String(), "PRIVATE_TOKEN_SECRET") {
+				t.Fatalf("explicit Token fell back: code=%d connects=%d diag=%s", code, count.Load(), &diag)
 			}
 		})
 	}

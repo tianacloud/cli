@@ -158,8 +158,8 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 	var token *tiana.Token
 	var e *sqlitecli.Error
 	rawToken, explicitToken := os.LookupEnv("TIANA_TOKEN")
-	if o.endpoint != "" && (!explicitToken || rawToken == "") {
-		fmt.Fprintln(diagnostics, "tiana: --endpoint requires a non-empty TIANA_TOKEN; local InstanceTokens are selected only in INSTANCE mode")
+	if o.endpoint != "" && explicitToken && rawToken == "" {
+		fmt.Fprintln(diagnostics, "tiana: TIANA_TOKEN is empty; set a valid Token or unset it to use a saved InstanceToken")
 		return 2
 	}
 	if explicitToken {
@@ -186,18 +186,30 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 		}
 	}
 	if !explicitToken {
-		store, err := newInstanceTokenStore()
-		if err != nil {
-			fmt.Fprintln(diagnostics, "tiana: cannot open local InstanceToken store")
-			return 2
-		}
 		endpointID := instance.EndpointID
 		if endpointID == "" {
 			endpointID = strings.SplitN(endpoint, ".", 2)[0]
 		}
-		credential, err := store.Lookup(instance.ID, endpointID, time.Now())
+		var credential authclient.InstanceTokenCredential
+		if o.endpoint != "" {
+			path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
+			if path == "" {
+				path, err = authclient.DefaultInstanceTokenPath()
+			}
+			if err == nil {
+				credential, err = authclient.LookupEndpointToken(path, authclient.DefaultOrigin(), endpointID, time.Now())
+			}
+		} else {
+			var store authclient.InstanceTokenStore
+			store, err = newInstanceTokenStore()
+			if err == nil {
+				credential, err = store.Lookup(instance.ID, endpointID, time.Now())
+			}
+		}
 		if err != nil {
-			if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
+			if errors.Is(err, authclient.ErrInstanceTokenNotFound) && o.endpoint != "" {
+				fmt.Fprintln(diagnostics, "tiana: no usable local InstanceToken for endpoint; set TIANA_TOKEN or explicitly create/save a Token for this endpoint")
+			} else if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
 				command := "tiana sqlite tokens create " + quoteCommandArgs([]string{instance.ID})
 				if o.branch != "" {
 					command += " --branch " + quoteCommandArgs([]string{o.branch})

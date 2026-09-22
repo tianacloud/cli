@@ -72,7 +72,7 @@ func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, erro
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	token, err := readConnectCredential(ctx, options, stdin)
+	token, err := readConnectEndpointCredential(ctx, options, stdin, endpoint)
 	if err != nil {
 		return 1, err
 	}
@@ -135,8 +135,8 @@ func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, erro
 		return 1, err
 	}
 	credentialErr := helper.DeliverCredential(ctx, token)
-	// The helper owns any retained protected copy after this call. Go must not
-	// keep the outer token alive through the native child lifetime. This also
+	// The helper process owns any retained copy after this call. The supervisor
+	// must not keep this token buffer alive through the native child lifetime. This also
 	// runs on short-write and helper-rejection paths.
 	destroyToken()
 	if credentialErr != nil {

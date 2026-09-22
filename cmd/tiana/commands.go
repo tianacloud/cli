@@ -154,11 +154,14 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			{Name: "login", Usage: "Sign in through a browser", Description: "Sign in or create an account. The CLI prints a URL and waits for approval.", Action: noArgs(runLogin)},
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Action: noArgs(runLogout)},
 			{Name: "whoami", Usage: "Show the signed-in account", Action: noArgs(runWhoami)},
-			{Name: "verify-install", Usage: "Verify the embedded or trusted legacy helper", Action: func(ctx context.Context, cmd *cli.Command) error {
+			{Name: "verify-install", Usage: "Verify the built-in or embedded helper", Action: func(ctx context.Context, cmd *cli.Command) error {
 				if cmd.NArg() != 0 {
 					return argumentFailure(ctx, cmd, "verify-install does not accept arguments")
 				}
-				_, mode, err := resolveHelperLauncher()
+				launcher, mode, err := resolveHelperLauncher()
+				if err == nil {
+					err = supervisor.VerifyHelper(ctx, launcher)
+				}
 				if err != nil {
 					fmt.Fprintln(diagnostics, "tiana: trusted helper is unavailable")
 					return statusError(1)
@@ -167,7 +170,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 				return nil
 			}},
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
-			{Name: "connect", Usage: "Connect a native client through the legacy helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
+			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
 				Description: "Arguments after -- belong to the native client and are passed unchanged.",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
@@ -291,7 +294,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 
 func newSQLCommand(action sqlCommandAction) *cli.Command {
 	flags := []cli.Flag{
-		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; requires TIANA_TOKEN", ""),
+		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; uses TIANA_TOKEN or a saved endpoint Token", ""),
 		branchOption(),
 		stringOption("format", "table, json, ndjson or csv", "table"),
 		stringOption("output", "Exclusively create a private result file", ""),
@@ -301,7 +304,7 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 		&cli.BoolFlag{Name: "atomic", Hidden: true, Local: true},
 	}
 	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "[INSTANCE | --endpoint ENDPOINT]",
-		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR with an explicit TIANA_TOKEN. Direct mode cannot use INSTANCE or --branch. Instance mode uses TIANA_TOKEN if set, otherwise a saved Token; missing Tokens must be created explicitly.",
+		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR. Direct mode cannot use INSTANCE or --branch. TIANA_TOKEN takes priority; otherwise select a saved Token by instance or endpoint_id. Missing Tokens must be created explicitly.",
 		Flags:       flags, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.IsSet("atomic") {
 				return argumentFailure(ctx, cmd, "--atomic is unavailable until SQLite grammar equivalence is verified")
