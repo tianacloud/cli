@@ -9,10 +9,10 @@ import (
 )
 
 func TestGlobalTrustOverridesEnvironmentWithoutMutation(t *testing.T) {
+	t.Setenv("TIANA_TOKEN", "test-explicit-token")
 	t.Setenv("TIANA_CA_FILE", "/missing/ca")
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", filepath.Join(t.TempDir(), "missing"))
-	t.Setenv("TIANA_TOKEN", "")
-	os.Unsetenv("TIANA_TOKEN")
+	t.Setenv("TIANA_TOKEN", "test-explicit-token")
 	t.Setenv("TIANA_TOKEN_FILE", "")
 	os.Unsetenv("TIANA_TOKEN_FILE")
 	roots := x509.NewCertPool()

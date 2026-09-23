@@ -3,22 +3,19 @@ package supervisor
 import (
 	"context"
 	"crypto/subtle"
-	"errors"
 	"fmt"
 	"github.com/tianacloud/cli/internal/authclient"
 	"golang.org/x/net/http/httpguts"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 )
 
 const (
 	maxTokenIn = 128
 )
 
-// SecretToken owns a validated outer InstanceToken. Bytes are never exposed
+// SecretToken owns a validated outer connection credential. Bytes are never exposed
 // through String, Error, or formatting methods. Destroy should be called as
 // soon as the helper handoff/child lifecycle no longer needs the value.
 type SecretToken struct {
@@ -157,51 +154,28 @@ func readTokenFile(path string) ([]byte, error) {
 	return readTokenFileSecure(filepath.Clean(path))
 }
 
-// Resolve credentials before starting the helper. Only an absent default source
-// may prompt; explicit or invalid sources must never silently fall back.
+// Resolve public connection credentials without prompting or touching a Token cache.
 func readConnectCredential(ctx context.Context, options ConnectOptions, input io.Reader) (*SecretToken, error) {
-	source := options.Credential
-	_, present := os.LookupEnv(source.Value)
-	if !options.TokenSourceSet && source == DefaultCredentialSource() && !present {
-		if !options.Interactive {
+	if options.TokenSourceSet || options.Credential != DefaultCredentialSource() {
+		token, err := ReadCredential(options.Credential, input)
+		if err == nil && token == nil {
 			return nil, missingCredentialError()
 		}
-		return promptCredential(ctx)
+		return token, err
 	}
-	token, err := ReadCredential(source, input)
-	if err == nil && token == nil {
-		return nil, missingCredentialError()
-	}
-	return token, err
-}
-
-func missingCredentialError() error {
-	return fmt.Errorf("connection Token is required; set TIANA_TOKEN, save an InstanceToken for this endpoint, or run in an interactive terminal")
-}
-
-// A default, unset environment source permits endpoint-scoped local lookup.
-// Explicit sources and malformed stores never fall through to another source.
-func readConnectEndpointCredential(ctx context.Context, options ConnectOptions, input io.Reader, endpoint Endpoint) (*SecretToken, error) {
-	_, present := os.LookupEnv("TIANA_TOKEN")
-	if options.TokenSourceSet || options.Credential != DefaultCredentialSource() || present {
-		return readConnectCredential(ctx, options, input)
-	}
-	path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
-	if path == "" {
-		var err error
-		path, err = authclient.DefaultInstanceTokenPath()
-		if err != nil {
-			return nil, err
-		}
-	}
-	credential, err := authclient.LookupEndpointToken(path, authclient.DefaultOrigin(), endpoint.ID(), time.Now())
-	if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
-		return readConnectCredential(ctx, options, input)
-	}
+	value, err := authclient.ConnectionCredential(ctx)
 	if err != nil {
 		return nil, err
 	}
-	value := []byte(credential.Token)
 	defer clear(value)
 	return ParseToken(value)
+}
+
+func missingCredentialError() error {
+	return fmt.Errorf("connection Token is required; set TIANA_TOKEN, set TIANA_TOKEN_FILE, or run tiana login")
+}
+
+// Endpoint routing does not change credential precedence.
+func readConnectEndpointCredential(ctx context.Context, options ConnectOptions, input io.Reader, _ Endpoint) (*SecretToken, error) {
+	return readConnectCredential(ctx, options, input)
 }

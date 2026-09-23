@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/supervisor"
@@ -48,14 +49,13 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 		if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("TIANA_MGR_ORIGIN", "")
-		t.Setenv("TIANA_AUTH_ORIGIN", "")
-		path := filepath.Join(t.TempDir(), "tokens.json")
-		t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
-		_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", TokenID: "one", EndpointID: "ep-00000000000000000000000000", Token: "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", ExpiresAt: -1})
-		if err != nil {
+		t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+		path := filepath.Join(t.TempDir(), "credentials.json")
+		t.Setenv("TIANA_CREDENTIALS_FILE", path)
+		if err := authclient.NewFileStore(path, "https://mgr.example.test").Save(authclient.Credential{AccessToken: "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
+
 	}
 	t.Setenv("TIANA_CA_FILE", "")
 	exe, err := os.Executable()

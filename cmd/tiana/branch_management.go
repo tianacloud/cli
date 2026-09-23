@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/urfave/cli/v3"
@@ -14,13 +15,13 @@ import (
 
 func newBranchMutationCommand(action string, input io.Reader, output, diagnostics io.Writer) *cli.Command {
 	flags := []cli.Flag{}
-	usage, description := "Create a SQLite branch", "Create a child of the default branch, or the exact branch name selected by --parent. Success means asynchronous acceptance; check branch list before connecting."
+	usage, description := "Create a SQLite branch", "Create a child of the default branch, or the exact branch name selected by --parent. By default success means asynchronous acceptance; use -w/--wait to wait for creation to succeed."
 	if action == "create" {
-		flags = append(flags, stringOption("parent", "Exact parent branch name; omitted selects the default branch", ""))
+		flags = append(flags, createWaitOption(), stringOption("parent", "Exact parent branch name; omitted selects the default branch", ""))
 	} else {
 		usage = "Delete a SQLite branch"
-		description = "Delete the exact branch name, or immutable ID with --by-id. Requires terminal confirmation unless -f is set. Default and protected branches cannot be deleted. Success means asynchronous acceptance."
-		flags = append(flags, &cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}, boolOption("by-id", "Interpret BRANCH as an immutable branch ID"))
+		description = "Delete the exact branch name, or immutable ID with --by-id. Requires terminal confirmation unless -f is set. Default and protected branches cannot be deleted. By default success means asynchronous acceptance; -w/--wait waits for the deletion operation to succeed."
+		flags = append(flags, deleteWaitOption(), &cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}, boolOption("by-id", "Interpret BRANCH as an immutable branch ID"))
 	}
 	return &cli.Command{Name: action, Usage: usage, Description: description, ArgsUsage: "INSTANCE BRANCH", Flags: flags, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 2 || strings.TrimSpace(cmd.Args().Get(0)) == "" || strings.TrimSpace(cmd.Args().Get(1)) == "" {
@@ -37,11 +38,11 @@ func newBranchMutationCommand(action string, input io.Reader, output, diagnostic
 		if action == "delete" && cmd.Bool("by-id") && !authclient.ValidResourcePathID(cmd.Args().Get(1)) {
 			return argumentFailure(ctx, cmd, "invalid branch ID")
 		}
-		return statusError(executeBranchMutation(ctx, action, cmd.Args().Get(0), cmd.Args().Get(1), cmd.String("parent"), cmd.Bool("by-id"), cmd.Bool("force"), input, output, diagnostics))
+		return statusError(executeBranchMutation(ctx, action, cmd.Args().Get(0), cmd.Args().Get(1), cmd.String("parent"), cmd.Bool("by-id"), cmd.Bool("force"), cmd.Bool("wait"), input, output, diagnostics))
 	}}
 }
 
-func executeBranchMutation(ctx context.Context, action, reference, name, parent string, byID, force bool, input io.Reader, output, diagnostics io.Writer) int {
+func executeBranchMutation(ctx context.Context, action, reference, name, parent string, byID, force, wait bool, input io.Reader, output, diagnostics io.Writer) int {
 	if action == "delete" && !force && !isTerminal(input) {
 		fmt.Fprintln(diagnostics, "tiana: deletion requires terminal confirmation; use --force (-f) for non-interactive deletion")
 		return 2
@@ -151,5 +152,25 @@ func executeBranchMutation(ctx context.Context, action, reference, name, parent 
 		fmt.Fprintln(diagnostics, "tiana: operation accepted but cannot write receipt; check branch list before retrying")
 		return 1
 	}
+	if action == "delete" && wait {
+		return reportDeletionWait(ctx, client, receipt.InstanceID, receipt.OperationID, "DELETE_BRANCH", branch.ID, output, diagnostics)
+	}
+	if action == "create" && wait {
+		if _, err := fmt.Fprintln(diagnostics, "Waiting for branch creation; Ctrl-C stops waiting without cancelling the operation."); err != nil {
+			return 1
+		}
+		if err := waitForBranchCreation(ctx, client, receipt, branch.ID, time.Second); err != nil {
+			writeCommandError(diagnostics, err)
+			fmt.Fprintf(diagnostics, "Creation observation stopped: instance=%s operation=%s. Check branch list and the operation before retrying; do not blindly repeat creation.\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID))
+			if ctx.Err() != nil {
+				return 130
+			}
+			return 1
+		}
+		if _, err := fmt.Fprintf(output, "Branch creation succeeded: instance=%s operation=%s\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID)); err != nil {
+			return 1
+		}
+	}
+
 	return 0
 }

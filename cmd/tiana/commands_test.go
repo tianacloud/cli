@@ -15,7 +15,7 @@ import (
 )
 
 func TestCommandTreeHelpAndRemovedDatabase(t *testing.T) {
-	for _, path := range []string{"", "login", "logout", "status", "version", "sqlite", "sqlite create", "sqlite list", "sqlite show", "sqlite branch", "sqlite branch list", "sqlite branch create", "sqlite branch delete", "sqlite tokens", "sqlite tokens create", "sqlite shell", "connect", "git", "git remote-helper"} {
+	for _, path := range []string{"", "login", "logout", "status", "version", "sqlite", "sqlite create", "sqlite list", "sqlite show", "sqlite branch", "sqlite branch list", "sqlite branch create", "sqlite branch delete", "sqlite shell", "connect", "git", "git remote-helper"} {
 		t.Run(path, func(t *testing.T) {
 			var out, diag bytes.Buffer
 			args := append(strings.Fields(path), "--help")
@@ -105,7 +105,7 @@ func TestCommandNativeArgumentBoundary(t *testing.T) {
 }
 
 func TestCommandPreservesRawPendingArguments(t *testing.T) {
-	for _, path := range [][]string{{"sqlite", "create"}, {"sqlite", "tokens", "create"}} {
+	for _, path := range [][]string{{"sqlite", "create"}, {"git", "create"}} {
 		root := newCLICommand(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, nil)
 		cmd := root
 		for _, name := range path {

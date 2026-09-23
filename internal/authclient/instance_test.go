@@ -115,59 +115,6 @@ func TestListInstancesSendsDisplayNameBeforePagination(t *testing.T) {
 	}
 }
 
-func TestCreateInstanceTokenDistinguishesDeliveryFromReplay(t *testing.T) {
-	var calls int
-	mux := http.NewServeMux()
-	// Mirror the production MGR route, independently of the client URL builder.
-	mux.HandleFunc("POST /api/v1/instances/{instance_id}/endpoints/{endpoint_id}/tokens", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.PathValue("instance_id") != "inst_x" || r.PathValue("endpoint_id") != "ep-0abcdefghjkmnpqrstvwxyz012" || r.Header.Get("Idempotency-Key") != "" {
-			t.Error("wrong Token target or legacy idempotency header")
-		}
-		calls++
-		if calls == 1 {
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"job_id":1,"sync_status":"complete","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","name":"cli","token":"tia_secret","expires_at":1789646400,"secret_recoverable":false}`)
-			return
-		}
-		_, _ = io.WriteString(w, `{"job_id":1,"sync_status":"complete","tenant_id":"ten","instance_id":"inst_x","endpoint_id":"ep-0abcdefghjkmnpqrstvwxyz012","token_id":"tok_0abcdefghjkmnpqrstvwxyz012","expires_at":1789646400,"secret_recoverable":false}`)
-	})
-	server := httptest.NewServer(mux)
-	defer server.Close()
-	client := testAuthenticatedClient(t, server)
-	request := CreateTokenRequest{RequestID: "cli-req-1", Name: "cli", ExpiresAt: 1789646400}
-
-	delivered, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !delivered.DeliveredSecret() || delivered.Token != "tia_secret" || delivered.TokenID == "" || delivered.TenantID != "ten" {
-		t.Fatalf("delivered=%+v", delivered)
-	}
-	replay, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if replay.DeliveredSecret() || !replay.CommittedWithoutSecret() {
-		t.Fatalf("replay=%+v", replay)
-	}
-}
-
-func TestCreateInstanceTokenSurfacesUnknownCommit(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = io.WriteString(w, `{"error":{"code":"COMMIT_STATUS_UNKNOWN","message":"lifecycle operation result is not yet authoritative","retryable":true,"operation_id":"op-unknown","command_not_after":"2026-09-10T12:00:30.000Z","secret_recoverable":false}}`)
-	}))
-	defer server.Close()
-	client := testAuthenticatedClient(t, server)
-	_, err := client.CreateInstanceToken(context.Background(), "inst_x", "ep-0abcdefghjkmnpqrstvwxyz012", CreateTokenRequest{RequestID: "cli-req-1", Name: "cli", ExpiresAt: InstanceTokenNoExpiry})
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Code != "COMMIT_STATUS_UNKNOWN" {
-		t.Fatalf("err=%+v", err)
-	}
-}
-
 func TestGetInstanceMapsNotFoundAndInvalidID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

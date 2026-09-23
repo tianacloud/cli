@@ -50,7 +50,7 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		name := strings.SplitN(arg, "=", 2)[0]
 		switch name {
 		case "--token-env", "--token-file", "--token-stdin", "--non-interactive":
-			fmt.Fprintln(diagnostics, "tiana: removed option; use TIANA_TOKEN for connect authentication")
+			fmt.Fprintln(diagnostics, "tiana: removed option; use TIANA_TOKEN/TIANA_TOKEN_FILE or account login for connect authentication")
 			return 2
 		}
 	}
@@ -60,7 +60,7 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		return 2
 	}
 	if parsed.Help {
-		fmt.Fprintln(output, "Credentials: TIANA_TOKEN; when unset, look up a saved InstanceToken by endpoint_id, then prompt in an interactive terminal if none is available.")
+		fmt.Fprintln(output, "Credentials: TIANA_TOKEN or TIANA_TOKEN_FILE; otherwise use the signed-in account access token. Run tiana login if no valid session exists.")
 		for _, line := range strings.Split(supervisor.Usage(), "\n") {
 			if strings.Contains(line, "--token-env") || strings.Contains(line, "--token-file") || strings.Contains(line, "--token-stdin") || strings.Contains(line, "--non-interactive") {
 				continue
@@ -140,17 +140,6 @@ func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (
 		config.RootCAs = trust.Roots
 	}
 	return authclient.NewWithConfig(config)
-}
-
-func newInstanceTokenStore() (authclient.InstanceTokenStore, error) {
-	origin := authclient.DefaultOrigin()
-	if origin == "" {
-		return nil, errors.New("set TIANA_MGR_ORIGIN to your HTTPS management origin")
-	}
-	if path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE")); path != "" {
-		return authclient.NewFileInstanceTokenStore(path, origin), nil
-	}
-	return authclient.NewInstanceTokenStore(origin)
 }
 
 func newPendingStore() (*authclient.FilePendingCommandStore, error) {

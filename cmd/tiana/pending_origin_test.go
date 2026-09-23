@@ -21,7 +21,6 @@ func TestCreateCommandsPreserveDifferentOriginPending(t *testing.T) {
 	}{
 		{"git", "git.create", []string{"git", "create", "pending-repo"}},
 		{"sqlite", "db.create", []string{"sqlite", "create", "pending-db"}},
-		{"sqlite-token", "db.tokens.create", []string{"sqlite", "tokens", "create", testInstanceID}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls, writes atomic.Int32
@@ -42,8 +41,7 @@ func TestCreateCommandsPreserveDifferentOriginPending(t *testing.T) {
 			original, err := json.Marshal(map[string]any{
 				"command": tc.command, "args": tc.args[1:],
 				"origin": "https://previous.example.test", "user_id": "usr_pending",
-				"idempotency_key": "original-create-key", "operation_id": "original-operation",
-				"token_idempotency_key": "original-token-key", "token_request_id": "original-request",
+				"idempotency_key": "original-create-key", "creation_operation_id": "original-operation",
 			})
 			if err != nil {
 				t.Fatal(err)

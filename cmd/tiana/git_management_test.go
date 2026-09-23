@@ -117,100 +117,6 @@ func TestGitListPagination(t *testing.T) {
 	}
 }
 
-func TestGitCreateResumesAndSeparatesSQLiteIntent(t *testing.T) {
-	for _, failure := range []string{"instance", "token"} {
-		t.Run(failure, func(t *testing.T) {
-			creates, tokens := 0, 0
-			var keys, bodies []string
-			var pendingPath string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case r.URL.Path == "/api/v1/app-types":
-					io.WriteString(w, appTypesResponse("sqlite", "git"))
-				case r.URL.Path == "/api/v1/instances" && r.Method == "POST":
-					creates++
-					var request authclient.CreateInstanceRequest
-					if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Engine != "git" || request.DisplayName != "my-repo" {
-						t.Errorf("unexpected create: %+v %v", request, err)
-					}
-					if failure == "instance" {
-						keys = append(keys, request.RequestID)
-					}
-					pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
-					if err != nil || pending.Command != "git.create" {
-						t.Error("Git intent not saved before POST")
-					}
-					if failure == "instance" && creates == 1 {
-						http.Error(w, `{"error":{"code":"INTERNAL"}}`, 500)
-						return
-					}
-					w.WriteHeader(201)
-					io.WriteString(w, gitInstanceResponse())
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID && r.Method == "GET":
-					io.WriteString(w, gitInstanceResponse())
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens" && r.Method == "POST":
-					tokens++
-					pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
-					if err != nil || pending.EndpointID != testEndpointID || r.Header.Get("Idempotency-Key") != "" {
-						t.Error("Token target not persisted before POST")
-					}
-					if failure == "token" {
-						b, _ := io.ReadAll(r.Body)
-						bodies = append(bodies, string(b))
-						var request authclient.CreateTokenRequest
-						_ = json.Unmarshal(b, &request)
-						keys = append(keys, request.RequestID)
-					}
-					if failure == "token" && tokens == 1 {
-						http.Error(w, `{"error":{"code":"INTERNAL"}}`, 500)
-						return
-					}
-					w.WriteHeader(201)
-					io.WriteString(w, tokenCreateResponse())
-				default:
-					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
-					http.NotFound(w, r)
-				}
-			}))
-			defer server.Close()
-			env := newTestEnv(t, server.URL)
-			pendingPath = env.pendingPath
-			saveTestCredential(t, server.URL, env.credentialsPath, "usr_git")
-			args := []string{"create", "my-repo"}
-			if code, _, diag := runGitManagement(args); code != 1 {
-				t.Fatalf("first code=%d diag=%s", code, diag)
-			}
-			store := authclient.NewFilePendingCommandStore(env.pendingPath)
-			pending, err := store.Load()
-			if err != nil || pending.Command != "git.create" || !reflect.DeepEqual(pending.Args, args) {
-				t.Fatalf("invalid Git intent: %v", err)
-			}
-			var out, diag bytes.Buffer
-			before := creates + tokens
-			if code := runSQLite(context.Background(), args, strings.NewReader(""), &out, &diag); code != 1 || creates+tokens != before || !strings.Contains(diag.String(), "tiana git 'create'") {
-				t.Fatalf("SQLite resumed Git intent: %d %s", code, &diag)
-			}
-			after, err := store.Load()
-			if err != nil || !reflect.DeepEqual(pending, after) {
-				t.Fatal("SQLite changed Git intent")
-			}
-			code, result, diagnostics := runGitManagement(args)
-			if code != 0 || !strings.Contains(result, "tiana://"+testEndpointID+".db.example.test/repo.git") || !strings.Contains(result, "Token: "+testToken) {
-				t.Fatalf("resume code=%d diag=%s", code, diagnostics)
-			}
-			if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] || (failure == "token" && (creates != 1 || bodies[0] != bodies[1])) || (failure == "instance" && tokens != 1) {
-				t.Fatal("retry changed identity or duplicated creation")
-			}
-			if _, err := store.Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
-				t.Fatal("pending not removed")
-			}
-			if len(loadStoredTokens(t, env.tokensPath)) != 1 {
-				t.Fatal("token not saved")
-			}
-		})
-	}
-}
-
 func TestGitCreateRefusesSQLitePending(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected request: %s", r.URL)
@@ -335,7 +241,7 @@ func TestGitCreateUnavailableEngine(t *testing.T) {
 }
 
 func TestGitCreateResumeRejectsChangedMetadata(t *testing.T) {
-	for _, change := range []string{"engine", "endpoint"} {
+	for _, change := range []string{"engine", "identity"} {
 		t.Run(change, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != "GET" || r.URL.Path != "/api/v1/instances/"+testInstanceID {
@@ -347,7 +253,7 @@ func TestGitCreateResumeRejectsChangedMetadata(t *testing.T) {
 				if change == "engine" {
 					body = sqliteInstanceResponse()
 				} else {
-					body = strings.ReplaceAll(body, testEndpointID, "ep-00000000000000000000000000")
+					body = strings.ReplaceAll(body, testInstanceID, "inst_other")
 				}
 				io.WriteString(w, body)
 			}))
@@ -355,7 +261,7 @@ func TestGitCreateResumeRejectsChangedMetadata(t *testing.T) {
 			env := newTestEnv(t, server.URL)
 			saveTestCredential(t, server.URL, env.credentialsPath, "usr_git")
 			store := authclient.NewFilePendingCommandStore(env.pendingPath)
-			pending := authclient.PendingCommand{Command: "git.create", Args: []string{"create", "my-repo"}, Origin: server.URL, UserID: "usr_git", InstanceID: testInstanceID, EndpointID: testEndpointID, IdempotencyKey: "instance-key", TokenIdempotencyKey: "token-key", TokenRequestID: "request-id", ExpiresAt: -1, Step: "token"}
+			pending := authclient.PendingCommand{Command: "git.create", Args: []string{"create", "my-repo"}, Origin: server.URL, UserID: "usr_git", InstanceID: testInstanceID, IdempotencyKey: "instance-key"}
 			if err := store.Save(pending); err != nil {
 				t.Fatal(err)
 			}
@@ -396,105 +302,5 @@ func TestGitInteractiveAndEmptyList(t *testing.T) {
 	saveTestCredential(t, server.URL, env.credentialsPath, "usr_git")
 	if code, result, diag := runGitManagement([]string{"list"}); code != 0 || result != "No Git repositories found.\n" {
 		t.Fatalf("code=%d out=%s diag=%s", code, result, diag)
-	}
-}
-
-func TestGitCreateAcceptedOperationRecovery(t *testing.T) {
-	for _, mode := range []string{"success", "interrupted", "not-visible", "failed", "wrong-operation", "running"} {
-		t.Run(mode, func(t *testing.T) {
-			creates, tokens, polls, gets := 0, 0, 0, 0
-			completed := false
-			var pendingPath string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case r.URL.Path == "/api/v1/app-types":
-					io.WriteString(w, appTypesResponse("git"))
-				case r.URL.Path == "/api/v1/instances" && r.Method == "POST":
-					creates++
-					w.WriteHeader(202)
-					fmt.Fprintf(w, `{"instance_id":%q,"operation_id":"17"}`, testInstanceID)
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID && r.Method == "GET":
-					gets++
-					if mode == "not-visible" && gets <= 2 {
-						w.WriteHeader(404)
-						io.WriteString(w, `{"error":{"code":"INSTANCE_NOT_FOUND"}}`)
-						return
-					}
-					if completed {
-						io.WriteString(w, strings.TrimSuffix(gitInstanceResponse(), "}")+`,"creation_operation_id":"17"}`)
-					} else {
-						fmt.Fprintf(w, `{"id":%q,"display_name":"my-repo","engine":"git","creation_operation_id":"17","product_state":"CREATING"}`, testInstanceID)
-					}
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/operations/17" && r.Method == "GET":
-					polls++
-					pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
-					if err != nil || pending.InstanceID != testInstanceID || pending.Step != "instance" || pending.OperationID != "" {
-						t.Error("accepted instance not persisted separately from Token recovery")
-					}
-					if mode == "interrupted" && polls == 1 {
-						http.Error(w, `{"error":{"code":"UNAVAILABLE"}}`, 503)
-						return
-					}
-					state, op := "success", "17"
-					if mode == "running" && polls == 1 {
-						state = "running"
-					}
-					if mode == "failed" {
-						state = "failed"
-					}
-					if mode == "wrong-operation" {
-						op = "18"
-					}
-					completed = state == "success" && op == "17"
-					fmt.Fprintf(w, `{"instance_id":%q,"operation_id":%q,"kind":"CREATE_INSTANCE","state":%q}`, testInstanceID, op, state)
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens" && r.Method == "POST":
-					if !completed {
-						t.Error("Token before successful creation")
-					}
-					tokens++
-					w.WriteHeader(201)
-					io.WriteString(w, tokenCreateResponse())
-				default:
-					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
-					http.NotFound(w, r)
-				}
-			}))
-			defer server.Close()
-			env := newTestEnv(t, server.URL)
-			pendingPath = env.pendingPath
-			saveTestCredential(t, server.URL, env.credentialsPath, "usr_git")
-			args := []string{"create", "my-repo"}
-			code, out, diag := runGitManagement(args)
-			if mode == "interrupted" || mode == "not-visible" {
-				if code != 1 || tokens != 0 {
-					t.Fatalf("first code=%d tokens=%d", code, tokens)
-				}
-				code, out, diag = runGitManagement(args)
-				if mode == "not-visible" {
-					if code != 1 {
-						t.Fatalf("second code=%d", code)
-					}
-					saved, err := authclient.NewFilePendingCommandStore(env.pendingPath).Load()
-					if err != nil || saved.InstanceID != testInstanceID {
-						t.Fatal("transient read discarded accepted creation")
-					}
-					code, out, diag = runGitManagement(args)
-				}
-			}
-			if mode == "failed" || mode == "wrong-operation" {
-				if code != 1 || tokens != 0 || out != "" {
-					t.Fatalf("failure code=%d tokens=%d", code, tokens)
-				}
-				pending, err := authclient.NewFilePendingCommandStore(env.pendingPath).Load()
-				if err != nil || pending.InstanceID != testInstanceID || pending.Step != "instance" {
-					t.Fatal("lost accepted creation")
-				}
-			} else if code != 0 || tokens != 1 || !strings.Contains(out, "tiana://") {
-				t.Fatalf("code=%d tokens=%d diag=%s", code, tokens, diag)
-			}
-			if creates != 1 || polls == 0 || gets == 0 {
-				t.Fatalf("creates=%d polls=%d gets=%d", creates, polls, gets)
-			}
-		})
 	}
 }

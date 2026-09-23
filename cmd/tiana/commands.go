@@ -44,7 +44,7 @@ func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, 
 	// db is deliberately not registered, including as a hidden alias. Reject
 	// its old --help form as well, without parsing or echoing the trailing args.
 	if len(args) > 0 && args[0] == "db" {
-		fmt.Fprintln(diagnostics, "tiana: db has been removed; use tiana sqlite create/list/show/tokens for SQLite instances")
+		fmt.Fprintln(diagnostics, "tiana: db has been removed; use tiana sqlite create/list/show for SQLite instances")
 		return 2
 	}
 	cmd := newCLICommand(input, output, diagnostics, sqlAction)
@@ -216,8 +216,9 @@ func configureCommandErrors(cmd *cli.Command) {
 }
 
 func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction sqlCommandAction) *cli.Command {
-	create := &cli.Command{Name: "create", Usage: "Create a SQLite instance and its first Token", ArgsUsage: "NAME",
-		Description: "NAME is required as a positional argument. The sqlite engine is fixed.",
+	create := &cli.Command{Name: "create", Usage: "Submit SQLite instance creation", ArgsUsage: "NAME",
+		Flags:       []cli.Flag{createWaitOption()},
+		Description: "NAME is required as a positional argument. The sqlite engine is fixed. Returns after acceptance by default; -w/--wait waits for creation success. Never creates a Token.",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() > 1 {
 				return argumentFailure(ctx, cmd, "the database name was provided more than once")
@@ -229,7 +230,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			if strings.TrimSpace(name) == "" {
 				return argumentFailure(ctx, cmd, "a database name is required")
 			}
-			o := createOptions{input: authclient.CreateInstanceRequest{DisplayName: name, Engine: "sqlite", Config: map[string]interface{}{}}, nonInteractive: false}
+			o := createOptions{wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: name, Engine: "sqlite", Config: map[string]interface{}{}}, nonInteractive: false}
 			return statusError(executeSQLiteCreate(ctx, o, leafArguments(cmd), output, diagnostics))
 		}}
 	list := &cli.Command{Name: "list", Usage: "List SQLite instances only", Description: "An interactive terminal pages the results; otherwise all pages are printed once.", Flags: nil,
@@ -249,23 +250,6 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			}
 			return statusError(executeSQLiteShow(ctx, showOptions{reference: cmd.Args().First(), branch: cmd.String("branch"), urlOnly: cmd.Bool("url"), nonInteractive: false}, output, diagnostics))
 		}}
-	tokens := &cli.Command{Name: "tokens", Usage: "Manage SQLite InstanceTokens", Action: groupAction, Commands: []*cli.Command{
-		{Name: "create", Usage: "Create an InstanceToken for a SQLite instance", ArgsUsage: "INSTANCE", Description: "On success, stdout contains only the raw Token; metadata is written to stderr.",
-			Flags: []cli.Flag{branchOption(), stringOption("name", "Token name", "cli"), stringOption("expiration", "never or a positive duration with s/m/h/d/w", "never")},
-			Action: func(ctx context.Context, cmd *cli.Command) error {
-				if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
-					return argumentFailure(ctx, cmd, "one instance ID or name is required")
-				}
-				if positionalWasTrimmed(cmd, cmd.Args().First()) {
-					return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
-				}
-				if strings.TrimSpace(cmd.String("name")) == "" {
-					return argumentFailure(ctx, cmd, "Token name cannot be empty")
-				}
-				o := tokensCreateOptions{reference: cmd.Args().First(), branch: cmd.String("branch"), name: cmd.String("name"), expiration: cmd.String("expiration"), nonInteractive: false}
-				return statusError(executeSQLiteTokensCreate(ctx, o, leafArguments(cmd), output, diagnostics))
-			}},
-	}}
 	branches := &cli.Command{Name: "branch", Usage: "Manage SQLite branches", Action: groupAction, Commands: []*cli.Command{
 		newBranchMutationCommand("create", input, output, diagnostics),
 		newBranchMutationCommand("delete", input, output, diagnostics),
@@ -276,13 +260,13 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			return statusError(executeSQLiteBranchesList(ctx, cmd.Args().First(), cmd.String("after"), cmd.String("search"), output, diagnostics))
 		}},
 	}}
-	commands := []*cli.Command{create, list, show, newInstanceDeleteCommand(input, output, diagnostics, sqliteManagementScope), branches, tokens, newSQLCommand(sqlAction)}
+	commands := []*cli.Command{create, list, show, newInstanceDeleteCommand(input, output, diagnostics, sqliteManagementScope), branches, newSQLCommand(sqlAction)}
 	return &cli.Command{Name: "sqlite", Usage: "Manage SQLite instances and execute SQL", Description: "Use an MGR instance ID, not an ep-... Endpoint ID. Name lookup requires MGR display_name support. SQL uses native sdk-go with verified TLS; no SQL replay. --atomic is unavailable.", Action: groupAction, Commands: commands}
 }
 
 func newSQLCommand(action sqlCommandAction) *cli.Command {
 	flags := []cli.Flag{
-		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; uses TIANA_TOKEN or a saved endpoint Token", ""),
+		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; uses TIANA_TOKEN/TIANA_TOKEN_FILE or account login", ""),
 		branchOption(),
 		stringOption("format", "table, json, ndjson or csv", "table"),
 		stringOption("output", "Exclusively create a private result file", ""),
@@ -292,7 +276,7 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 		&cli.BoolFlag{Name: "atomic", Hidden: true, Local: true},
 	}
 	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "[INSTANCE | --endpoint ENDPOINT]",
-		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR. Direct mode cannot use INSTANCE or --branch. TIANA_TOKEN takes priority; otherwise select a saved Token by instance or endpoint_id. Missing Tokens must be created explicitly.",
+		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR. Direct mode cannot use INSTANCE or --branch. Use TIANA_TOKEN or TIANA_TOKEN_FILE when set; otherwise use the logged-in account access token. Missing login is an error.",
 		Flags:       flags, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.IsSet("atomic") {
 				return argumentFailure(ctx, cmd, "--atomic is unavailable until SQLite grammar equivalence is verified")

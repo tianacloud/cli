@@ -83,9 +83,6 @@ func TestCreatePositionalNameAndFixedEngine(t *testing.T) {
 						} else {
 							io.WriteString(w, sqliteInstanceResponse())
 						}
-					case "/api/v1/instances/" + testInstanceID + "/endpoints/" + testEndpointID + "/tokens":
-						w.WriteHeader(http.StatusCreated)
-						io.WriteString(w, tokenCreateResponse())
 					default:
 						t.Errorf("unexpected request: %s", r.URL.Path)
 						w.WriteHeader(404)

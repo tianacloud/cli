@@ -23,18 +23,16 @@ func isHelp(args []string) bool {
 // duplicate resource.
 func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authclient.PendingCommand) {
 	fmt.Fprintln(errorOutput, "tiana: an unfinished database operation must be completed first")
-	if pending.Command == "git.create" {
+	switch pending.Command {
+	case "git.create":
 		fmt.Fprintf(errorOutput, "Finish the Git operation with:\n  tiana git %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
-		if path != "" {
-			fmt.Fprintf(errorOutput, "Pending record: %s\nDo not delete it while the result is unknown.\n", safeDisplay(path))
-		}
-		return
-	}
-	if len(pending.Args) > 0 {
-		fmt.Fprintf(errorOutput, "For a SQLite operation, finish it with:\n  tiana sqlite %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
+	case "db.create":
+		fmt.Fprintf(errorOutput, "Finish the SQLite operation with:\n  tiana sqlite %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
+	default:
+		fmt.Fprintln(errorOutput, "The pending operation is not supported by this CLI.")
 	}
 	if path != "" {
-		fmt.Fprintf(errorOutput, "Pending record: %s\nDo not delete it while the result is unknown. Non-SQLite operations require a compatible older CLI.\n", safeDisplay(path))
+		fmt.Fprintf(errorOutput, "Pending record: %s\nDo not delete it while the result is unknown.\n", safeDisplay(path))
 	}
 }
 

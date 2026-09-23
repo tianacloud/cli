@@ -48,28 +48,27 @@ plain HTTPS selects Git's normal HTTP transport instead.
 
 | Environment | Purpose |
 | --- | --- |
-| `TIANA_TOKEN_FILE` | Optional owned regular 0600 token file, at most 49 bytes including optional LF/CRLF; no symlink or special file. |
-| `TIANA_TOKEN` | Optional opaque InstanceToken; mutually exclusive with token file. |
-| `TIANA_INSTANCE_TOKENS_FILE` | Optional local JSON store path; defaults to the SDK configuration path. Read only when both explicit Token sources are unset. |
-| `TIANA_MGR_ORIGIN` | Optional environment filter for saved Tokens; falls back to `TIANA_AUTH_ORIGIN`. No MGR request is made. |
+| `TIANA_TOKEN_FILE` | Optional owned regular 0600 token file, at most 512 credential bytes plus optional LF/CRLF; no symlink or special file. |
+| `TIANA_TOKEN` | Optional opaque connection credential; mutually exclusive with token file. |
+| `TIANA_MGR_ORIGIN` | Management origin selecting the account session; falls back to `TIANA_AUTH_ORIGIN`. No MGR request is made. |
 | `TIANA_CA_FILE` | Deployment CA PEM, regular file, at most 64 KiB / 8 certificates. |
 | `TIANA_GATEWAY_ADDRESS` | Optional physical host:port override; preserves Endpoint identity. |
 
-When neither explicit source is set, match the canonical remote `endpoint_id`
-against saved InstanceTokens. Within the configured origin (or all origins if
-unset), require one unique origin/tenant/instance scope. Select its newest usable
-Token with the SDK's 30-second expiry skew and legacy timestamp support. Invalid
-explicit sources, corrupt/unsafe stores and ambiguous scopes fail before CONNECT.
-No account credential read, MGR lookup, credential prompt or store mutation occurs.
-Missing/expired saved Tokens preserve unauthenticated access to auth-disabled
-Endpoints; Gateway applies auth policy where required. Rejection never retries
-with another Token or with no Token. The user must select a trusted deployment
-hostname; endpoint_id matching is not a deployment-domain allowlist.
+When neither explicit source is set, read the current management origin's
+access token from `credentials.json` (`TIANA_CREDENTIALS_FILE` overrides its path).
+The account token must be present and unexpired; otherwise run `tiana login`.
+No implicit login, refresh, anonymous access or credential prompt occurs.
+Invalid explicit input fails without falling back. No InstanceToken cache is
+read or maintained. Gateway rejection never retries with another credential.
+Only connect to a trusted deployment Endpoint; hostname validation is not a
+deployment-domain allowlist.
 
-To use the saved Token store, unset both explicit sources before cloning:
+To use the account session:
 
 ```sh
 unset TIANA_TOKEN TIANA_TOKEN_FILE
+export TIANA_MGR_ORIGIN=https://console.example.test
+tiana login
 git clone tiana://ep-00000000000000000000000000.git.example.test/repo.git
 ```
 

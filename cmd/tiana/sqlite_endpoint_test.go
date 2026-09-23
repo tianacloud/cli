@@ -222,19 +222,23 @@ func TestSQLiteDirectEndpointShellAndScript(t *testing.T) {
 	}
 }
 
-func TestSQLiteDirectEndpointUsesLocalTokenWithoutMGR(t *testing.T) {
+func TestSQLiteDirectEndpointUsesAccountWithoutMGR(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", "")
 	if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TIANA_MGR_ORIGIN", "")
+	t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
 	t.Setenv("TIANA_AUTH_ORIGIN", "")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
 	t.Setenv("TIANA_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "absent-account"))
-	_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", EndpointID: "ep-01j5c9m7q2v8x4k6n3r0t1w2yz", TokenID: "one", Token: sqlitepeer.Token, ExpiresAt: -1, SavedAt: time.Now()})
-	if err != nil {
+	if err := os.WriteFile(path, []byte("broken legacy cache"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	accountPath := filepath.Join(t.TempDir(), "credentials.json")
+	t.Setenv("TIANA_CREDENTIALS_FILE", accountPath)
+	if e := authclient.NewFileStore(accountPath, "https://mgr.example.test").Save(authclient.Credential{AccessToken: sqlitepeer.Token, RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); e != nil {
+		t.Fatal(e)
 	}
 	before, err := os.ReadFile(path)
 	if err != nil {
@@ -259,8 +263,7 @@ func TestSQLiteDirectEndpointUsesLocalTokenWithoutMGR(t *testing.T) {
 func TestSQLiteDirectEndpointExplicitTokenNeverFallsBack(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
-	_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", EndpointID: strings.SplitN(sqlitepeer.Endpoint, ".", 2)[0], TokenID: "one", Token: sqlitepeer.Token, ExpiresAt: -1})
-	if err != nil {
+	if err := os.WriteFile(path, []byte("broken legacy cache"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range []string{"", "PRIVATE_TOKEN_SECRET\nvalue"} {

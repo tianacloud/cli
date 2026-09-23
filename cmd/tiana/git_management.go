@@ -42,8 +42,9 @@ func newGitCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 }
 
 func newGitCreateCommand(output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "create", Usage: "Create a Git instance and its first Token", ArgsUsage: "NAME",
-		Description: "NAME is required as a positional argument. The git engine is fixed.",
+	return &cli.Command{Name: "create", Usage: "Submit Git instance creation", ArgsUsage: "NAME",
+		Flags:       []cli.Flag{createWaitOption()},
+		Description: "NAME is required as a positional argument. The git engine is fixed. Returns after acceptance by default; -w/--wait waits for creation success. Never creates a Token.",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() > 1 {
 				return argumentFailure(ctx, cmd, "the repository name was provided more than once")
@@ -55,7 +56,7 @@ func newGitCreateCommand(output, diagnostics io.Writer) *cli.Command {
 			if strings.TrimSpace(name) == "" {
 				return argumentFailure(ctx, cmd, "a repository name is required")
 			}
-			options := createOptions{input: authclient.CreateInstanceRequest{DisplayName: name, Engine: "git", Config: map[string]interface{}{}}}
+			options := createOptions{wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: name, Engine: "git", Config: map[string]interface{}{}}}
 			return statusError(executeInstanceCreate(ctx, options, leafArguments(cmd), output, diagnostics, gitManagementScope))
 		},
 	}

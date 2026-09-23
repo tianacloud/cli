@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
 // CreateInstanceWithReceipt accepts both a legacy Instance response and MGR's
-// asynchronous creation receipt. Callers persist ID before observing completion.
+// asynchronous creation receipt. A queued MGR job may not have a Control
+// operation ID yet. Callers persist the receipt before reporting acceptance.
 func (c *Client) CreateInstanceWithReceipt(ctx context.Context, input CreateInstanceRequest, requestID string) (Instance, error) {
 	if strings.TrimSpace(requestID) == "" {
 		return Instance{}, errors.New("request_id is required")
@@ -18,6 +18,7 @@ func (c *Client) CreateInstanceWithReceipt(ctx context.Context, input CreateInst
 		Instance
 		AcceptedID  string `json:"instance_id"`
 		OperationID string `json:"operation_id"`
+		JobID       uint64 `json:"job_id"`
 	}
 	input.RequestID = requestID
 	status, err := c.DoJSON(ctx, http.MethodPost, "/api/v1/instances", input, nil, &response)
@@ -25,32 +26,13 @@ func (c *Client) CreateInstanceWithReceipt(ctx context.Context, input CreateInst
 		return Instance{}, err
 	}
 	if status == http.StatusAccepted {
-		if response.AcceptedID == "" || response.OperationID == "" {
+		if strings.TrimSpace(response.AcceptedID) == "" || (strings.TrimSpace(response.OperationID) == "" && response.JobID == 0) {
 			return Instance{}, errors.New("invalid instance creation receipt; retry with the same command")
 		}
-		response.Instance = Instance{ID: response.AcceptedID, CreationOperationID: response.OperationID}
+		response.Instance = Instance{ID: response.AcceptedID, CreationOperationID: response.OperationID, CurrentJobID: response.JobID}
 	}
 	if response.Instance.ID == "" {
 		return Instance{}, errors.New("instance creation response has no ID; retry with the same command")
 	}
 	return response.Instance, nil
-}
-
-type InstanceOperation struct {
-	InstanceID  string `json:"instance_id"`
-	OperationID string `json:"operation_id"`
-	Kind        string `json:"kind"`
-	State       string `json:"state"`
-}
-
-func (c *Client) GetInstanceOperation(ctx context.Context, instanceID, operationID string) (InstanceOperation, error) {
-	var result InstanceOperation
-	_, err := c.DoJSON(ctx, http.MethodGet, "/api/v1/instances/"+url.PathEscape(instanceID)+"/operations/"+url.PathEscape(operationID), nil, nil, &result)
-	if err != nil {
-		return InstanceOperation{}, err
-	}
-	if result.InstanceID != instanceID || result.OperationID != operationID || result.Kind != "CREATE_INSTANCE" {
-		return InstanceOperation{}, errors.New("creation operation does not match the requested instance")
-	}
-	return result, nil
 }

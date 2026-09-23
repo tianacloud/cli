@@ -521,3 +521,185 @@ Regression checks cover exact targets, parent/default selection, product scope,
 protected/root rejection, private errors, bad receipts, no retry on 5xx, pending
 conflicts, terminal yes/no/cancel and nonterminal refusal; full race/vet and builds.
 Preserve all prior uncommitted status/verify-install changes. No commit/push.
+
+## Stateless connection credentials and asynchronous instance creation
+
+This decision supersedes earlier local InstanceToken selection/cache instructions.
+The CLI must never create, load, maintain or remove instance-tokens.json, including
+paths supplied by the obsolete TIANA_INSTANCE_TOKENS_FILE variable. Existing files
+are left untouched. Explicit sqlite tokens create delivers the secret only on
+stdout; it retains secret-free operation recovery but performs no local Token save.
+
+SQLite shell (instance and direct endpoint), connect and Git remote-helper share
+one credential resolver. TIANA_TOKEN and TIANA_TOKEN_FILE are mutually exclusive
+explicit overrides. Presence, including an empty value, prevents account fallback;
+invalid/unsafe input fails closed. Otherwise read credentials.json for the selected
+management origin (TIANA_MGR_ORIGIN, legacy TIANA_AUTH_ORIGIN) with the existing SDK
+account store. A valid unexpired access token is required; no connection-triggered
+login/refresh, candidate request, anonymous retry or credential prompt is allowed.
+Explicit files are owned regular 0600, no symlinks/special files, at most 512 token
+bytes plus one LF/CRLF. The 512-byte limit matches helper control-frame decoding.
+Missing/expired account sessions instruct users to run tiana login. Existing login,
+management refresh, origin isolation and credential-file security remain intact.
+The account token is sent only as the outer Gateway CONNECT credential; native
+client argv/env and SQL must never contain it. TLS verification is unchanged.
+
+Both sqlite/git create return after the accepted creation receipt; do not issue a
+first Token, inspect endpoints or poll jobs. Persist the request identity before
+POST and instance/operation receipt before stdout. On unknown outcomes reuse the
+original request ID; on output failure recover the receipt without another POST.
+Add optional creation_operation_id to the existing secret-free pending format,
+separate from the legacy Token operation_id. Delete the pending record only after
+successful receipt output and check cleanup errors. Preserve records belonging to
+another command, origin or account. Old create records in the Token step or with
+an unresolved Token operation are refused unchanged for manual investigation,
+not silently discarded or resumed with another Token request. Rollback must not
+resume an unresolved new creation record in an older auto-Token-issuing binary.
+
+Account fallback deliberately performs bounded local reads only, avoiding network
+latency/refresh writes before CONNECT. The tradeoff is that an expired session
+requires explicit login. Gateway retains authorization/revocation enforcement;
+users must choose a trusted deployment Endpoint. No automatic legacy-file deletion
+or cache migration occurs. SDK public cache APIs are unchanged; CLI no longer calls
+them. Verify explicit precedence and failure, origin separation, missing/expired
+sessions, file security, unchanged legacy/account files, no credential leak, no
+create polling/Token request, stable unknown-outcome retries and receipt recovery.
+Run race tests, vet, source scan, macOS/Linux builds and available native fixtures.
+
+### Queued creation receipts (2026-09-23)
+
+MGR can acknowledge a durable instance-create job before Control assigns an
+operation ID. Its HTTP 202 response contains instance_id, positive uint64 job_id,
+and an empty/omitted operation_id. Requiring operation_id incorrectly reported
+failure after resource reservation. Accept a nonempty instance_id plus either a
+positive job_id or a nonempty operation_id; reject missing trackers and invalid
+job types/ranges. Preserve legacy operation-only and synchronous Instance replies.
+
+Map receipt job_id to Instance.CurrentJobID and persist it separately as optional
+creation_job_id, never as the legacy Token job_id (which indicates an unresolved
+Token step). Print job and/or operation identities exactly, without polling or
+Token creation. A persisted job-only receipt is complete enough for local output
+recovery: do not query metadata or resubmit POST. Existing records left by the
+old parser keep their original request_id; retry the identical command so MGR's
+tenant-scoped idempotency returns the same instance, not a name-based lookup/new
+request. Never delete an unknown-outcome record to force creation. Preserve all
+prior stateless-token work; no commit/push without authorization.
+
+Verify MGR-compatible queued/submitted/legacy formats, exact uint64 values,
+invalid/missing IDs, both products, stdout failure recovery without extra network
+requests, and old rejected-receipt recovery using the original request identity.
+No MGR/Control data or schema changes; one optional field in CLI's existing atomic
+pending store. Older CLI binaries do not understand this job-only receipt; retain
+the updated CLI until its pending receipt is delivered. No additional network
+calls, retry loop or persistent secret is introduced.
+
+### Opt-in create waiting (2026-09-23)
+
+Git/SQLite create accept -w/--wait; default remains asynchronous. Exclude only
+these flags before -- from saved command args, preserving the positional separator
+and literal names. Flag spelling/position does not change a mutation's identity;
+interrupted preexisting async receipts may be resumed with --wait. After a receipt
+was successfully delivered and cleared, another create is a new request, not a
+name-based resume. Never infer identity from display name.
+
+Poll GET /api/v1/jobs/{creation_job_id} once per second using SDK account auth and
+cancellable timers. No total wait limit; Ctrl-C exits 130 without cancelling the
+server job. Bind every returned job to its ID, instance, instance_create kind and
+original request ID. Fail stops with nonzero status; no automatic retry mutation.
+Current MGR transactionally removes successful jobs, so 404 requires reading the
+original immutable instance and verifying engine, matching known operation ID and
+ACTIVE product state with no deletion underway. Complete/retry_completed also
+requires this check. Pending/unknown product state is not success; missing or
+malformed resources and API errors fail closed. Legacy no-job receipts are checked
+once: only an already ACTIVE instance is success, otherwise --wait is unsupported.
+Never request a Token or emit raw peer error details.
+
+Keep the existing atomic pending receipt and exclusive lock until final successful
+output; polling failures, interruption and output errors preserve recovery IDs.
+The lock serializes other local mutations for the duration of waiting, avoiding
+receipt overwrite; read-only commands remain usable. This introduces no persistent
+schema change beyond the preceding creation_job_id field. Repeating without --wait
+can acknowledge/clear an accepted receipt without claiming provisioning success.
+Rollback restores asynchronous behavior while preserving receipt interpretation.
+
+Verify flags/alias/false/boundaries, default no polling, pending→running→removed or
+complete→ACTIVE, terminal fail, missing/mismatched/unknown replies, uint64 job IDs,
+API error, timer/HTTP cancellation and resume without another POST or Token call.
+Run full race/vet/scans/builds and binary help smoke. Prior stateless-token and
+job-receipt fixes remain uncommitted; no commit/push is authorized by this task.
+
+### Remove SQLite Token command (2026-09-23)
+
+User explicitly requires complete removal without Token-command compatibility.
+Remove sqlite tokens and its handler/flow, issuing/query API wrappers, Token result
+and request models, expiration parsing/formatting, Token-only request ID generation,
+and all dedicated legacy pending fields/step checks/recovery guidance. Do not add
+a token alias or compatibility adapter. Keep Job/GetJob for instance create --wait
+in a separate job.go. Pending state contains only instance-creation request and
+receipt fields; no Token issuing or recovery state remains.
+
+Keep explicit TIANA_TOKEN/TIANA_TOKEN_FILE and account access-token connection auth,
+Git/SQLite create --wait and branch operations. Keep generic prevention of replacing
+an unrelated pending mutation, without interpreting or migrating old Token records.
+No automatic user-file deletion or server-side token revocation is part of command
+removal. Old issuing commands/configuration are unsupported; rollback requires the
+prior source, not a new compatibility layer.
+
+Verify removed commands reject without requests/writes, no Token-specific symbols
+or routes remain in production code, unsupported pending commands fail generically,
+and create recovery/wait/branch/shell regression tests pass. Full race/vet/scans,
+macOS/Linux builds and working-binary help checks; no global install/commit/push.
+
+
+### SQLite branch creation waiting (2026-09-23)
+
+Add -w/--wait to branch create only; default asynchronous acceptance and branch
+mutation identity semantics remain unchanged. MGR forwards branch creation to
+Control and returns operation_id, not an instance-create job_id. Query the existing
+instance operation API every second, using SDK account auth, bound to the receipt's
+instance/operation, CREATE_BRANCH kind and immutable parent. Pending/running/
+retry_wait continue; success requires a valid child identity distinct from its
+parent. Failed, malformed/unknown state, 404 and transport/API errors fail closed;
+do not infer success from a branch name or replay mutation. Keep IDs as strings
+without floating-point conversion. Peer result/error details are not printed.
+
+No total timeout. Cancellable timers and requests make Ctrl-C exit 130 without
+cancelling the remote operation. Print the receipt before polling and include its
+identities on observation failure. Branch create remains non-resumable with no
+new local persistence or server idempotency guarantee; document that re-running
+create is not a safe resume. Existing pending lock remains held while waiting,
+serializing local writes but leaving reads available. No data-plane, storage,
+SDK dependency or server changes. Rollback removes the flag only. Preserve all
+prior uncommitted work; do not commit/push without explicit authorization.
+
+Validate default/false/short/long flags, custom parent, pending/running/retry_wait
+through success, failed/missing/malformed/mismatched operations, HTTP and timer
+cancellation, zero automatic mutation replay, rejected delete wait, full race/vet,
+public-source scanning and native/Linux builds. Real deployment is a separate check.
+
+
+### Deletion waiting (2026-09-23)
+
+Git/SQLite instance delete and SQLite branch delete accept -w/--wait; this
+supersedes the earlier branch-delete wait restriction. Default asynchronous
+behavior, terminal confirmation, -f, protected/default-branch rejection and
+product/immutable-target validation remain. Use the existing accepted operation
+receipt and public operation API, not a new mutation, job or name lookup.
+Poll once per second, binding instance ID, operation ID, DELETE_INSTANCE or
+DELETE_BRANCH kind and, for a branch, its immutable ID. Pending/running/retry_wait
+continue; only success completes; failed, 404, malformed/unknown states and other
+API errors stop with nonzero status. Never infer success from absence. Print the
+receipt before observation and fail if receipt/completion output cannot be written.
+
+Cancellation exits 130 without cancelling server work; no total timeout. Preserve
+the existing mutation lock while waiting, serializing local writes but allowing
+reads. No new pending format, local recovery file, automatic DELETE replay, SQL
+or data-plane changes. This waits for the server deletion operation; separate
+reclamation operations may continue, so do not claim physical storage reclamation.
+No server/SDK changes; rollback removes opt-in flags, with no persistence migration.
+
+Test all three commands' aliases/false/default, confirmation requirements, bound
+operation/branch identities, failure/unknown/404/malformed replies, progress states,
+HTTP and timer cancellation, no mutation replay and stdout failure. Retain prior
+creation waiting tests and run full race/vet/source scan/native and Linux builds.
+Previous uncommitted changes and pending timestamp request remain untouched.

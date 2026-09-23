@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/testutil/sqlitepeer"
@@ -20,7 +19,7 @@ import (
 func TestSQLiteBranchCommandsSelectChildEndpoint(t *testing.T) {
 	child := "ep-1abcdefghjkmnpqrstvwxyz012"
 	name := "开发 + %_ /&= "
-	lists, details, posts := 0, 0, 0
+	lists, details := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/instances/" + testInstanceID:
@@ -38,10 +37,6 @@ func TestSQLiteBranchCommandsSelectChildEndpoint(t *testing.T) {
 		case "/api/v1/instances/" + testInstanceID + "/branches/child":
 			details++
 			io.WriteString(w, sqliteBranchResponse(testInstanceID, "child", name, child))
-		case "/api/v1/instances/" + testInstanceID + "/endpoints/" + child + "/tokens":
-			posts++
-			w.WriteHeader(http.StatusCreated)
-			io.WriteString(w, strings.ReplaceAll(tokenCreateResponse(), testEndpointID, child))
 		default:
 			t.Errorf("wrong branch request=%s", r.URL)
 			http.NotFound(w, r)
@@ -56,41 +51,28 @@ func TestSQLiteBranchCommandsSelectChildEndpoint(t *testing.T) {
 	}{
 		{[]string{"show", testInstanceID, "--branch", name, "--url"}, "https://" + child + ".db.example.test\n"},
 		{[]string{"branch", "list", testInstanceID, "--after", "main", "--search", "开发"}, "Next cursor: child"},
-		{[]string{"tokens", "create", testInstanceID, "--branch", name}, testToken + "\n"},
 	} {
 		var out, diag bytes.Buffer
 		if code := runSQLite(context.Background(), tc.args, strings.NewReader(""), &out, &diag); code != 0 || !strings.Contains(out.String(), tc.want) {
 			t.Fatalf("args=%v code=%d diagnostics=%s", tc.args, code, &diag)
 		}
 	}
-	records := loadStoredTokens(t, env.tokensPath)
-	for _, record := range records {
-		if record.EndpointID != child {
-			t.Fatal("wrong saved endpoint")
-		}
+	if _, err := os.Stat(env.tokensPath); !os.IsNotExist(err) {
+		t.Fatal("unexpected Token cache")
 	}
-	if len(records) != 1 {
-		t.Fatalf("wrong saved target: count=%d", len(records))
-	}
-	if lists != 3 || details != 2 || posts != 1 {
-		t.Fatalf("list=%d detail=%d post=%d", lists, details, posts)
+	if lists != 2 || details != 1 {
+		t.Fatalf("list=%d detail=%d", lists, details)
 	}
 }
 
 func TestSQLiteShellBranchTokenSelection(t *testing.T) {
-	for _, mode := range []string{"saved-child", "saved-default-only", "explicit"} {
+	for _, mode := range []string{"account", "explicit"} {
 		t.Run(mode, func(t *testing.T) {
 			child := "ep-1abcdefghjkmnpqrstvwxyz012"
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/v1/auth/transactions/whoami":
 					io.WriteString(w, `{"user":{"user_id":"usr_branch","tenant_id":"tenant","email":"branch@example.test"}}`)
-				case "/api/v1/instances/" + testInstanceID + "/endpoints/" + child + "/credential-candidates":
-					if mode == "saved-child" {
-						io.WriteString(w, `{"token_ids":["`+child+`"]}`)
-					} else {
-						io.WriteString(w, `{"token_ids":[]}`)
-					}
 				case "/api/v1/instances/" + testInstanceID:
 					io.WriteString(w, sqliteInstanceResponse())
 				case "/api/v1/instances/" + testInstanceID + "/branches":
@@ -110,16 +92,8 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 			saveTestCredential(t, server.URL, env.credentialsPath, "usr_branch")
 			t.Setenv("TIANA_TOKEN", "")
 			os.Unsetenv("TIANA_TOKEN")
-			store := authclient.NewFileInstanceTokenStore(env.tokensPath, server.URL)
 			sameValue := "tia_" + strings.Repeat("A", 43)
-			for _, ep := range []string{testEndpointID, child} {
-				if mode == "saved-default-only" && ep == child {
-					continue
-				}
-				if _, err := store.Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: testInstanceID, EndpointID: ep, TokenID: ep, Token: sameValue, ExpiresAt: authclient.InstanceTokenNoExpiry}); err != nil {
-					t.Fatal(err)
-				}
-			}
+			os.WriteFile(env.tokensPath, []byte("broken legacy cache"), 0600)
 			if mode == "explicit" {
 				t.Setenv("TIANA_TOKEN", sameValue)
 				os.WriteFile(env.tokensPath, []byte("corrupt"), 0600)
@@ -140,22 +114,15 @@ func TestSQLiteShellBranchTokenSelection(t *testing.T) {
 						return resolveSQLite(ctx, ref, o.branch, ni, &diag)
 					}, &config)
 				})
-				if mode == "saved-default-only" {
-					if code != 2 || dials.Load() != 0 || !strings.Contains(diag.String(), `--branch 'development'`) {
-						t.Fatalf("code=%d dials=%d diag=%s", code, dials.Load(), &diag)
-					}
-				} else if code != 3 || dials.Load() != 1 {
+				if code != 3 || dials.Load() != 1 {
 					t.Fatalf("code=%d dials=%d diag=%s", code, dials.Load(), &diag)
 				}
 			}
-			if mode == "saved-child" {
-				for _, ep := range []string{testEndpointID, child} {
-					v, err := store.LookupCandidates("tenant", []string{ep}, time.Now())
-					if err != nil || v.EndpointID != ep {
-						t.Fatalf("lookup target=%s err=%v", ep, err)
-					}
-				}
+
+			if data, e := os.ReadFile(env.tokensPath); e != nil || (string(data) != "broken legacy cache" && string(data) != "corrupt") {
+				t.Fatal("legacy cache modified")
 			}
+
 		})
 	}
 }

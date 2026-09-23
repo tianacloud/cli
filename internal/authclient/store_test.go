@@ -52,36 +52,11 @@ func TestDefaultStoresPersistLocally(t *testing.T) {
 			if got, err := reopened.Load(); err != nil || got.AccessToken != credential.AccessToken {
 				t.Fatalf("reload credential: %v", err)
 			}
-			tokens, err := NewInstanceTokenStore(origin)
-			if err != nil {
-				t.Fatal(err)
-			}
-			location, err := tokens.Save(InstanceTokenCredential{TenantID: "tenant", InstanceID: "instance", TokenID: "token", Token: "secret"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if location != filepath.Join(directory, "instance-tokens.json") {
-				t.Fatalf("token location = %q", location)
-			}
-			contents, err = os.ReadFile(location)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var savedTokens instanceTokenFile
-			if err := json.Unmarshal(contents, &savedTokens); err != nil {
-				t.Fatal(err)
-			}
-			if savedTokens.Tokens[origin+"|tenant|token"].Token != "secret" {
-				t.Fatal("instance token was not saved locally")
-			}
 			if err := reopened.Delete(); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Load(); !errors.Is(err, ErrCredentialNotFound) {
 				t.Fatalf("credential remains after logout: %v", err)
-			}
-			if _, err := os.Stat(location); err != nil {
-				t.Fatalf("logout removed instance tokens: %v", err)
 			}
 		})
 	}

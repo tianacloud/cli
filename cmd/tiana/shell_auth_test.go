@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/testutil/sqlitepeer"
 )
@@ -28,14 +27,6 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 				requests++
 				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/auth/transactions/whoami" {
 					io.WriteString(w, `{"user":{"user_id":"usr_auto","tenant_id":"tenant","email":"auto@example.test"}}`)
-					return
-				}
-				if r.Method == http.MethodPost && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/credential-candidates" {
-					if mode == "missing" {
-						io.WriteString(w, `{"token_ids":[]}`)
-					} else {
-						io.WriteString(w, `{"token_ids":["one"]}`)
-					}
 					return
 				}
 				if r.Method == http.MethodGet && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/branches/main" {
@@ -59,10 +50,7 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 			env := newTestEnv(t, server.URL)
 			saveTestCredential(t, server.URL, env.credentialsPath, "usr_auto")
 			if mode != "missing" {
-				_, err := authclient.NewFileInstanceTokenStore(env.tokensPath, server.URL).Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: testInstanceID, EndpointID: testEndpointID, TokenID: "one", Token: "tia_" + strings.Repeat("A", 43), ExpiresAt: authclient.InstanceTokenNoExpiry})
-				if err != nil {
-					t.Fatal(err)
-				}
+				os.WriteFile(env.tokensPath, []byte("broken legacy cache"), 0600)
 			}
 			if mode == "explicit" {
 				t.Setenv("TIANA_TOKEN", "tia_"+strings.Repeat("A", 43))
@@ -79,7 +67,7 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 				return resolveSQLite(ctx, ref, "", ni, &diag)
 			}, &config)
 			want := 3
-			if mode == "missing" || mode == "empty-explicit" {
+			if mode == "empty-explicit" {
 				want = 2
 			}
 			if mode == "denied" {
@@ -88,7 +76,7 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 			if status != want || strings.Contains(diag.String(), "SECRET_INVALID") {
 				t.Fatalf("status=%d diagnostics=%s", status, &diag)
 			}
-			if (mode == "saved" || mode == "explicit" || mode == "opaque-explicit") != (dials.Load() == 1) {
+			if (mode == "saved" || mode == "missing" || mode == "explicit" || mode == "opaque-explicit") != (dials.Load() == 1) {
 				t.Fatalf("wrong dial count: %d", dials.Load())
 			}
 			if mode == "empty-explicit" && requests != 0 {

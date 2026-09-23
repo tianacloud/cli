@@ -90,7 +90,7 @@ func TestNativeGitOverConnect(t *testing.T) {
 	var denied, reset, stall atomic.Bool
 	started := make(chan struct{}, 1)
 	var expectedToken atomic.Value
-	expectedToken.Store("")
+	expectedToken.Store("Bearer account-secret")
 	repository := filepath.Join(dir, "repo.git")
 	run := func(env []string, args ...string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -169,7 +169,12 @@ func TestNativeGitOverConnect(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 	localStore := filepath.Join(dir, "instance-tokens.json")
-	env := append(append([]string{}, baseEnv...), "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
+	accountPath := filepath.Join(dir, "credentials.json")
+	if err := authclient.NewFileStore(accountPath, "https://mgr.example.test").Save(authclient.Credential{AccessToken: "account-secret", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+
+	env := append(append([]string{}, baseEnv...), "TIANA_MGR_ORIGIN=https://mgr.example.test", "TIANA_CREDENTIALS_FILE="+accountPath, "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
 	url := "tiana://" + hostname + ":" + strings.Split(server.Listener.Addr().String(), ":")[1] + "/repo.git"
 	must := func(args ...string) string {
 		t.Helper()
@@ -240,8 +245,10 @@ func TestNativeGitOverConnect(t *testing.T) {
 	// A saved Token must reach the real CONNECT header without MGR or a
 	// credential prompt. Explicit env/file sources below override this Token.
 	savedToken := "tia_" + strings.Repeat("B", 42) + "A"
-	_, err = authclient.NewFileInstanceTokenStore(localStore, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "git-one", TokenID: "one", EndpointID: strings.SplitN(hostname, ".", 2)[0], Token: savedToken, ExpiresAt: -1})
-	if err != nil {
+	if err = authclient.NewFileStore(accountPath, "https://mgr.example.test").Save(authclient.Credential{AccessToken: savedToken, RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(localStore, []byte("broken legacy cache"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	beforeStore, err := os.ReadFile(localStore)
@@ -301,11 +308,14 @@ func TestNativeGitOverConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	rejectBeforeConnect(append(append([]string{}, env...), "TIANA_TOKEN_FILE="+fifo))
-	rejectBeforeConnect(append(append([]string{}, env...), "TIANA_TOKEN=invalid"))
+	rejectBeforeConnect(append(append([]string{}, env...), "TIANA_TOKEN="))
+	if e := authclient.NewFileStore(accountPath, "https://mgr.example.test").Save(authclient.Credential{AccessToken: "account-secret", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); e != nil {
+		t.Fatal(e)
+	}
 	if err := os.Remove(localStore); err != nil {
 		t.Fatal(err)
 	}
-	expectedToken.Store("")
+	expectedToken.Store("Bearer account-secret")
 	reset.Store(true)
 	before = calls.Load()
 	out, err = run(env, "ls-remote", url)
@@ -353,7 +363,7 @@ func TestNativeGitOverConnect(t *testing.T) {
 	}
 	stall.Store(false)
 
-	expectedToken.Store("")
+	expectedToken.Store("Bearer account-secret")
 	withoutCA := []string{}
 	for _, v := range env {
 		if !strings.HasPrefix(v, "TIANA_CA_FILE=") {

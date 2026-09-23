@@ -30,7 +30,7 @@ func TestBuiltinActualTurso(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		name := "explicit"
 		if local {
-			name = "local"
+			name = "account"
 		}
 		t.Run(name, func(t *testing.T) { testBuiltinActualTurso(t, local) })
 	}
@@ -91,14 +91,13 @@ func testBuiltinActualTurso(t *testing.T, local bool) {
 		if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("TIANA_MGR_ORIGIN", "")
-		t.Setenv("TIANA_AUTH_ORIGIN", "")
-		path := filepath.Join(t.TempDir(), "tokens.json")
-		t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
-		_, err := authclient.NewFileInstanceTokenStore(path, "https://mgr.example.test").Save(authclient.InstanceTokenCredential{TenantID: "tenant", InstanceID: "sqlite-one", TokenID: "one", EndpointID: strings.SplitN(cfg.Endpoint, ".", 2)[0], Token: builtinTestToken, ExpiresAt: -1})
-		if err != nil {
+		t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+		path := filepath.Join(t.TempDir(), "credentials.json")
+		t.Setenv("TIANA_CREDENTIALS_FILE", path)
+		if err := authclient.NewFileStore(path, "https://mgr.example.test").Save(authclient.Credential{AccessToken: builtinTestToken, RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
+
 	}
 	var output, diag bytes.Buffer
 	s := NewSupervisor(compiledBuiltinTestLauncher{cliPath})

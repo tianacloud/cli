@@ -14,8 +14,8 @@ import (
 
 func newInstanceDeleteCommand(input io.Reader, output, diagnostics io.Writer, scope databaseScope) *cli.Command {
 	return &cli.Command{Name: "delete", Usage: "Delete an instance", ArgsUsage: "INSTANCE",
-		Description: "Delete the entire instance, including its branches and data. Accepts an ID or exact name. Requires terminal confirmation unless --force is set. Success means MGR accepted asynchronous deletion.",
-		Flags:       []cli.Flag{&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}},
+		Description: "Delete the entire instance, including its branches and data. Accepts an ID or exact name. Requires terminal confirmation unless --force is set. By default success means asynchronous acceptance; -w/--wait waits for the deletion operation to succeed.",
+		Flags:       []cli.Flag{deleteWaitOption(), &cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")
@@ -23,12 +23,12 @@ func newInstanceDeleteCommand(input io.Reader, output, diagnostics io.Writer, sc
 			if positionalWasTrimmed(cmd, cmd.Args().First()) {
 				return argumentFailure(ctx, cmd, "use -- before the instance name to preserve surrounding whitespace")
 			}
-			return statusError(executeInstanceDelete(ctx, cmd.Args().First(), cmd.Bool("force"), input, output, diagnostics, scope))
+			return statusError(executeInstanceDelete(ctx, cmd.Args().First(), cmd.Bool("force"), cmd.Bool("wait"), input, output, diagnostics, scope))
 		},
 	}
 }
 
-func executeInstanceDelete(ctx context.Context, reference string, force bool, input io.Reader, output, diagnostics io.Writer, scope databaseScope) int {
+func executeInstanceDelete(ctx context.Context, reference string, force, wait bool, input io.Reader, output, diagnostics io.Writer, scope databaseScope) int {
 	if !force && !isTerminal(input) {
 		fmt.Fprintln(diagnostics, "tiana: deletion requires terminal confirmation; use --force (-f) for non-interactive deletion")
 		return 2
@@ -38,7 +38,7 @@ func executeInstanceDelete(ctx context.Context, reference string, force bool, in
 		writeCommandError(diagnostics, err)
 		return 1
 	}
-	// Serialize with create/token commands and preserve unresolved intents. MGR
+	// Serialize with other mutation commands and preserve unresolved intents. MGR
 	// durably deduplicates deletion by immutable instance ID; no new local schema.
 	store, err := newPendingStore()
 	if err != nil {
@@ -112,7 +112,13 @@ func executeInstanceDelete(ctx context.Context, reference string, force bool, in
 		}
 		return 1
 	}
-	fmt.Fprintf(output, "Deletion accepted: instance=%s operation=%s\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID))
+	if _, err := fmt.Fprintf(output, "Deletion accepted: instance=%s operation=%s\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID)); err != nil {
+		fmt.Fprintln(diagnostics, "tiana: deletion accepted but cannot write receipt; inspect the result before retrying")
+		return 1
+	}
+	if wait {
+		return reportDeletionWait(ctx, client, receipt.InstanceID, receipt.OperationID, "DELETE_INSTANCE", "", output, diagnostics)
+	}
 	return 0
 }
 

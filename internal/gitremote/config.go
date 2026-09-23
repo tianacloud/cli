@@ -1,6 +1,7 @@
 package gitremote
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -10,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 
@@ -71,50 +71,14 @@ func configurationWithTrust(repo supervisor.Endpoint, trust *clientconfig.Trust)
 		}
 		c.tls.RootCAs = roots
 	}
-	env, hasEnv := os.LookupEnv("TIANA_TOKEN")
-	path, hasFile := os.LookupEnv("TIANA_TOKEN_FILE")
-	if hasEnv && hasFile {
-		return c, errors.New("choose TIANA_TOKEN or TIANA_TOKEN_FILE, not both")
+	value, err := authclient.ConnectionCredential(context.Background())
+	if err != nil {
+		return c, err
 	}
-	var value []byte
-	defer func() { clear(value) }()
-	if hasEnv {
-		value = []byte(env)
-	} else if hasFile {
-		var err error
-		value, err = readRegular(path, 129, true)
-		if err != nil {
-			return c, errors.New("token file must be owned regular mode 0600, at most 129 bytes, without symlinks")
-		}
-		if len(value) > 0 && value[len(value)-1] == '\n' {
-			value = value[:len(value)-1]
-			if len(value) > 0 && value[len(value)-1] == '\r' {
-				value = value[:len(value)-1]
-			}
-		}
-	} else {
-		storePath := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
-		if storePath == "" {
-			var err error
-			storePath, err = authclient.DefaultInstanceTokenPath()
-			if err != nil {
-				return c, err
-			}
-		}
-		credential, err := authclient.LookupEndpointToken(storePath, authclient.DefaultOrigin(), repo.ID(), time.Now())
-		if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
-			// Preserve access to auth-disabled Endpoints when no usable Token is
-			// saved. This is decided before dialing, never as an auth retry.
-			return c, nil
-		}
-		if err != nil {
-			return c, err
-		}
-		value = []byte(credential.Token)
-	}
+	defer clear(value)
 	token, err := supervisor.ParseToken(value)
 	if err != nil {
-		return c, errors.New("invalid InstanceToken")
+		return c, errors.New("invalid connection credential")
 	}
 	c.token = token
 	return c, nil

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func sqliteInstanceResponse() string {
 }
 
 func TestSQLiteManagementHelpAndArguments(t *testing.T) {
-	for _, command := range [][]string{{"create"}, {"list"}, {"show"}, {"tokens"}, {"tokens", "create"}} {
+	for _, command := range [][]string{{"create"}, {"list"}, {"show"}} {
 		t.Run(strings.Join(command, "-"), func(t *testing.T) {
 			var out, diag bytes.Buffer
 			args := append(append([]string{}, command...), "--help")
@@ -45,7 +46,7 @@ func TestSQLiteManagementHelpAndArguments(t *testing.T) {
 
 func TestSQLiteManagementRejectsOtherEngines(t *testing.T) {
 	for _, engine := range []string{"git", "sqld", ""} {
-		for _, command := range [][]string{{"show", testInstanceID, "--url"}, {"tokens", "create", testInstanceID}} {
+		for _, command := range [][]string{{"show", testInstanceID, "--url"}} {
 			t.Run(engine+strings.Join(command, "-"), func(t *testing.T) {
 				writes := 0
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -119,108 +120,7 @@ func TestSQLiteInteractiveListRetainsServerPagination(t *testing.T) {
 	}
 }
 
-func TestSQLiteCreateResumesWithLegacyPendingKey(t *testing.T) {
-	for _, args := range [][]string{{"create", "sqlite-db"}, {"create", "SQLite name with 'quotes'"}, {"create", "--", " SQLite name with spaces "}} {
-		t.Run(fmt.Sprint(args), func(t *testing.T) {
-			creates, tokens := 0, 0
-			var keys, bodies []string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case r.URL.Path == "/api/v1/app-types":
-					io.WriteString(w, appTypesResponse("sqlite", "git"))
-				case r.URL.Path == "/api/v1/instances" && r.Method == http.MethodPost:
-					creates++
-					var request authclient.CreateInstanceRequest
-					if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Engine != "sqlite" {
-						t.Errorf("wrong create: %+v %v", request, err)
-					}
-					w.WriteHeader(http.StatusCreated)
-					io.WriteString(w, sqliteInstanceResponse())
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID && r.Method == http.MethodGet:
-					io.WriteString(w, sqliteInstanceResponse())
-				case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens":
-					tokens++
-					body, _ := io.ReadAll(r.Body)
-					bodies = append(bodies, string(body))
-					var request authclient.CreateTokenRequest
-					_ = json.Unmarshal(body, &request)
-					keys = append(keys, request.RequestID)
-					if tokens == 1 {
-						w.WriteHeader(500)
-						io.WriteString(w, `{"error":{"code":"INTERNAL","message":"temporary"}}`)
-						return
-					}
-					w.WriteHeader(http.StatusCreated)
-					io.WriteString(w, tokenCreateResponse())
-				default:
-					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-					http.NotFound(w, r)
-				}
-			}))
-			defer server.Close()
-			env := newTestEnv(t, server.URL)
-			saveTestCredential(t, server.URL, env.credentialsPath, "usr_sqlite")
-			invoke := func() int {
-				var out, diag bytes.Buffer
-				return runSQLite(context.Background(), args, strings.NewReader(""), &out, &diag)
-			}
-			if code := invoke(); code != 1 {
-				t.Fatalf("first code=%d", code)
-			}
-			pending, err := authclient.NewFilePendingCommandStore(env.pendingPath).Load()
-			if err != nil || pending.Command != "db.create" || !sameStrings(pending.Args, args) {
-				t.Fatalf("legacy pending identity changed: %+v %v", pending, err)
-			}
-			if code := invoke(); code != 0 {
-				t.Fatalf("resume code=%d", code)
-			}
-			if creates != 1 || tokens != 2 || keys[0] == "" || keys[0] != keys[1] || bodies[0] != bodies[1] {
-				t.Fatal("resume changed request identity or created a duplicate")
-			}
-			if _, err := authclient.NewFilePendingCommandStore(env.pendingPath).Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
-				t.Fatalf("pending=%v", err)
-			}
-		})
-	}
-}
-
-func TestSQLiteTokenResumeChecksEngineAndPreservesLegacyIntent(t *testing.T) {
-	for _, command := range []string{"db.create", "db.tokens.create"} {
-		t.Run(command, func(t *testing.T) {
-			writes := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet {
-					writes++
-					http.Error(w, "write", 500)
-					return
-				}
-				fmt.Fprintf(w, `{"id":%q,"engine":"git"}`, testInstanceID)
-			}))
-			defer server.Close()
-			env := newTestEnv(t, server.URL)
-			saveTestCredential(t, server.URL, env.credentialsPath, "usr_sqlite")
-			args := []string{"create", "sqlite-db"}
-			if command == "db.tokens.create" {
-				args = []string{"tokens", "create", testInstanceID}
-			}
-			store := authclient.NewFilePendingCommandStore(env.pendingPath)
-			pending := authclient.PendingCommand{Command: command, Args: args, Origin: server.URL, UserID: "usr_sqlite", InstanceID: testInstanceID, IdempotencyKey: "instance-key", TokenIdempotencyKey: "token-key", TokenRequestID: "request-id", ExpiresAt: authclient.InstanceTokenNoExpiry, Step: "token"}
-			if err := store.Save(pending); err != nil {
-				t.Fatal(err)
-			}
-			var out, diag bytes.Buffer
-			if code := runSQLite(context.Background(), args, strings.NewReader(""), &out, &diag); code != 1 || !strings.Contains(diag.String(), "engine must be sqlite") {
-				t.Fatalf("code=%d error=%s", code, &diag)
-			}
-			after, err := store.Load()
-			if err != nil || after.TokenIdempotencyKey != pending.TokenIdempotencyKey || after.InstanceID != pending.InstanceID || writes != 0 {
-				t.Fatalf("intent lost or mutation sent: err=%v writes=%d", err, writes)
-			}
-		})
-	}
-}
-
-func TestSQLiteManagementShowAndTokenSuccess(t *testing.T) {
+func TestSQLiteManagementShowSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/instances/"+testInstanceID+"/branches/main" {
 			io.WriteString(w, sqliteBranchResponse(testInstanceID, "main", "production", testEndpointID))
@@ -230,9 +130,6 @@ func TestSQLiteManagementShowAndTokenSuccess(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v1/instances/"+testInstanceID && r.Method == http.MethodGet:
 			io.WriteString(w, sqliteInstanceResponse())
-		case r.URL.Path == "/api/v1/instances/"+testInstanceID+"/endpoints/"+testEndpointID+"/tokens" && r.Method == http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			io.WriteString(w, tokenCreateResponse())
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -247,15 +144,14 @@ func TestSQLiteManagementShowAndTokenSuccess(t *testing.T) {
 		want string
 	}{
 		{[]string{"show", testInstanceID, "--url"}, "https://" + testEndpointID + ".db.example.test\n"},
-		{[]string{"tokens", "create", testInstanceID}, testToken + "\n"},
 	} {
 		var out, diag bytes.Buffer
 		if code := runSQLite(context.Background(), test.args, strings.NewReader(""), &out, &diag); code != 0 || out.String() != test.want {
 			t.Fatalf("args=%v code=%d error=%s; output mismatch=%t", test.args, code, &diag, out.String() != test.want)
 		}
 	}
-	if tokens := loadStoredTokens(t, env.tokensPath); len(tokens) != 1 {
-		t.Fatal("Token was not persisted")
+	if _, err := os.Stat(env.tokensPath); !os.IsNotExist(err) {
+		t.Fatal("unexpected Token cache")
 	}
 }
 

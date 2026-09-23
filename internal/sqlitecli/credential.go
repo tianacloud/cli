@@ -79,7 +79,7 @@ func ReadToken(kind, value string, input io.Reader) (*tiana.Token, *Error) {
 		text = strings.TrimSuffix(strings.TrimSuffix(text, "\n"), "\r")
 	}
 	if text == "" {
-		return nil, inputError("TIANA_TOKEN is empty; unset it to use a saved InstanceToken")
+		return nil, inputError("TIANA_TOKEN is empty; unset it to use the signed-in account access token")
 	}
 	token, err := tiana.NewToken(text)
 	if err != nil {

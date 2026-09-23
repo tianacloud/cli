@@ -9,6 +9,3 @@ type clientMetadata struct {
 type credentialFile struct {
 	Credentials map[string]Credential `json:"credentials"`
 }
-type instanceTokenFile struct {
-	Tokens map[string]InstanceTokenCredential `json:"tokens"`
-}

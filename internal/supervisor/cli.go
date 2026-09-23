@@ -240,7 +240,7 @@ func Usage() string {
 		"Tiana reads the canonical Endpoint from Turso's native replica URL and replaces only that locator with the local tunnel URL.\n" +
 		"SQLD/libSQL defaults to the bounded local HTTP classifier; --profile hrana-http|hrana-websocket selects one reviewed profile.\n" +
 		"Credential sources: --token-env NAME, --token-file PATH, or --token-stdin.\n" +
-		"Defaults to TIANA_TOKEN; when unset, prompts with hidden input in an interactive terminal. --non-interactive disables prompting.\n" +
+		"Defaults to TIANA_TOKEN / TIANA_TOKEN_FILE, otherwise the account access token; no credential prompt. --non-interactive remains an internal option.\n" +
 		"Gateway TLS verifies the Endpoint hostname. Use --ca-file PATH or TIANA_CA_FILE for a deployment CA.\n" + debugHelp +
 		"Raw --token values are forbidden. Non-locator native arguments after -- are passed unchanged.\n"
 }

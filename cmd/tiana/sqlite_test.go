@@ -102,7 +102,7 @@ func TestSQLiteCommandExecWithoutHelper(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	// No helper path or install is configured; this exercises the native branch.
 	resolve := func(_ context.Context, ref string, nonInteractive bool) (sqliteResolution, error) {
-		if ref != "db" || nonInteractive {
+		if ref != "db" || !nonInteractive {
 			t.Error("wrong resolution arguments")
 		}
 		return sqliteResolution{instance: authclient.Instance{Engine: "sqlite", Connection: &authclient.InstanceConnection{Hostname: "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"}}}, nil

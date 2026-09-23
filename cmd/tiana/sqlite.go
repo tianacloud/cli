@@ -160,24 +160,26 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 		defer outputFile.Close()
 		output = outputFile
 	}
-	var token *tiana.Token
 	var e *sqlitecli.Error
-	rawToken, explicitToken := os.LookupEnv("TIANA_TOKEN")
-	if o.endpoint != "" && explicitToken && rawToken == "" {
-		fmt.Fprintln(diagnostics, "tiana: TIANA_TOKEN is empty; set a valid Token or unset it to use a saved InstanceToken")
+	rawToken, credentialErr := authclient.ConnectionCredential(ctx)
+	if credentialErr != nil {
+		if ctx.Err() != nil {
+			return 130
+		}
+		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(credentialErr.Error()))
 		return 2
 	}
-	if explicitToken {
-		token, e = sqlitecli.ReadTokenContext(ctx, "env", "TIANA_TOKEN", nil)
-		if e != nil {
-			return emit(e)
-		}
+	token, tokenErr := tiana.NewToken(string(rawToken))
+	clear(rawToken)
+	if tokenErr != nil {
+		fmt.Fprintln(diagnostics, "tiana: invalid connection credential")
+		return 2
 	}
 	endpoint, port := o.endpoint, o.port
 	var instance authclient.Instance
 	var resolution sqliteResolution
 	if endpoint == "" {
-		resolution, err = resolve(ctx, o.reference, o.nonInteractive)
+		resolution, err = resolve(ctx, o.reference, true)
 		if err != nil {
 			if ctx.Err() != nil {
 				return emit(&sqlitecli.Error{Code: "INTERRUPTED", Message: "interrupted before SQL was sent", Outcome: "not_sent", ExitCode: 130})
@@ -192,67 +194,7 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 			return 2
 		}
 	}
-	if !explicitToken {
-		endpointID := instance.EndpointID
-		if endpointID == "" {
-			endpointID = strings.SplitN(endpoint, ".", 2)[0]
-		}
-		var credential authclient.InstanceTokenCredential
-		if o.endpoint != "" {
-			path := strings.TrimSpace(os.Getenv("TIANA_INSTANCE_TOKENS_FILE"))
-			if path == "" {
-				path, err = authclient.DefaultInstanceTokenPath()
-			}
-			if err == nil {
-				credential, err = authclient.LookupEndpointToken(path, authclient.DefaultOrigin(), endpointID, time.Now())
-			}
-		} else {
-			store, storeErr := newInstanceTokenStore()
-			if storeErr != nil {
-				fmt.Fprintln(diagnostics, "tiana: cannot open local InstanceToken store")
-				return 2
-			}
-			if resolution.client == nil {
-				fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
-				return 2
-			}
-			session, sessionErr := resolution.client.CurrentSession(ctx)
-			if sessionErr != nil {
-				fmt.Fprintln(diagnostics, "tiana: cannot resolve current tenant")
-				return 1
-			}
-			ids, candidateErr := store.CandidateIDs(session.TenantID, time.Now())
-			if candidateErr != nil {
-				fmt.Fprintln(diagnostics, "tiana:", safeDisplay(candidateErr.Error()))
-				return 2
-			}
-			eligible, authorizeErr := resolution.client.CredentialCandidates(ctx, instance.ID, endpointID, ids)
-			if authorizeErr != nil {
-				fmt.Fprintln(diagnostics, "tiana: cannot authorize local InstanceToken candidates")
-				return 1
-			}
-			credential, err = store.LookupCandidates(session.TenantID, eligible, time.Now())
-		}
-		if err != nil {
-			if errors.Is(err, authclient.ErrInstanceTokenNotFound) && o.endpoint != "" {
-				fmt.Fprintln(diagnostics, "tiana: no usable local InstanceToken for endpoint; set TIANA_TOKEN or explicitly create/save a Token for this endpoint")
-			} else if errors.Is(err, authclient.ErrInstanceTokenNotFound) {
-				command := "tiana sqlite tokens create " + quoteCommandArgs([]string{instance.ID})
-				if o.branch != "" {
-					command += " --branch " + quoteCommandArgs([]string{o.branch})
-				}
-				fmt.Fprintf(diagnostics, "tiana: no usable local InstanceToken; run %s or set TIANA_TOKEN\n", command)
-			} else {
-				fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
-			}
-			return 2
-		}
-		token, err = tiana.NewToken(credential.Token)
-		if err != nil {
-			fmt.Fprintln(diagnostics, "tiana: invalid saved InstanceToken; create a replacement explicitly")
-			return 2
-		}
-	}
+
 	if config == nil {
 		resolved := sqlitecli.SDKConfig(endpoint, port, token, roots, o.timeout)
 		config = &resolved
