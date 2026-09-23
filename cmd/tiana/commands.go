@@ -153,22 +153,8 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			{Name: "version", Usage: "Print version", Action: printVersion},
 			{Name: "login", Usage: "Sign in through a browser", Description: "Sign in or create an account. The CLI prints a URL and waits for approval.", Action: noArgs(runLogin)},
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Action: noArgs(runLogout)},
-			{Name: "whoami", Usage: "Show the signed-in account", Action: noArgs(runWhoami)},
-			{Name: "verify-install", Usage: "Verify the built-in or embedded helper", Action: func(ctx context.Context, cmd *cli.Command) error {
-				if cmd.NArg() != 0 {
-					return argumentFailure(ctx, cmd, "verify-install does not accept arguments")
-				}
-				launcher, mode, err := resolveHelperLauncher()
-				if err == nil {
-					err = supervisor.VerifyHelper(ctx, launcher)
-				}
-				if err != nil {
-					fmt.Fprintln(diagnostics, "tiana: trusted helper is unavailable")
-					return statusError(1)
-				}
-				fmt.Fprintf(output, "tiana installation verified: version=%s helper-contract=%d mode=%s\n", version, supervisor.HelperContractVersion, mode)
-				return nil
-			}},
+			{Name: "status", Usage: "Show login status and tenant quota", Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status.", Action: noArgs(runStatus)},
+
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
 			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
 				Description: "Arguments after -- belong to the native client and are passed unchanged.",
@@ -280,7 +266,9 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 				return statusError(executeSQLiteTokensCreate(ctx, o, leafArguments(cmd), output, diagnostics))
 			}},
 	}}
-	branches := &cli.Command{Name: "branches", Usage: "Inspect SQLite branches", Action: groupAction, Commands: []*cli.Command{
+	branches := &cli.Command{Name: "branch", Usage: "Manage SQLite branches", Action: groupAction, Commands: []*cli.Command{
+		newBranchMutationCommand("create", input, output, diagnostics),
+		newBranchMutationCommand("delete", input, output, diagnostics),
 		{Name: "list", Usage: "List one page of branches", ArgsUsage: "INSTANCE", Flags: []cli.Flag{stringOption("after", "Branch cursor from the previous page", ""), stringOption("search", "Filter branch names by substring", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")

@@ -319,7 +319,7 @@ while retaining the independent helper process and frozen contract-3 framed pipe
 BuiltinHelperLauncher re-executes the current executable (Linux /proc/self/exe),
 never a PATH helper. Embedded release assets retain their existing verified path.
 Normal builds use mode=builtin instead of requiring a trusted installation manifest;
-verify-install probes an actual private HELLO exchange without dialing Gateway.
+connect performs the private HELLO exchange before accepting native traffic.
 The built-in helper owns database bytes; the supervisor still handles only control.
 
 Maintain HELLO/config/credential/BOUND/READY/CHILD_STARTED/SERVING ordering. Bind
@@ -437,3 +437,87 @@ and read-only behavior. Exercise missing-store prompt cancellation through a PTY
 full CLI with built-in helper, actual Turso + compiled helper over synthetic TLS
 Gateway, full race/vet/source scan and macOS/Linux builds. Preserve all earlier
 uncommitted work; no real deployment access or commit/push required.
+
+
+## Removal of the installation verification command
+
+User requested removing verify-install. Remove its CLI registration, dedicated
+probe and success/help test. Reject the old command and help path as unknown;
+normal connect still performs HELLO negotiation and all existing helper trust,
+version, TLS and lifecycle checks. No credential or data-plane contract changes.
+Release/install scripts must not invoke the removed command: retain checksums,
+architecture checks and --version startup smoke, with helper negotiation exercised
+by connect and integration tests. The version smoke alone does not prove a helper
+session works. Documentation uses --version/--help for inspecting the CLI.
+
+This is a deliberate public CLI removal; external automation must stop calling
+verify-install. Rollback restores the command and scripts with no persisted-state
+migration. Verify command rejection, help absence, existing connect tests, shell
+script syntax and packaging regressions; run full race/vet, public-source scan
+and macOS/Linux builds. Do not alter previous token command rollback or publish
+without a new explicit request.
+
+
+## Account status and tenant quota
+
+User requested replacing whoami with status. Remove the old CLI command; retain
+SDK Whoami solely as the account API. status uses noninteractive SDK auth/refresh,
+never starts browser login, and requests the authenticated tenant usage summary
+at GET /api/v1/usage?page=1&page_size=1 after successful account verification.
+The tenant comes from the server session; no tenant override or instance-count
+inference from the detail page. Latest MGR main db947c3 routes/application and
+usage projection were checked read-only; decimal-string uint64 counters and
+Unix-millisecond timestamps follow the contracts MGRUsage projection. No private
+module import or new SDK dependency. The local knowledge checkout is not edited.
+
+Print available account email/name/username and compute/storage-byte/instance used and
+limit, UTC period, blocked/reason and last update. Preserve uint64 precision and
+zero limits; nullable storage/update values render unknown. Reject missing required
+counters/limits rather than pretending they are zero. Decode only summary fields,
+ignore detail pages and secrets, and apply terminal escaping to server strings.
+No data-plane access, resource mutation, usage reset or forced recalculation is
+requested. SDK refresh may update account credentials; InstanceTokens and pending
+operation files are not read. Existing MGR usage reads may queue a server-side
+quota check for blocked tenants; status makes no explicit mutation request.
+
+Missing login prints Not signed in plus login guidance, exit 1. Account/network
+errors do not become a false logged-out claim. Quota failure retains retrieved
+account information, prints Quota: unavailable and exits 1; quota blockage itself
+is a successfully retrieved status (exit 0). This handles older servers without
+the usage route honestly. Standard --ca-file/TIANA_CA_FILE applies to both reads.
+No persistent format changes; rollback restores whoami and removes status.
+Validate canonical/removed help, no automatic login, partial failures/redaction,
+null vs zero, uint64 maximum, blocked state, malformed data and custom CA, plus
+full race/vet/source scans and macOS/Linux builds. Preserve pending verify-install
+removal and the prior token/list rollback. No commit/push without user request.
+
+User-requested display refinement: omit Signed in as, User ID, Management and
+Tenant lines from status. Keep account validation and tenant-scoped quota requests
+unchanged; test both successful and partial-failure output for omitted fields.
+
+## SQLite branch mutations
+
+Rename branches to branch without an alias, preserving list pagination/search.
+Create INSTANCE NAME [--parent NAME] chooses main by immutable ID when omitted;
+explicit parent and delete names use one exact indexed query. Delete --by-id
+never falls back to a name. Verify instance engine, detail instance ID/branch ID,
+and exact name before pinning an immutable mutation target. Reject empty/unsafe
+path IDs and root/protected deletes. --force skips only terminal confirmation.
+
+Use SDK DoJSON with a stable per-request key, POST branches/{parent}/children
+with {name, ttl_seconds:null}, or DELETE branches/{id}. Require HTTP 202, matching
+instance ID and nonempty operation ID. These receipts mean accepted, not complete.
+MGR/Control branch contracts were checked read-only: MGR reserves child quota,
+Control assigns the child identity. Do not claim branch creation deduplication:
+no automatic transport/5xx retry, polling, or local resume record; SDK may refresh
+once after explicit 401 with the same target/body/key. Unknown creation outcomes
+require checking branch list before any manual retry. Delete retries should use
+original IDs, never a freshly resolved reused name. Keep existing pending lock
+and refuse any outstanding intent without changing it. No persistence schema
+change or local InstanceToken access; parent data, references, atomicity and
+cleanup remain owned by Control. No cascading delete or protection override.
+
+Regression checks cover exact targets, parent/default selection, product scope,
+protected/root rejection, private errors, bad receipts, no retry on 5xx, pending
+conflicts, terminal yes/no/cancel and nonterminal refusal; full race/vet and builds.
+Preserve all prior uncommitted status/verify-install changes. No commit/push.

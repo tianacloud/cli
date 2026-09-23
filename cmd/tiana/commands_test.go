@@ -15,7 +15,7 @@ import (
 )
 
 func TestCommandTreeHelpAndRemovedDatabase(t *testing.T) {
-	for _, path := range []string{"", "login", "logout", "whoami", "version", "verify-install", "sqlite", "sqlite create", "sqlite list", "sqlite show", "sqlite tokens", "sqlite tokens create", "sqlite shell", "connect", "git", "git remote-helper"} {
+	for _, path := range []string{"", "login", "logout", "status", "version", "sqlite", "sqlite create", "sqlite list", "sqlite show", "sqlite branch", "sqlite branch list", "sqlite branch create", "sqlite branch delete", "sqlite tokens", "sqlite tokens create", "sqlite shell", "connect", "git", "git remote-helper"} {
 		t.Run(path, func(t *testing.T) {
 			var out, diag bytes.Buffer
 			args := append(strings.Fields(path), "--help")

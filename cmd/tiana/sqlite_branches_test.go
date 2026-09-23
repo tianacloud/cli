@@ -55,7 +55,7 @@ func TestSQLiteBranchCommandsSelectChildEndpoint(t *testing.T) {
 		want string
 	}{
 		{[]string{"show", testInstanceID, "--branch", name, "--url"}, "https://" + child + ".db.example.test\n"},
-		{[]string{"branches", "list", testInstanceID, "--after", "main", "--search", "开发"}, "Next cursor: child"},
+		{[]string{"branch", "list", testInstanceID, "--after", "main", "--search", "开发"}, "Next cursor: child"},
 		{[]string{"tokens", "create", testInstanceID, "--branch", name}, testToken + "\n"},
 	} {
 		var out, diag bytes.Buffer

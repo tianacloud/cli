@@ -100,6 +100,10 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 
 func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/usage" {
+			io.WriteString(w, testQuotaResponse)
+			return
+		}
 		io.WriteString(w, `{"user":{"user_id":"usr_ca","email":"ca@example.com"}}`)
 	}))
 	defer server.Close()
@@ -109,7 +113,7 @@ func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 	}
 	env := newTestEnv(t, server.URL)
 	saveTestCredential(t, server.URL, env.credentialsPath, "usr_ca")
-	for _, args := range [][]string{{"--ca-file", path, "whoami"}, {"whoami", "--ca-file", path}} {
+	for _, args := range [][]string{{"--ca-file", path, "status"}, {"status", "--ca-file", path}} {
 		var out, diag bytes.Buffer
 		if code := runCLI(context.Background(), args, strings.NewReader(""), &out, &diag); code != 0 || !strings.Contains(out.String(), "ca@example.com") {
 			t.Fatalf("code=%d error=%s", code, &diag)
@@ -132,13 +136,13 @@ func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 	}
 	t.Setenv("TIANA_CA_FILE", path+".missing")
 	var out, diag bytes.Buffer
-	if code := runCLI(context.Background(), []string{"--ca-file", path, "whoami"}, strings.NewReader(""), &out, &diag); code != 0 {
+	if code := runCLI(context.Background(), []string{"--ca-file", path, "status"}, strings.NewReader(""), &out, &diag); code != 0 {
 		t.Fatalf("explicit CA did not override env: %s", &diag)
 	}
 	t.Setenv("TIANA_CA_FILE", path)
 	out.Reset()
 	diag.Reset()
-	if code := runCLI(context.Background(), []string{"whoami"}, strings.NewReader(""), &out, &diag); code != 0 {
+	if code := runCLI(context.Background(), []string{"status"}, strings.NewReader(""), &out, &diag); code != 0 {
 		t.Fatalf("CA env not applied to MGR: %s", &diag)
 	}
 	for _, args := range [][]string{{"--ca-file", path, "sqlite", "shell", "id", "--ca-file", path}, {"sqlite", "shell", "id", "--ca-file="}, {"sqlite", "shell", "id", "--ca-file", path + ".missing"}} {

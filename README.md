@@ -411,12 +411,12 @@ server. Configure --ca-file or TIANA_CA_FILE for a deployment-specific CA.
 
 ## Browser authentication
 
-Commands that manage Tiana resources use a browser-mediated login when no
-local User credential is available:
+Resource management commands use a browser-mediated login when no local User
+credential is available. `status` inspects the session without starting login:
 
 ```sh
 tiana login
-tiana whoami
+tiana status
 tiana sqlite create my-database
 tiana logout
 ```
@@ -588,17 +588,13 @@ SQL and transaction semantics remain the native client/App's responsibility.
 
 普通 Go 构建已包含 helper，无需安装独立 `tiana-helper` 或编译 Rust。
 CLI 以自身二进制启动独立 helper 子进程，保留私有控制管道、Token 隔离、TLS 校验
-和 CONNECT 200 前不发送数据库请求的约束；`verify-install` 会实际握手并报告 `mode=builtin`。
+和 CONNECT 200 前不发送数据库请求的约束；`connect` 启动时执行 helper 握手。
 仍需安装 `turso` 原生客户端；非交互模式继续显式使用 `--allow-unisolated-loopback`。
 内置 helper 不提供比 `loopback_unisolated` 更强的本地访问隔离，也不关闭 TLS 校验。
 
-## Verify installation
+## Check CLI version and commands
 
 ```sh
-tiana verify-install
-# A normal Go build reports: helper-contract=3 mode=builtin
-# A legacy embedded-helper build reports: helper-contract=3 mode=embedded
-
 tiana --version
 tiana --help
 ```
@@ -680,7 +676,7 @@ Git always verifies TLS certificates and hostnames, including builds using
 `--branch` 接受精确分支名称；省略时选择 `branch_id=main`，与默认分支的可变显示名称无关。
 
 ```sh
-tiana sqlite branches list INSTANCE --search preview
+tiana sqlite branch list INSTANCE --search preview
 tiana sqlite show INSTANCE --branch development --url
 tiana sqlite shell INSTANCE --branch development
 tiana sqlite shell INSTANCE --branch development -e 'SELECT 1'
@@ -729,3 +725,58 @@ output private; it is intentionally delivered to the caller.
 The Linux bundle uninstaller validates root ownership, non-writable ancestors
 and all existing intermediate directories before deletion. Symlinked prefixes
 or path components are refused; use a direct trusted installation path.
+
+
+## Account status and quota / 登录与配额状态
+
+`tiana status` replaces `whoami`. It shows the current account (email, name and username when available) and the authenticated
+tenant's compute, storage-byte and instance usage alongside their limits.
+It also shows the quota period in UTC, blocked state/reason and usage timestamp.
+Storage or update times that MGR has not reported are shown as `unknown`;
+zero limits remain zero. Counts retain full uint64 precision.
+
+The command uses the existing account session and SDK refresh, never initiates
+browser login, and does not read InstanceTokens or modify database resources.
+Missing login returns a nonzero status with `tiana login` guidance. If quota is
+unavailable (including older servers without the usage API), account information
+is still printed, quota is marked unavailable and the command returns nonzero.
+The summary reflects MGR's latest reported usage, not a forced refresh.
+
+`status` 替代 `whoami`，显示当前登录账号的邮箱、名称和用户名（如有），以及租户配额：计算量、存储字节数、
+实例数的已用量和上限，以及 UTC 统计周期、受限状态与原因、用量更新时间。
+未知值显示 `unknown`，不会当作 0；不会展示账号或实例 Token。
+未登录时提示执行 `tiana login`，不自动打开浏览器。配额查询失败时保留已取得的
+登录信息，显示 quota unavailable 并返回非零退出码。
+
+## SQLite branch management / SQLite 分支管理
+
+```sh
+tiana sqlite branch list INSTANCE
+tiana sqlite branch create INSTANCE preview
+tiana sqlite branch create INSTANCE preview-child --parent preview
+tiana sqlite branch delete INSTANCE preview
+tiana sqlite branch delete INSTANCE BRANCH_ID --by-id -f
+```
+
+`branch` replaces `branches`. `list` keeps its `--after` and `--search` options.
+Create accepts a new branch name and defaults to the main branch (immutable ID
+`main`); `--parent` selects an exact parent name. The server assigns the child ID;
+creation has no automatic expiry. Names are exact, not substring matches.
+Delete accepts an exact name, or an immutable ID with `--by-id`. Deletion requires
+terminal confirmation unless `--force`/`-f` is used. Default and protected branches
+cannot be deleted; `-f` only skips confirmation and never bypasses protection.
+
+Both operations print an operation ID after HTTP 202 acceptance. Acceptance does
+not mean creation or deletion has finished. Check `branch list` for current state
+before connecting or retrying. A network failure may leave the result unknown;
+the CLI does not automatically replay it. Creation is not guaranteed idempotent
+by this API: do not blindly repeat it. After an uncertain delete, use the printed
+instance and branch IDs with `--by-id`, so a reused name cannot select a new branch.
+Existing unfinished instance/Token operations must be resolved before these writes.
+
+`branch` 替代原 `branches`，保留 `list` 的分页和搜索参数。`create` 默认从主分支创建，
+`--parent` 按父分支完整名称选择；新分支由服务端分配 ID，默认不过期。
+`delete` 按完整名称选择，或通过 `--by-id` 指定不可变 ID；默认需要终端确认，
+`-f` 只跳过确认，不允许绕过主分支或受保护分支的删除限制。
+创建和删除均为异步受理，输出 operation ID 后仍需通过 `branch list` 检查状态。
+结果不明时不会自动重发；创建不保证幂等，不要盲目重复，删除重试应使用原 ID。

@@ -96,6 +96,5 @@ chmod 0444 "$output_parent/git-remote-tiana.sha256"
 
 if [ "$target_os:$target_arch" = linux:amd64 ]; then
     "$output" --version
-    "$output" verify-install | grep -F 'mode=embedded' >/dev/null
 fi
 printf 'created %s (%s)\n' "$output" "$output_sha"

@@ -73,10 +73,16 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 		t.Fatalf("code=%d diag=%s", code, &diag)
 	}
 }
-func TestVerifyBuiltinInstall(t *testing.T) {
+func TestVerifyInstallCommandRemoved(t *testing.T) {
+	for _, args := range [][]string{{"verify-install"}, {"verify-install", "--help"}, {"help", "verify-install"}} {
+		var out, diag bytes.Buffer
+		code := runCLI(context.Background(), args, strings.NewReader(""), &out, &diag)
+		if code != 2 || out.Len() != 0 {
+			t.Fatalf("removed command accepted: code=%d out=%s diag=%s", code, &out, &diag)
+		}
+	}
 	var out, diag bytes.Buffer
-	code := runCLI(context.Background(), []string{"verify-install"}, strings.NewReader(""), &out, &diag)
-	if code != 0 || !strings.Contains(out.String(), "mode=builtin") || diag.Len() != 0 {
-		t.Fatalf("code=%d out=%s diag=%s", code, &out, &diag)
+	if code := runCLI(context.Background(), []string{"--help"}, strings.NewReader(""), &out, &diag); code != 0 || strings.Contains(out.String(), "verify-install") {
+		t.Fatalf("removed command in help: code=%d out=%s", code, &out)
 	}
 }

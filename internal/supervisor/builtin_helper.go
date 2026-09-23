@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"time"
 
 	tiana "github.com/tianacloud/sdk-go"
 )
@@ -293,20 +292,4 @@ func builtinChildIdentity(p []byte) (ChildIdentity, error) {
 		return ChildIdentity{}, ErrHelperProtocol
 	}
 	return ChildIdentity{PID: int(pid), StartTime: binary.BigEndian.Uint64(start)}, nil
-}
-
-// VerifyHelper checks a live private handshake without binding or dialing.
-func VerifyHelper(ctx context.Context, launcher HelperLauncher) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	helper, err := launcher.Launch(ctx, DefaultCredentialSource())
-	if err != nil {
-		return err
-	}
-	defer helper.Close()
-	caps, err := helper.Handshake(ctx, []uint16{HelperContractVersion}, "verify-install")
-	if err != nil || caps.SelectedVersion != HelperContractVersion || !caps.SQLDAdapter {
-		return ErrHelperProtocol
-	}
-	return nil
 }

@@ -34,7 +34,7 @@ Gateway reference `0cf0d03` already owns the `git` profile / internal ID 5.
   byte preservation, client half-close with final response, remote EOF with stdin
   open, denied setup and closed CONNECT success-envelope validation.
 - macOS arm64 Go-only package and complete SQLD+Git CLI package pass real Git
-  conformance; complete CLI `verify-install` reports embedded SQLD contract v3.
+  conformance; the embedded SQLD helper uses contract v3.
 - Linux arm64 Go package passes the same real Git and launcher suite in a container.
 - Linux amd64 Go package passes that suite under the local cross-architecture
   container execution environment; this is not a native amd64 hardware test.

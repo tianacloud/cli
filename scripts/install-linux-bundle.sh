@@ -72,5 +72,5 @@ mv -f -- "$tmp_cli" "$prefix/bin/tiana"
 mv -f -- "$tmp_git" "$prefix/bin/git-remote-tiana"
 trap - EXIT HUP INT TERM
 
-"$prefix/bin/tiana" verify-install
+"$prefix/bin/tiana" --version
 printf 'installed tiana into %s\n' "$prefix"

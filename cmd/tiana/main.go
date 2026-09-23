@@ -120,21 +120,6 @@ func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
 	return 0
 }
 
-func runWhoami(ctx context.Context, output, errorOutput io.Writer) int {
-	client, err := newAuthClient(ctx, output, false)
-	if err != nil {
-		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
-		return 1
-	}
-	user, err := client.Whoami(ctx)
-	if err != nil {
-		writeCommandError(errorOutput, err)
-		return 1
-	}
-	fmt.Fprintf(output, "Signed in as %s\n", safeDisplay(authUserLabel(user)))
-	return 0
-}
-
 func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (*authclient.Client, error) {
 	origin := authclient.DefaultOrigin()
 	if origin == "" {

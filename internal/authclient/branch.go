@@ -12,6 +12,7 @@ type Branch struct {
 	ID             string `json:"branch_id"`
 	Name           string `json:"name"`
 	Root           bool   `json:"root"`
+	Protected      bool   `json:"protected"`
 	EndpointID     string `json:"endpoint_id"`
 	LifecycleState string `json:"lifecycle_state"`
 	RuntimeState   string `json:"runtime_state"`

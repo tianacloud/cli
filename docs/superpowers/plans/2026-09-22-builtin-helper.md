@@ -45,7 +45,7 @@ builtin_owner_other.go and tests.
 
 Files: cmd/tiana/main.go, commands.go, integration tests, README.md, AGENTS.md.
 - [x] Add BuiltinHelperLauncher using os.Executable (no PATH helper lookup),
-      private entrypoint before normal flag parsing, and verify-install handshake.
+      private entrypoint before normal flag parsing, and helper handshake coverage.
 - [x] Build actual CLI in tests, launch a synthetic native client and exercise
       command startup/exit, sanitized environment and private helper lifetime.
 - [x] Document mode=builtin, verified TLS, existing native adapter and limits.
