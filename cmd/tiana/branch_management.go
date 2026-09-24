@@ -17,6 +17,7 @@ func newBranchMutationCommand(action string, input io.Reader, output, diagnostic
 	flags := []cli.Flag{}
 	usage, description := "Create a SQLite branch", "Create a child of the default branch, or the exact branch name selected by --parent. By default success means asynchronous acceptance; use -w/--wait to wait for creation to succeed."
 	if action == "create" {
+		flags = append(flags, branchCreateOptions()...)
 		flags = append(flags, createWaitOption(), stringOption("parent", "Exact parent branch name; omitted selects the default branch", ""))
 	} else {
 		usage = "Delete a SQLite branch"
@@ -28,7 +29,7 @@ func newBranchMutationCommand(action string, input io.Reader, output, diagnostic
 			return argumentFailure(ctx, cmd, "one instance ID or name and one branch name are required")
 		}
 		for _, arg := range cmd.Args().Slice() {
-			if positionalWasTrimmed(cmd, arg) {
+			if branchNameWasTrimmed(cmd, arg) {
 				return argumentFailure(ctx, cmd, "use -- before names to preserve surrounding whitespace")
 			}
 		}
@@ -38,11 +39,11 @@ func newBranchMutationCommand(action string, input io.Reader, output, diagnostic
 		if action == "delete" && cmd.Bool("by-id") && !authclient.ValidResourcePathID(cmd.Args().Get(1)) {
 			return argumentFailure(ctx, cmd, "invalid branch ID")
 		}
-		return statusError(executeBranchMutation(ctx, action, cmd.Args().Get(0), cmd.Args().Get(1), cmd.String("parent"), cmd.Bool("by-id"), cmd.Bool("force"), cmd.Bool("wait"), input, output, diagnostics))
+		return statusError(executeBranchMutation(ctx, action, cmd.Args().Get(0), cmd.Args().Get(1), cmd.String("parent"), cmd.Bool("by-id"), cmd.Bool("force"), cmd.Bool("wait"), branchCreateRequest(cmd, cmd.Args().Get(1)), input, output, diagnostics))
 	}}
 }
 
-func executeBranchMutation(ctx context.Context, action, reference, name, parent string, byID, force, wait bool, input io.Reader, output, diagnostics io.Writer) int {
+func executeBranchMutation(ctx context.Context, action, reference, name, parent string, byID, force, wait bool, create authclient.CreateBranchRequest, input io.Reader, output, diagnostics io.Writer) int {
 	if action == "delete" && !force && !isTerminal(input) {
 		fmt.Fprintln(diagnostics, "tiana: deletion requires terminal confirmation; use --force (-f) for non-interactive deletion")
 		return 2
@@ -136,7 +137,7 @@ func executeBranchMutation(ctx context.Context, action, reference, name, parent 
 	}
 	var receipt authclient.BranchOperationReceipt
 	if action == "create" {
-		receipt, err = client.CreateBranch(ctx, instance.ID, branch.ID, name, key)
+		receipt, err = client.CreateBranch(ctx, instance.ID, branch.ID, create, key)
 	} else {
 		receipt, err = client.DeleteBranch(ctx, instance.ID, branch.ID, key)
 	}

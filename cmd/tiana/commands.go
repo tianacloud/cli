@@ -217,20 +217,20 @@ func configureCommandErrors(cmd *cli.Command) {
 
 func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction sqlCommandAction) *cli.Command {
 	create := &cli.Command{Name: "create", Usage: "Submit SQLite instance creation", ArgsUsage: "NAME",
-		Flags:       []cli.Flag{createWaitOption()},
+		Flags:       []cli.Flag{createWaitOption(), createMessageOption()},
 		Description: "NAME is required as a positional argument. The sqlite engine is fixed. Returns after acceptance by default; -w/--wait waits for creation success. Never creates a Token.",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() > 1 {
 				return argumentFailure(ctx, cmd, "the database name was provided more than once")
 			}
 			name := cmd.Args().First()
-			if positionalWasTrimmed(cmd, name) {
+			if instanceCreateNameWasTrimmed(cmd, name) {
 				return argumentFailure(ctx, cmd, "use -- to preserve surrounding whitespace; resume older pending operations with the older CLI")
 			}
 			if strings.TrimSpace(name) == "" {
 				return argumentFailure(ctx, cmd, "a database name is required")
 			}
-			o := createOptions{wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: name, Engine: "sqlite", Config: map[string]interface{}{}}, nonInteractive: false}
+			o := createOptions{wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: name, Notes: cmd.String("message"), Engine: "sqlite", Config: map[string]interface{}{}}, nonInteractive: false}
 			return statusError(executeSQLiteCreate(ctx, o, leafArguments(cmd), output, diagnostics))
 		}}
 	list := &cli.Command{Name: "list", Usage: "List SQLite instances only", Description: "An interactive terminal pages the results; otherwise all pages are printed once.", Flags: nil,

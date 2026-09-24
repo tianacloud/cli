@@ -111,18 +111,21 @@ tiana logout
 ### Create, list and inspect
 
 ```sh
-tiana sqlite create my-db -w
+tiana sqlite create my-db -m "Application database" -w
 tiana sqlite list
 tiana sqlite show my-db
 tiana sqlite show my-db --url
 
-tiana git create my-repo --wait
+tiana git create my-repo --message "Application source repository" --wait
 tiana git list
 tiana git show my-repo
 tiana git show my-repo --url
 ```
 
 `create NAME` requires a nonempty name. Each product selects its own engine.
+Use `-m TEXT` / `--message TEXT` to add an instance description. Quote text that
+contains spaces; UTF-8 text up to 2048 bytes is accepted, including newlines.
+The description is optional and can be combined with `-w` / `--wait`.
 Other instance commands accept an instance ID or an exact name; use the ID when
 names are ambiguous. An `ep-...` Endpoint ID is not an instance ID.
 
@@ -140,7 +143,7 @@ There is no overall waiting timeout. Ctrl-C exits 130 and stops local waiting;
 it does not cancel server-side creation.
 
 An interrupted or uncertain instance creation retains a local pending record.
-Repeat the same command with the same name, account and management origin to
+Repeat the same command with the same name, description options, account and management origin to
 continue it; `-w` and `--wait` are interchangeable. A saved receipt avoids a new
 creation request. Once a command has completed and cleared its pending record,
 running `create` again starts a new request. Do not delete an unresolved pending
@@ -183,6 +186,8 @@ tiana sqlite branch list my-db --after BRANCH_CURSOR
 
 tiana sqlite branch create my-db preview -w
 tiana sqlite branch create my-db preview-child --parent preview --wait
+tiana sqlite branch create my-db review -m "Review environment" --ttl 86400 -w
+tiana sqlite branch create my-db historical --timestamp 1790000000 --wait
 
 tiana sqlite show my-db --branch preview --url
 tiana sqlite shell my-db --branch preview
@@ -197,7 +202,19 @@ use exact names.
 
 Creation forks the default branch unless `--parent NAME` selects another source.
 The default branch has the immutable ID `main`, even if its name changes.
-The server assigns the new branch ID. A created branch has no automatic expiry.
+The server assigns the new branch ID.
+
+- `-m` / `--message TEXT` sets the branch description (UTF-8, at most 2048 bytes).
+- `--ttl SECONDS` sets the lifetime after creation succeeds, from 1 to 2592000
+  seconds (30 days). Omit it for no automatic expiry; zero is invalid.
+- `-ts` / `--timestamp UNIX_SECONDS` forks the selected parent's data at that
+  exact unsigned Unix second. Omit it for the latest data. An unavailable
+  historical time fails creation; it never falls back to the latest data.
+
+These options can be combined with `--parent` and `--wait`. Historical creation
+requires retained history for the selected parent. Branch descriptions and historical
+creation require matching server support; upgrade the server before using these
+options, because older servers may ignore unsupported request fields.
 
 Both `branch create` and `branch delete` return after acceptance by default.
 Add `-w` / `--wait` to poll the original operation every second until success or

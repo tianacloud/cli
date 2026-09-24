@@ -53,7 +53,7 @@ func TestBranchMutationRefreshPinsRequest(t *testing.T) {
 			var receipt BranchOperationReceipt
 			var err error
 			if action == "create" {
-				receipt, err = client.CreateBranch(context.Background(), "inst_test", "child", "preview", "stable-branch-key")
+				receipt, err = client.CreateBranch(context.Background(), "inst_test", "child", CreateBranchRequest{Name: "preview"}, "stable-branch-key")
 			} else {
 				receipt, err = client.DeleteBranch(context.Background(), "inst_test", "child", "stable-branch-key")
 			}

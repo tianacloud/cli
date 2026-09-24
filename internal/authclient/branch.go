@@ -11,6 +11,7 @@ import (
 type Branch struct {
 	ID             string `json:"branch_id"`
 	Name           string `json:"name"`
+	Notes          string `json:"notes,omitempty"`
 	Root           bool   `json:"root"`
 	Protected      bool   `json:"protected"`
 	EndpointID     string `json:"endpoint_id"`

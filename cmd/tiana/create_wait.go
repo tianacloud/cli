@@ -18,7 +18,16 @@ func createWaitOption() cli.Flag {
 // Preserve positional -- and everything after it, including a name of "-w".
 func createIdentityArguments(args []string) []string {
 	result := make([]string, 0, len(args))
-	for i, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-m" || arg == "--message" {
+			result = append(result, arg)
+			if i+1 < len(args) {
+				i++
+				result = append(result, args[i])
+			}
+			continue
+		}
 		if arg == "--" {
 			return append(result, args[i:]...)
 		}

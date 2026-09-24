@@ -704,6 +704,39 @@ HTTP and timer cancellation, no mutation replay and stdout failure. Retain prior
 creation waiting tests and run full race/vet/source scan/native and Linux builds.
 Previous uncommitted changes and pending timestamp request remain untouched.
 
+
+### Instance creation descriptions (2026-09-24)
+
+Git/SQLite instance create accept -m/--message, mapped verbatim to existing MGR
+notes. Omitted or empty means no description; valid UTF-8 up to 2048 bytes follows
+MGR validation. Reject malformed/oversized values before auth, state or network
+work. Preserve spaces, newlines and leading-dash values. No engine/name semantics,
+server contract, SDK dependency or persistent schema changes; branch create is
+outside this instance-description feature.
+
+Descriptions are part of the existing pending argv and thus creation identity.
+Strip only actual -w/--wait observation options, never description values that
+look like those flags or --. Do not change the payload under a saved request ID.
+Retries retain the original description options; altered descriptions cannot
+replace an unresolved intent. Name-trimming checks must skip message values.
+No extra management requests or token behavior changes. Existing private pending
+storage protects recovery data; descriptions are user metadata, not secrets.
+Rollback requires finishing pending commands with their original option syntax.
+
+Verify both products, short/long/equals forms, omitted/empty/Unicode/whitespace,
+byte boundaries and malformed UTF-8; zero requests/writes on invalid values;
+unknown-response retries preserve notes/request ID; changed notes are blocked;
+wait-like values and -- separator do not corrupt identity. Retain creation/wait
+regressions, full race/vet, public scans and macOS/Linux builds. No commit/push
+unless separately authorized.
+
+## Branch creation options (2026-09-24)
+
+- CLI accepts -m/--message as notes (valid UTF-8, <=2048 bytes, unchanged), --ttl as integer seconds in 1..2592000 and -ts/--timestamp as uint64 Unix seconds. Omission is nil; timestamp 0 is explicit history; TTL 0 is invalid. Invalid flags fail before authentication/network mutation.
+- The typed request preserves options through parent resolution and wait; flag values are excluded from positional whitespace checks. No extra local persistence, token creation, retry or mutation is introduced.
+- Server lifetime starts at successful branch publication. Historical failure is terminal and must never select latest data. Requires coordinated server support; only that server can validate retained history. Existing async/default, confirmation and wait semantics remain.
+- Tests cover exact JSON, nil vs zero, limits, Unicode/whitespace, malformed flags, parent/wait combination and default requests. Build with released public SDK dependencies; no private contracts dependency in CLI.
+
 ## Quota progress display (2026-09-24)
 
 - Status preserves exact uint64 USED/LIMIT numbers and adds percentage and a static 20-cell Unicode bar (█ used, ░ remaining) for compute/storage/instances. Compute the ratio with bounded-size math/big values (three rows per invocation) to avoid overflow and float64 precision loss. Round percentages to one decimal, preserving nonzero and below/above-limit distinctions. Floor exact fractions for filled cells, capped at 20, never truncate over-quota percentages.

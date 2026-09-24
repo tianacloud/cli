@@ -15,8 +15,10 @@ type BranchOperationReceipt struct {
 }
 
 type CreateBranchRequest struct {
-	Name       string `json:"name"`
-	TTLSeconds *int64 `json:"ttl_seconds"`
+	Name       string  `json:"name"`
+	Notes      string  `json:"notes,omitempty"`
+	Timestamp  *uint64 `json:"timestamp,omitempty"`
+	TTLSeconds *int64  `json:"ttl_seconds"`
 }
 
 func ValidResourcePathID(id string) bool {
@@ -50,8 +52,8 @@ func (c *Client) ResolveMutationBranch(ctx context.Context, instanceID, ref stri
 	return detail, nil
 }
 
-func (c *Client) CreateBranch(ctx context.Context, instanceID, parentID, name, key string) (BranchOperationReceipt, error) {
-	return c.branchMutation(ctx, http.MethodPost, instanceID, parentID, "/children", CreateBranchRequest{Name: name}, key)
+func (c *Client) CreateBranch(ctx context.Context, instanceID, parentID string, request CreateBranchRequest, key string) (BranchOperationReceipt, error) {
+	return c.branchMutation(ctx, http.MethodPost, instanceID, parentID, "/children", request, key)
 }
 func (c *Client) DeleteBranch(ctx context.Context, instanceID, branchID, key string) (BranchOperationReceipt, error) {
 	if branchID == "main" {

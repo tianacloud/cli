@@ -63,3 +63,23 @@ func TestResolveBranchUsesExactNameAndImmutableDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestBranchNotesReadback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/branches/") {
+			w.Write([]byte(`{"instance_id":"i","branch":{"branch_id":"b","name":"preview","notes":" 描述 "}}`))
+			return
+		}
+		w.Write([]byte(`{"items":[{"branch_id":"b","name":"preview","notes":" 描述 "}]}`))
+	}))
+	defer server.Close()
+	client := testAuthenticatedClient(t, server)
+	page, err := client.ListBranches(context.Background(), "i", "", "", "")
+	if err != nil || len(page.Items) != 1 || page.Items[0].Notes != " 描述 " {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	detail, err := client.GetBranch(context.Background(), "i", "b")
+	if err != nil || detail.Branch.Notes != " 描述 " {
+		t.Fatalf("detail=%+v err=%v", detail, err)
+	}
+}
