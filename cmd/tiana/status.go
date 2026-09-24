@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -46,8 +48,19 @@ func runStatus(ctx context.Context, output, diagnostics io.Writer) int {
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(table, "Quota period: %s (%s to %s)\n", safeDisplay(quota.Limits.Period), statusTime(quota.PeriodStart), statusTime(quota.PeriodEnd))
-	fmt.Fprintln(table, "RESOURCE\tUSED\tLIMIT")
-	fmt.Fprintf(table, "Compute\t%s\t%d\nStorage (bytes)\t%s\t%d\nInstances\t%s\t%d\n", statusQuantity(quota.ComputeUsed), *quota.Limits.Compute, statusQuantity(quota.StorageUsed), *quota.Limits.StorageBytes, statusQuantity(quota.InstancesUsed), *quota.Limits.MaxInstances)
+	fmt.Fprintln(table, "RESOURCE\tUSED\tLIMIT\tUSAGE\tPROGRESS")
+	for _, resource := range []struct {
+		name  string
+		used  *uint64
+		limit uint64
+	}{
+		{"Compute", quota.ComputeUsed, *quota.Limits.Compute},
+		{"Storage (bytes)", quota.StorageUsed, *quota.Limits.StorageBytes},
+		{"Instances", quota.InstancesUsed, *quota.Limits.MaxInstances},
+	} {
+		percent, bar := statusQuotaProgress(resource.used, resource.limit)
+		fmt.Fprintf(table, "%s\t%s\t%d\t%s\t%s\n", resource.name, statusQuantity(resource.used), resource.limit, percent, bar)
+	}
 	blocked := "no"
 	if *quota.Blocked {
 		blocked = "yes"
@@ -75,4 +88,36 @@ func statusTime(value *int64) string {
 		return "unknown"
 	}
 	return time.UnixMilli(*value).UTC().Format(time.RFC3339Nano)
+}
+
+// Keep uint64 quantities exact, including when multiplying them to form a
+// percentage. A zero limit is a real quota, not an unlimited sentinel.
+func statusQuotaProgress(used *uint64, limit uint64) (string, string) {
+	if used == nil {
+		return "unknown", "-"
+	}
+	if limit == 0 {
+		return "n/a", "-"
+	}
+	numerator := new(big.Int).SetUint64(*used)
+	denominator := new(big.Int).SetUint64(limit)
+	ratio := new(big.Rat).SetFrac(numerator, denominator)
+	percent := ratio.Mul(ratio, big.NewRat(100, 1)).FloatString(1)
+	// Do not let display rounding hide nonzero use or which side of the limit
+	// usage lies on. Bar cells use the exact fraction, not the rounded percent.
+	switch {
+	case *used > 0 && percent == "0.0":
+		percent = "<0.1"
+	case *used < limit && percent == "100.0":
+		percent = ">99.9"
+	case *used > limit && percent == "100.0":
+		percent = ">100.0"
+	}
+	const width = 20
+	filled := width
+	if *used < limit {
+		cells := new(big.Int).Mul(numerator, big.NewInt(width))
+		filled = int(cells.Quo(cells, denominator).Int64())
+	}
+	return percent + "%", "[" + strings.Repeat("█", filled) + strings.Repeat("░", width-filled) + "]"
 }

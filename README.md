@@ -68,8 +68,22 @@ tiana status
 
 `login` prints a URL and waits for browser approval; you can open the URL on
 another device when working over SSH. `status` shows available account details
-and compute, storage and instance quota usage and limits. Missing usage values
-appear as `unknown`. If login or quota is unavailable, the command exits nonzero.
+and compute, storage and instance quota usage and limits, with a percentage and
+20-cell progress bar:
+
+```text
+RESOURCE         USED        LIMIT       USAGE  PROGRESS
+Compute          2500        10000       25.0%  [█████░░░░░░░░░░░░░░░]
+Storage (bytes)  1000000000  2000000000   50.0%  [██████████░░░░░░░░░░]
+Instances        2           3           66.7%  [█████████████░░░░░░░]
+```
+
+Percentages are shown to one decimal place. Over-quota usage keeps its actual
+percentage while the bar stays full. Very small usage appears as `<0.1%`;
+values just below/above the limit use `>99.9%`/`>100.0%` to avoid rounding away
+that distinction. Missing usage appears as `unknown`. A zero limit remains `0`
+with `n/a` percentage; unknown or undefined percentages show `-` for the bar.
+If login or quota is unavailable, the command exits nonzero.
 
 For a deployment with a private CA:
 

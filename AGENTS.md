@@ -703,3 +703,9 @@ operation/branch identities, failure/unknown/404/malformed replies, progress sta
 HTTP and timer cancellation, no mutation replay and stdout failure. Retain prior
 creation waiting tests and run full race/vet/source scan/native and Linux builds.
 Previous uncommitted changes and pending timestamp request remain untouched.
+
+## Quota progress display (2026-09-24)
+
+- Status preserves exact uint64 USED/LIMIT numbers and adds percentage and a static 20-cell Unicode bar (█ used, ░ remaining) for compute/storage/instances. Compute the ratio with bounded-size math/big values (three rows per invocation) to avoid overflow and float64 precision loss. Round percentages to one decimal, preserving nonzero and below/above-limit distinctions. Floor exact fractions for filled cells, capped at 20, never truncate over-quota percentages.
+- MGR zero limits are real zero quotas, not unlimited; preserve 0 and show n/a percentage/no bar. Unknown usage stays unknown/no bar. No inferred quota blocking; retain the server's blocked/reason fields. No extra requests, account fields, ANSI escapes, local state or backend changes.
+- Preserve prior uncommitted branch creation work. Verify status request/output integration, zero/nil, uint64 maxima, small/nonintegral/over-limit ratios, output errors, full CLI tests/race/vet and public scan/build. Rollback affects presentation only; no data migration.

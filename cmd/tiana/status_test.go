@@ -106,6 +106,13 @@ func TestStatusLoginAndQuota(t *testing.T) {
 					t.Errorf("missing %s: %s", want, &out)
 				}
 			}
+			if mode == "success" {
+				for _, want := range []string{"USAGE", "PROGRESS", "1.2%", "<0.1%", "66.7%", "[█████████████░░░░░░░]"} {
+					if !strings.Contains(out.String(), want) {
+						t.Errorf("missing quota progress %q: %s", want, &out)
+					}
+				}
+			}
 			if mode == "unknown" && strings.Count(out.String(), "unknown") < 2 {
 				t.Fatalf("unknown shown as zero: %s", &out)
 			}
@@ -131,5 +138,38 @@ func TestStatusCommandReplacesWhoami(t *testing.T) {
 	var out, diag bytes.Buffer
 	if code := runCLI(context.Background(), []string{"--help"}, strings.NewReader(""), &out, &diag); code != 0 || strings.Contains(out.String(), "whoami") || !strings.Contains(out.String(), "status") {
 		t.Fatalf("wrong help: %s", &out)
+	}
+}
+
+func TestStatusQuotaProgress(t *testing.T) {
+	zero, one, two, max := uint64(0), uint64(1), uint64(2), ^uint64(0)
+	belowMax := max - 1
+	for _, tc := range []struct {
+		name         string
+		used         *uint64
+		limit        uint64
+		percent, bar string
+	}{
+		{"empty", &zero, 10, "0.0%", "[░░░░░░░░░░░░░░░░░░░░]"},
+		{"half", &one, 2, "50.0%", "[██████████░░░░░░░░░░]"},
+		{"rounded", &two, 3, "66.7%", "[█████████████░░░░░░░]"},
+		{"full", &two, 2, "100.0%", "[████████████████████]"},
+		{"over", &two, 1, "200.0%", "[████████████████████]"},
+		{"tiny", &one, max, "<0.1%", "[░░░░░░░░░░░░░░░░░░░░]"},
+		{"near-full", &belowMax, max, ">99.9%", "[███████████████████░]"},
+		{"just-over", &max, belowMax, ">100.0%", "[████████████████████]"},
+		{"maximum", &max, 1, "1844674407370955161500.0%", "[████████████████████]"},
+		{"max-equal", &max, max, "100.0%", "[████████████████████]"},
+		{"unknown", nil, 10, "unknown", "-"},
+		{"unknown-zero", nil, 0, "unknown", "-"},
+		{"zero-limit-empty", &zero, 0, "n/a", "-"},
+		{"zero-limit-used", &max, 0, "n/a", "-"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			percent, bar := statusQuotaProgress(tc.used, tc.limit)
+			if percent != tc.percent || bar != tc.bar {
+				t.Fatalf("got %s %s; want %s %s", percent, bar, tc.percent, tc.bar)
+			}
+		})
 	}
 }
