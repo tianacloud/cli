@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/tianacloud/cli/internal/diagnostics"
 	tiana "github.com/tianacloud/sdk-go"
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 )
@@ -51,7 +52,20 @@ func (c *Client) Autocommit() (bool, bool) {
 	}
 	return c.session.Autocommit()
 }
-func (c *Client) Execute(ctx context.Context, query string, closing bool) (*Result, *Error) {
+func (c *Client) Execute(ctx context.Context, query string, closing bool) (result *Result, failure *Error) {
+	defer func() {
+		id := ""
+		if c.session != nil {
+			id = c.session.RequestID()
+		}
+		if failure != nil {
+			if failure.RequestID == "" {
+				failure.RequestID = id
+			}
+			id = failure.RequestID
+		}
+		diagnostics.Write(ctx, "sqlite", id)
+	}()
 	if c.poisoned || c.closed {
 		return nil, unknown("session is unusable; do not replay unconfirmed operations")
 	}
@@ -59,7 +73,6 @@ func (c *Client) Execute(ctx context.Context, query string, closing bool) (*Resu
 		c.poisoned = true
 		return nil, connectFailure(c.initErr)
 	}
-	var result *tianasqlite.Result
 	var err error
 	if closing {
 		result, err = c.session.ExecuteAndClose(ctx, query)
@@ -78,7 +91,17 @@ func (c *Client) Execute(ctx context.Context, query string, closing bool) (*Resu
 	}
 	return result, nil
 }
-func sessionError(ctx context.Context, err error) *Error {
+func sessionError(ctx context.Context, err error) (result *Error) {
+	defer func() {
+		var sqlErr *tianasqlite.Error
+		var gatewayErr *tiana.Error
+		if errors.As(err, &sqlErr) {
+			result.RequestID = sqlErr.RequestID
+		}
+		if result.RequestID == "" && errors.As(err, &gatewayErr) {
+			result.RequestID = gatewayErr.RequestID
+		}
+	}()
 	var sdkErr *tianasqlite.Error
 	typed := errors.As(err, &sdkErr)
 	sent := typed && sdkErr.OutcomeUnknown
@@ -130,7 +153,12 @@ func connectFailure(err error) *Error {
 	}
 	return failure("CONNECT_FAILED", "cannot establish verified Gateway tunnel; SQL was not sent", 3)
 }
-func (c *Client) Finish(ctx context.Context, primary *Error) *Error {
+func (c *Client) Finish(ctx context.Context, primary *Error) (result *Error) {
+	defer func() {
+		if result != nil && result.RequestID == "" && c.session != nil {
+			result.RequestID = c.session.RequestID()
+		}
+	}()
 	// Interactive recovery already reported and released the failed session.
 	if c.session == nil && c.poisoned {
 		return primary

@@ -1,9 +1,50 @@
 package gitremote
 
 import (
+	"context"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/supervisor"
 )
+
+func TestGitConnectReportsPreNetworkFailureStage(t *testing.T) {
+	endpoint, err := supervisor.ParseEndpoint("ep-0" + strings.Repeat("a", 25) + ".db.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := clientconfig.WithTrust(context.Background(), &clientconfig.Trust{})
+	t.Setenv("TIANA_TOKEN", "tia_"+strings.Repeat("A", 44))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedPort := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		name    string
+		address string
+		want    string
+	}{
+		{"dns", "nonexistent-gateway.invalid:443", "Gateway DNS resolution failed"},
+		{"tcp_refused", net.JoinHostPort("127.0.0.1", strconv.Itoa(closedPort)), "Gateway TCP connection refused"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Setenv("TIANA_GATEWAY_ADDRESS", scenario.address)
+			_, err := connect(ctx, endpoint)
+			if err == nil || !strings.Contains(err.Error(), scenario.want) || !strings.Contains(err.Error(), "request ID req-") {
+				t.Fatalf("Git connection diagnostic=%v, want %q and request ID", err, scenario.want)
+			}
+		})
+	}
+}
 
 func TestClosedConnectEnvelope(t *testing.T) {
 	valid := func() *http.Response {

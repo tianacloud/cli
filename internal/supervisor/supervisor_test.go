@@ -674,3 +674,30 @@ func TestSupervisorLocalCloseRequiresSuccessfulNativeExit(t *testing.T) {
 		})
 	}
 }
+
+func TestSupervisorIdentifiesShutdownConfirmationFailure(t *testing.T) {
+	for _, nativeStatus := range []int{0, 7} {
+		t.Run(string(rune('0'+nativeStatus)), func(t *testing.T) {
+			t.Setenv("TIANA_OPTIONAL_TOKEN", "tia_"+strings.Repeat("A", 43))
+			helper := &fakeHelper{stopErr: ErrHelperProtocol}
+			supervisor := NewSupervisor(&fakeLauncher{helper: helper})
+			supervisor.IO = IO{Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: io.Discard}
+			status, err := supervisor.Run(context.Background(), ConnectOptions{
+				NativeArgv: []string{writeNativeFixture(t, nativeStatus), "db", "shell", testEndpointURL(t)},
+				AdapterID:  SQLDAdapterID,
+				Credential: CredentialSource{Kind: CredentialFromEnvironment, Value: "TIANA_OPTIONAL_TOKEN"},
+				Security:   SecurityPolicy{AllowUnisolated: true},
+			})
+			expected := nativeStatus
+			if expected == 0 {
+				expected = 1
+			}
+			if status != expected || !errors.Is(err, ErrHelperProtocol) || !helper.drained {
+				t.Fatalf("status=%d err=%v drained=%v", status, err, helper.drained)
+			}
+			if !strings.Contains(err.Error(), "helper shutdown confirmation failed") {
+				t.Fatalf("missing shutdown stage: %v", err)
+			}
+		})
+	}
+}

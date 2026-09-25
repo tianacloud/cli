@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
+	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/sqlitecli"
 	"github.com/tianacloud/cli/internal/supervisor"
 	"github.com/urfave/cli/v3"
@@ -37,6 +39,12 @@ func runCLI(ctx context.Context, args []string, input io.Reader, output, diagnos
 }
 
 func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, diagnostics io.Writer, sqlAction sqlCommandAction) int {
+	var requestIDs bytes.Buffer
+	if os.Getenv("TIANA_DIAGNOSTICS") == "1" {
+		ctx = requestdiag.WithWriter(ctx, diagnostics)
+	} else {
+		ctx = requestdiag.WithWriter(ctx, &requestIDs)
+	}
 	if frameworkTracingAtStartup || os.Getenv("URFAVE_CLI_TRACING") == "on" {
 		fmt.Fprintln(diagnostics, "tiana: unset URFAVE_CLI_TRACING to avoid exposing SQL or credentials")
 		return 2
@@ -52,6 +60,7 @@ func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, 
 	if err == nil {
 		return 0
 	}
+	_, _ = io.Copy(diagnostics, &requestIDs)
 	var status *commandStatus
 	if errors.As(err, &status) {
 		if status.code == 1 && ctx.Err() != nil {

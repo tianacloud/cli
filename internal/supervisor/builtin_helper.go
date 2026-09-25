@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/tianacloud/cli/internal/diagnostics"
 	tiana "github.com/tianacloud/sdk-go"
 )
 
@@ -179,7 +180,7 @@ func ServeBuiltinHelper(parent context.Context, in io.ReadCloser, out io.WriteCl
 	if err != nil {
 		return reject()
 	}
-	client, err := tiana.NewClient(tiana.Config{Endpoint: config.Endpoint, Token: token, RootCAs: roots, DialAddress: config.GatewayAddress, MaxStreams: builtinSessionLimit})
+	client, err := tiana.NewClient(tiana.Config{Endpoint: config.Endpoint, Token: token, RootCAs: roots, DialAddress: config.GatewayAddress, MaxStreams: builtinSessionLimit, OnRequestID: func(id string) { diagnostics.Write(ctx, "connect", id) }})
 	if err != nil {
 		return reject()
 	}

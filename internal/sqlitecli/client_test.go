@@ -137,6 +137,9 @@ func TestLostCommitNeverReplayed(t *testing.T) {
 	if e == nil || e.ExitCode != 5 {
 		t.Fatalf("lost commit: %v", e)
 	}
+	if e.RequestID == "" || e.RequestID != c.session.RequestID() {
+		t.Fatalf("lost commit discarded CONNECT identity: %v", e)
+	}
 	e = c.Finish(context.Background(), e)
 	if e.Cleanup != "unconfirmed" || count.Load() != 2 || dials.Load() != 1 {
 		t.Fatalf("replayed or misleading cleanup: %v", e)
@@ -209,6 +212,9 @@ func TestCancellationAfterSend(t *testing.T) {
 	case e := <-done:
 		if e == nil || e.ExitCode != 130 || e.Outcome != "unknown" {
 			t.Fatal(e)
+		}
+		if e.RequestID == "" || e.RequestID != c.session.RequestID() {
+			t.Fatalf("cancelled execution discarded CONNECT identity: %v", e)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("cancel blocked")

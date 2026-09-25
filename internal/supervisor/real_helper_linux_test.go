@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/tianacloud/cli/internal/diagnostics"
 )
 
 const realNativeChildMarker = "__tiana_real_native_child"
@@ -332,6 +334,8 @@ func runRealCompiledHelperCase(
 
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
+	var helperDiagnostics bytes.Buffer
+	ctx = diagnostics.WithWriter(ctx, &helperDiagnostics)
 	result := make(chan struct {
 		status int
 		err    error
@@ -421,8 +425,8 @@ func runRealCompiledHelperCase(
 	if len(command.ExtraFiles) != expectedExtraFiles {
 		t.Fatalf("helper received ExtraFiles=%d, want %d", len(command.ExtraFiles), expectedExtraFiles)
 	}
-	if command.Stdin == nil || command.Stdout == nil || command.Stderr != io.Discard {
-		t.Fatalf("helper control streams were not private pipes/discard stderr: stdin=%T stdout=%T stderr=%T", command.Stdin, command.Stdout, command.Stderr)
+	if command.Stdin == nil || command.Stdout == nil || command.Stderr != diagnostics.Writer(ctx) {
+		t.Fatalf("helper control streams were not private pipes/diagnostic stderr: stdin=%T stdout=%T stderr=%T", command.Stdin, command.Stdout, command.Stderr)
 	}
 	if reader == nil || reader.Buffered() != 0 {
 		t.Fatalf("helper stdout retained %d buffered tail bytes", bufferedBytes(reader))

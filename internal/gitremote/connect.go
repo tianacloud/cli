@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"net/url"
 	"sync/atomic"
+	"syscall"
 	"time"
 
+	"github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/supervisor"
 )
 
@@ -24,7 +26,10 @@ type httpTunnel struct {
 	cancel    context.CancelFunc
 	transport *http.Transport
 	conn      net.Conn
+	requestID string
 }
+
+func (t *httpTunnel) RequestID() string { return t.requestID }
 
 func (t *httpTunnel) Write(p []byte) (int, error) { return t.writer.Write(p) }
 func (t *httpTunnel) CloseWrite() error           { return t.writer.Close() }
@@ -37,7 +42,7 @@ func (t *httpTunnel) Close() error {
 	return t.conn.Close()
 }
 
-func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
+func connect(ctx context.Context, repo supervisor.Endpoint) (result tunnel, err error) {
 	config, err := configurationWithContext(ctx, repo)
 	if err != nil {
 		return nil, err
@@ -45,6 +50,20 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
 	if config.token != nil {
 		defer config.token.Destroy()
 	}
+	random := make([]byte, 18)
+	if _, err = rand.Read(random); err != nil {
+		return nil, errors.New("request ID generation failed")
+	}
+	requestID := "req-" + base64.RawURLEncoding.EncodeToString(random)
+	diagnostics.Write(ctx, "git", requestID)
+	if identity, ok := ctx.Value(requestIdentityKey{}).(*requestIdentity); ok {
+		identity.set(requestID)
+	}
+	defer func() {
+		if err != nil {
+			err = gitConnectionError(err, requestID)
+		}
+	}()
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
 	dialCtx, stop := context.WithTimeout(ctx, 10*time.Second)
@@ -54,6 +73,13 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
 		cancel()
 		reader.Close()
 		writer.Close()
+		var dnsError *net.DNSError
+		if errors.As(err, &dnsError) {
+			return nil, errors.New("Gateway DNS resolution failed")
+		}
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, errors.New("Gateway TCP connection refused")
+		}
 		return nil, errors.New("Gateway TCP connection failed")
 	}
 	connection := tls.Client(raw, config.tls)
@@ -91,11 +117,6 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
 			}
 		}
 	}()
-	random := make([]byte, 18)
-	if _, err = rand.Read(random); err != nil {
-		return nil, errors.New("request ID generation failed")
-	}
-	requestID := "req-" + base64.RawURLEncoding.EncodeToString(random)
 	authority := net.JoinHostPort(repo.Hostname(), "443")
 	request := (&http.Request{Method: http.MethodConnect, URL: &url.URL{Scheme: "https", Host: authority}, Host: authority, Header: make(http.Header), Body: reader, ContentLength: -1}).WithContext(ctx)
 	request.Header.Set("Tiana-Tunnel-Version", "1")
@@ -130,7 +151,7 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
 		return nil, errors.New("cannot clear CONNECT deadline")
 	}
 	success = true
-	return &httpTunnel{ReadCloser: response.Body, writer: writer, reader: reader, cancel: cancel, transport: transport, conn: connection}, nil
+	return &httpTunnel{ReadCloser: response.Body, writer: writer, reader: reader, cancel: cancel, transport: transport, conn: connection, requestID: requestID}, nil
 }
 
 func validSuccess(response *http.Response, requestID string) bool {

@@ -100,6 +100,22 @@ func TestRejectedSetupNeverSucceeds(t *testing.T) {
 		t.Fatalf("invalid rejection: %v %q", err, output.String())
 	}
 }
+
+func TestCancelledGitConnectionReportsRequestID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	go func() { <-started; cancel() }()
+	err := run(ctx, io.NopCloser(strings.NewReader("capabilities\nconnect git-upload-pack\n")), io.Discard, testRepo(t), func(ctx context.Context, _ supervisor.Endpoint) (tunnel, error) {
+		ctx.Value(requestIdentityKey{}).(*requestIdentity).set("req-cancelled-git")
+		close(started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	if err == nil || !strings.Contains(err.Error(), "req-cancelled-git") {
+		t.Fatalf("cancelled Git operation has no diagnostic ID: %v", err)
+	}
+}
 func TestInvalidCommandsNeverConnect(t *testing.T) {
 	for _, s := range []string{"connect git-upload-archive\n", "connect git-upload-pack\r\n", "unterminated", strings.Repeat("x", maxCommand) + "\n", "connect git-upload-pack\x00\n"} {
 		err := run(context.Background(), io.NopCloser(strings.NewReader("capabilities\n"+s)), io.Discard, testRepo(t), func(context.Context, supervisor.Endpoint) (tunnel, error) {

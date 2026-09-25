@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const testToken = "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+const testToken = "tia_0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 func TestTokenStdinPreservesSQL(t *testing.T) {
 	r := strings.NewReader(testToken + "\r\nSELECT 1;\n")

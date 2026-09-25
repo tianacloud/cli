@@ -13,8 +13,10 @@ import (
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
+	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/releaseasset"
 	"github.com/tianacloud/cli/internal/supervisor"
+	sdkauth "github.com/tianacloud/sdk-go/auth"
 )
 
 var (
@@ -28,7 +30,7 @@ func main() {
 	if len(args) == 1 && args[0] == supervisor.BuiltinHelperArgument {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if err := supervisor.ServeBuiltinHelper(ctx, os.Stdin, os.Stdout); err != nil {
+		if err := supervisor.ServeBuiltinHelper(requestdiag.WithWriter(ctx, os.Stderr), os.Stdin, os.Stdout); err != nil {
 			os.Exit(1)
 		}
 		return
@@ -84,6 +86,7 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		return 1
 	}
 
+	ctx = requestdiag.WithWriter(ctx, diagnostics)
 	status, runErr := supervisor.NewSupervisor(launcher).Run(ctx, *parsed.Connect)
 	if runErr != nil {
 		fmt.Fprintln(diagnostics, "tiana:", safeDisplay(runErr.Error()))
@@ -136,6 +139,7 @@ func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (
 		}
 	}
 	config := authclient.Config{Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive}
+	config.OnRequestID = func(id string) { requestdiag.Write(ctx, "mgr", id) }
 	if trust := clientconfig.FromContext(ctx); trust != nil {
 		config.RootCAs = trust.Roots
 	}
@@ -180,6 +184,11 @@ func sameStrings(left, right []string) bool {
 }
 
 func writeCommandError(output io.Writer, err error) {
+	defer func() {
+		if id := sdkauth.RequestIDOf(err); id != "" {
+			fmt.Fprintln(output, "Request ID:", safeDisplay(id))
+		}
+	}()
 	if errors.Is(err, authclient.ErrAuthenticationRequired) {
 		fmt.Fprintln(output, "tiana: authentication required; run tiana login")
 		return

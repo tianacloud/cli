@@ -196,6 +196,9 @@ func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, erro
 		if status == 0 && errors.As(drainErr, &failure) && failure.Phase == SessionFailureAfterConnect && failure.Code == "LOCAL_CLIENT_CLOSED" {
 			return 0, nil
 		}
+		if !errors.As(drainErr, &failure) {
+			drainErr = fmt.Errorf("helper shutdown confirmation failed: %w", drainErr)
+		}
 		if status == 0 {
 			return 1, drainErr
 		}

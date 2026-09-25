@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tianacloud/cli/internal/diagnostics"
 )
 
 // ProcessHelperLauncher is the production launcher for the frozen companion
@@ -70,7 +72,7 @@ func launchHelperCommand(
 	}
 	command.Stdin = toChildRead
 	command.Stdout = fromChildWrite
-	command.Stderr = io.Discard
+	command.Stderr = diagnostics.Writer(contextOrBackground(ctx))
 	command.Env = helperEnvironment(os.Environ(), source)
 	configureHelperProcess(command)
 	if err := command.Start(); err != nil {

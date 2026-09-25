@@ -517,3 +517,14 @@ python3 scripts/check-public-source.py
 
 See [SQLite validation](SQLITE_VALIDATION.md) for SQL test coverage and optional
 integration checks.
+
+### Request diagnostics
+
+Set `TIANA_DIAGNOSTICS=1` to print request IDs for MGR requests, SQLite sessions
+and native Git connections to stderr, including successful calls. SQL results
+and Git protocol bytes stay on stdout. MGR and SQLite runtime errors include
+their request identity without enabling this option. Failed commands also print
+the request IDs collected during the command, including lookups that end in a
+local “instance not found” message. Local errors before any network request have
+no request ID. `tiana connect` prints each helper connection ID to stderr before
+network I/O, so a cancelled or failed handshake still leaves a diagnostic ID.

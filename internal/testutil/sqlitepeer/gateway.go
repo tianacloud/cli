@@ -18,7 +18,7 @@ import (
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 )
 
-const Token = "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+const Token = "tia_0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 const Endpoint = "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"
 

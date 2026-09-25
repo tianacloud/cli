@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/tianacloud/cli/internal/supervisor"
 )
@@ -19,6 +20,15 @@ type tunnel interface {
 	CloseWrite() error
 }
 type connector func(context.Context, supervisor.Endpoint) (tunnel, error)
+
+type requestIdentityKey struct{}
+type requestIdentity struct {
+	mu sync.Mutex
+	id string
+}
+
+func (i *requestIdentity) set(id string) { i.mu.Lock(); i.id = id; i.mu.Unlock() }
+func (i *requestIdentity) get() string   { i.mu.Lock(); defer i.mu.Unlock(); return i.id }
 
 func parseRepository(raw string) (supervisor.Endpoint, error) {
 	authority := strings.TrimPrefix(raw, "tiana://")
@@ -51,14 +61,16 @@ func Run(ctx context.Context, args []string, input io.ReadCloser, output io.Writ
 func run(ctx context.Context, input io.ReadCloser, output io.Writer, repo supervisor.Endpoint, dial connector) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	identity := &requestIdentity{}
+	ctx = context.WithValue(ctx, requestIdentityKey{}, identity)
 	defer input.Close()
 	result := make(chan error, 1)
 	go func() { result <- negotiate(ctx, input, output, repo, dial) }()
 	select {
 	case err := <-result:
-		return err
+		return gitConnectionError(err, identity.get())
 	case <-ctx.Done():
-		return errors.New("interrupted; operation outcome may be unknown")
+		return gitConnectionError(errors.New("interrupted; operation outcome may be unknown"), identity.get())
 	}
 }
 
@@ -88,19 +100,44 @@ func negotiate(ctx context.Context, input io.Reader, output io.Writer, repo supe
 				return err
 			}
 			defer stream.Close()
+			requestID := ""
+			if diagnostic, ok := stream.(interface{ RequestID() string }); ok {
+				requestID = diagnostic.RequestID()
+			}
 			payload := strings.TrimPrefix(command, "connect ") + " /repo.git\x00host=" + repo.Hostname() + "\x00"
 			if _, err = fmt.Fprintf(stream, "%04x%s", len(payload)+4, payload); err != nil {
-				return errors.New("Git daemon request failed")
+				return gitConnectionError(errors.New("Git daemon request failed"), requestID)
 			}
 			if _, err = io.WriteString(output, "\n"); err != nil {
 				return err
 			}
-			return relay(ctx, reader, output, stream)
+			return gitConnectionError(relay(ctx, reader, output, stream), requestID)
 		default:
 			return errors.New("unsupported Git remote-helper command")
 		}
 	}
 }
+
+func gitConnectionError(err error, requestID string) error {
+	if err == nil || requestID == "" {
+		return err
+	}
+	var existing *connectionError
+	if errors.As(err, &existing) {
+		return err
+	}
+	return &connectionError{cause: err, requestID: requestID}
+}
+
+type connectionError struct {
+	cause     error
+	requestID string
+}
+
+func (e *connectionError) Error() string {
+	return fmt.Sprintf("%s (request ID %s)", e.cause, e.requestID)
+}
+func (e *connectionError) Unwrap() error { return e.cause }
 
 func relay(ctx context.Context, input io.Reader, output io.Writer, stream tunnel) error {
 	upload, download := make(chan error, 1), make(chan error, 1)

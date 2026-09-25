@@ -14,6 +14,7 @@ type Error struct {
 	ExitCode   int    `json:"exit_code"`
 	Statement  int    `json:"statement,omitempty"`
 	Cleanup    string `json:"cleanup,omitempty"`
+	RequestID  string `json:"request_id,omitempty"`
 }
 
 func (e *Error) Error() string { b, _ := json.Marshal(e); return string(b) }

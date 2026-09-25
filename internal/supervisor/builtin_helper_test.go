@@ -20,9 +20,13 @@ func builtinTestConfig() HelperConfig {
 }
 
 func builtinTestPeer(t *testing.T) (*ProcessHelper, <-chan error) {
+	return builtinTestPeerContext(t, context.Background())
+}
+
+func builtinTestPeerContext(t *testing.T, ctx context.Context) (*ProcessHelper, <-chan error) {
 	t.Helper()
 	if path := os.Getenv("TIANA_TEST_BUILTIN_CLI"); path != "" {
-		helper, err := launchHelperCommand(context.Background(), exec.Command(path, BuiltinHelperArgument), DefaultCredentialSource(), nil)
+		helper, err := launchHelperCommand(ctx, exec.Command(path, BuiltinHelperArgument), DefaultCredentialSource(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +45,7 @@ func builtinTestPeer(t *testing.T) (*ProcessHelper, <-chan error) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- ServeBuiltinHelper(context.Background(), in, out); out.Close() }()
+	go func() { done <- ServeBuiltinHelper(ctx, in, out); out.Close() }()
 	p := &ProcessHelper{write: write, read: read, reader: bufio.NewReader(read)}
 	t.Cleanup(func() {
 		p.Close()

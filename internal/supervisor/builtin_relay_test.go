@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"github.com/tianacloud/cli/internal/diagnostics"
 	"io"
 	"math/big"
 	"net"
@@ -51,8 +52,12 @@ func builtinGateway(t *testing.T, handler http.HandlerFunc) (HelperConfig, *atom
 	return cfg, &calls
 }
 func startBuiltinTestHelper(t *testing.T, cfg HelperConfig) (*ProcessHelper, net.Conn) {
+	return startBuiltinTestHelperContext(t, cfg, context.Background())
+}
+
+func startBuiltinTestHelperContext(t *testing.T, cfg HelperConfig, parent context.Context) (*ProcessHelper, net.Conn) {
 	t.Helper()
-	p, _ := builtinTestPeer(t)
+	p, _ := builtinTestPeerContext(t, parent)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if _, err := p.Handshake(ctx, []uint16{3}, "relay-test"); err != nil {
@@ -370,5 +375,39 @@ func TestBuiltinRelayFailureDoesNotCancelSibling(t *testing.T) {
 	}
 	if calls.Load() != 2 {
 		t.Fatalf("unexpected retry: %d", calls.Load())
+	}
+}
+
+type diagnosticLines chan string
+
+func (lines diagnosticLines) Write(p []byte) (int, error) { lines <- string(p); return len(p), nil }
+
+func TestBuiltinConnectionDiagnosticPrecedesRejectedGatewayRequest(t *testing.T) {
+	lines := make(diagnosticLines, 2)
+	received := make(chan string, 1)
+	cfg, _ := builtinGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("tiana-request-id")
+		select {
+		case line := <-lines:
+			if line != "Request ID: "+id+" (connect)\n" {
+				t.Errorf("diagnostic ID differs from CONNECT: %q", line)
+			}
+		default:
+			t.Error("request reached Gateway before connection diagnostic")
+		}
+		received <- id
+		w.WriteHeader(http.StatusForbidden)
+	})
+	_, local := startBuiltinTestHelperContext(t, cfg, diagnostics.WithWriter(context.Background(), lines))
+	if _, err := io.WriteString(local, "POST /v2/pipeline HTTP/1.1\r\nHost: local\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case id := <-received:
+		if !strings.HasPrefix(id, "req-") {
+			t.Fatal("missing connection ID")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Gateway did not receive connection")
 	}
 }

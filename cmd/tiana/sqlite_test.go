@@ -99,7 +99,7 @@ func TestSQLitePreflightBeforeResolve(t *testing.T) {
 }
 
 func TestSQLiteCommandExecWithoutHelper(t *testing.T) {
-	t.Setenv("TIANA_TOKEN", "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	t.Setenv("TIANA_TOKEN", "tia_0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	// No helper path or install is configured; this exercises the native branch.
 	resolve := func(_ context.Context, ref string, nonInteractive bool) (sqliteResolution, error) {
 		if ref != "db" || !nonInteractive {
