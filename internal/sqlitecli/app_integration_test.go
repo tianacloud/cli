@@ -3,7 +3,10 @@
 package sqlitecli
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 	"io"
 	"net"
 	"os"
@@ -17,7 +20,8 @@ import (
 
 // Opt-in black-box test against the actual app_sqlite library in a test-only
 // peer executable. Relative sockets avoid sun_path limits on long workspaces.
-func TestRealAppOverNativeSDK(t *testing.T) {
+func realAppConfig(t *testing.T, ttl time.Duration) tianasqlite.Config {
+	t.Helper()
 	binary := os.Getenv("TIANA_SQLITE_APP_PEER_BINARY")
 	if binary == "" {
 		t.Skip("set TIANA_SQLITE_APP_PEER_BINARY; see scripts/test-sqlite-app.sh")
@@ -30,6 +34,7 @@ func TestRealAppOverNativeSDK(t *testing.T) {
 	}
 	defer log.Close()
 	cmd := exec.Command(binary)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("TIANA_TEST_STREAM_TTL_MS=%d", ttl.Milliseconds()))
 	cmd.Dir = dir
 	cmd.Stdout = log
 	cmd.Stderr = log
@@ -72,6 +77,11 @@ func TestRealAppOverNativeSDK(t *testing.T) {
 		_ = conn.Close()
 		<-copyDone
 	}, false)
+	return dial
+}
+
+func TestRealAppOverNativeSDK(t *testing.T) {
+	dial := realAppConfig(t, time.Minute)
 	newClient := func() *Client { c := NewClient(dial, 2*time.Second); t.Cleanup(c.Close); return c }
 	c := newClient()
 	queries := []string{
@@ -114,5 +124,42 @@ func TestRealAppOverNativeSDK(t *testing.T) {
 	}
 	if displayValue(r.Rows[0][0]) != "1" {
 		t.Fatal("uncommitted row survived cleanup")
+	}
+}
+
+func TestRealAppInteractiveExpiry(t *testing.T) {
+	config := realAppConfig(t, 100*time.Millisecond)
+	c := NewClient(config, 2*time.Second)
+	defer c.Close()
+	var diagnostics bytes.Buffer
+	execute := func(q string) *Result {
+		t.Helper()
+		r, e := c.executeInteractive(context.Background(), q, &diagnostics)
+		if e != nil {
+			t.Fatal(q, e)
+		}
+		return r
+	}
+	execute("CREATE TABLE expiry_test(id INTEGER)")
+	time.Sleep(150 * time.Millisecond)
+	execute("INSERT INTO expiry_test VALUES(1)")
+	if r := execute("SELECT count(*) FROM expiry_test"); displayValue(r.Rows[0][0]) != "1" {
+		t.Fatal("wrong write count", r.Rows)
+	}
+	execute("BEGIN")
+	execute("INSERT INTO expiry_test VALUES(2)")
+	time.Sleep(150 * time.Millisecond)
+	_, e := c.executeInteractive(context.Background(), "INSERT INTO expiry_test VALUES(3)", &diagnostics)
+	if e == nil || e.Code != "BATON_INVALID" || e.Outcome == "unknown" {
+		t.Fatalf("expired transaction: %v", e)
+	}
+	if r := execute("SELECT count(*) FROM expiry_test"); displayValue(r.Rows[0][0]) != "1" {
+		t.Fatal("expired transaction persisted", r.Rows)
+	}
+	if !strings.Contains(diagnostics.String(), "Reconnecting...") {
+		t.Fatal("missing recovery progress")
+	}
+	if e := c.Finish(context.Background(), nil); e != nil {
+		t.Fatal(e)
 	}
 }

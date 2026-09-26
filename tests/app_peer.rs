@@ -16,7 +16,11 @@ fn main() {
             EngineConfig {
                 database_path: PathBuf::from("app.db"),
                 max_streams: 32,
-                stream_ttl: Duration::from_secs(60),
+                stream_ttl: Duration::from_millis(
+                    std::env::var("TIANA_TEST_STREAM_TTL_MS")
+                        .map(|v| v.parse().unwrap())
+                        .unwrap_or(60_000),
+                ),
                 query_timeout: Duration::from_secs(2),
                 busy_timeout: Duration::from_millis(100),
             },

@@ -17,4 +17,4 @@ rustc --edition=2024 "$repo_dir/tests/app_peer.rs" \
     --extern "tokio=$1" -o "$build_dir/app-peer"
 cd "$repo_dir"
 TIANA_SQLITE_APP_PEER_BINARY="$build_dir/app-peer" TMPDIR="$repo_dir/.cache/tmp" \
-    go test -mod=readonly -race -count=1 -run TestRealAppOverNativeSDK ./internal/sqlitecli
+    go test -mod=readonly -race -count=1 -run TestRealApp ./internal/sqlitecli

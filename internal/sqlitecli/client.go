@@ -14,15 +14,26 @@ import (
 // Client adapts the shared SDK session to CLI diagnostics and exit cleanup.
 type Client struct {
 	session          *tianasqlite.Session
+	config           tianasqlite.Config
 	initErr          error
 	timeout          time.Duration
 	poisoned, closed bool
 }
 
 func NewClient(config tianasqlite.Config, timeout time.Duration) *Client {
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
 	config.RequestTimeout = timeout
+	if config.Gateway.Token != nil {
+		token := *config.Gateway.Token
+		config.Gateway.Token = &token
+	}
+	if config.Gateway.RootCAs != nil {
+		config.Gateway.RootCAs = config.Gateway.RootCAs.Clone()
+	}
 	session, err := tianasqlite.NewSession(config)
-	return &Client{session: session, initErr: err, timeout: timeout}
+	return &Client{session: session, config: config, initErr: err, timeout: timeout}
 }
 func SDKConfig(endpoint, port string, token *tiana.Token, roots *x509.CertPool, timeout time.Duration) tianasqlite.Config {
 	return tianasqlite.Config{Gateway: tiana.Config{Endpoint: endpoint, Token: token, RootCAs: roots,
@@ -76,7 +87,12 @@ func sessionError(ctx context.Context, err error) *Error {
 	}
 	if typed {
 		switch sdkErr.Code {
-		case "BATON_INVALID", "STREAM_EXPIRED", "STREAM_NOT_FOUND", "STREAM_LIMIT", "SERVICE_STOPPING":
+		case "BATON_INVALID":
+			if !sent {
+				return failure(sdkErr.Code, "SQL session lost; current statement was not executed", 3)
+			}
+			return failure(sdkErr.Code, "SQL outcome unknown; inspect confirmed operations before retrying", 5)
+		case "STREAM_EXPIRED", "STREAM_NOT_FOUND", "STREAM_LIMIT", "SERVICE_STOPPING":
 			return failure(sdkErr.Code, "HTTP request rejected; session will not reconnect automatically", 3)
 		case "REQUEST_TOO_LARGE":
 			if sent {
@@ -115,6 +131,10 @@ func connectFailure(err error) *Error {
 	return failure("CONNECT_FAILED", "cannot establish verified Gateway tunnel; SQL was not sent", 3)
 }
 func (c *Client) Finish(ctx context.Context, primary *Error) *Error {
+	// Interactive recovery already reported and released the failed session.
+	if c.session == nil && c.poisoned {
+		return primary
+	}
 	if c.closed {
 		if c.poisoned {
 			if primary == nil {

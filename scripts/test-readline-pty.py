@@ -15,15 +15,16 @@ import subprocess
 import sys
 import termios
 import time
+import tempfile
 
 
 class Session:
-    def __init__(self, binary):
+    def __init__(self, binary, helper="TestShellPTYHelper"):
         self.master, self.slave = pty.openpty()
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
         self.original = termios.tcgetattr(self.slave)
         self.proc = subprocess.Popen(
-            [binary, "-test.run=^TestShellPTYHelper$", "-test.timeout=15s"],
+            [binary, f"-test.run=^{helper}$", "-test.timeout=15s"],
             stdin=self.slave, stdout=self.slave, stderr=self.slave,
             env={**os.environ, "TIANA_TEST_SHELL_PTY": "1", "TERM": "xterm"},
             start_new_session=True,
@@ -99,7 +100,7 @@ class Session:
 def run(binary, ending):
     s = Session(binary)
     try:
-        prompt = "sqlite[tx=?]> "
+        prompt = "sqlite[tx=off]> "
         s.expect(prompt)
         s.send(b".help\r")
         s.expect(prompt)
@@ -131,6 +132,44 @@ def run(binary, ending):
     print("PASS: visible prompts, history, cursor editing, multiline/Ctrl-C, " + ending)
 
 
+def recovery(binary):
+    s = Session(binary, "TestShellRecoveryPTYHelper")
+    try:
+        off, on, lost = "sqlite[tx=off]> ", "sqlite[tx=on]> ", "sqlite[tx=?]> "
+        s.expect(off)
+        def command(sql, prompt, diagnostic=None):
+            start = len(s.trace)
+            s.send(sql.encode() + b"\r")
+            s.expect(prompt)
+            if diagnostic:
+                assert any(d in s.trace[start:] for d in (diagnostic if isinstance(diagnostic, tuple) else (diagnostic,))), s.trace[start:]
+        command("insert inot t1 values(3,'c');", off, b"INPUT_ERROR")
+        command("SELECT 1;", off, b"0 rows")
+        command("SELECT 2;", off, b"Reconnecting...")
+        assert b"Connected. Session state has been reset" in s.trace
+        command("BEGIN;", on)
+        command("SELECT missing; SELECT 99;", on, b"SQLITE_ERROR")
+        command("ROLLBACK;", off)
+        command("SELECT 3; SELECT 99;", lost, (b"outcome unknown", b"may have committed"))
+        command("SELECT 4;", off, b"Reconnecting...")
+        command("BEGIN;", on)
+        command("INSERT INTO expired VALUES(1); SELECT 99;", lost, b"transaction cannot be continued")
+        command("SELECT 4;", off, b"Reconnecting...")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql") as script:
+            script.write("SELECT missing; SELECT 99;")
+            script.flush()
+            command(".read " + script.name, off, b"SQLITE_ERROR")
+        command("SELECT 4;", off)
+        assert b"private peer message" not in s.trace
+        s.send(b".quit\r")
+        s.exited()
+    finally:
+        s.close()
+    print("PASS: syntax recovery, SQL errors, reconnection, transaction loss, unknown result, .read")
+
+
 if __name__ == "__main__":
     for ending in ("quit", "eof", "signal"):
         run(os.path.abspath(sys.argv[1]), ending)
+
+    recovery(os.path.abspath(sys.argv[1]))

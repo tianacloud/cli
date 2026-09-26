@@ -343,9 +343,35 @@ atomic. The parser supports a subset of SQLite syntax: for example, `VACUUM`,
 `ATTACH`, `DETACH` and bracket-quoted identifiers are rejected. SQL input is
 limited to 8 MiB and scripts to 10,000 statements.
 
-SQL is not automatically retried. A lost response, including a lost `COMMIT`
-response, can leave the outcome unknown. Inspect the database before rerunning;
-Ctrl-C or a closed connection does not prove remote cancellation or rollback.
+In an interactive terminal, syntax and SQL errors return to the prompt. A failed
+multi-statement input or `.read` stops at the first unrecovered error; earlier
+statements may have committed. The prompt shows `tx=on`, `tx=off`, or `tx=?`
+according to the last confirmed transaction state. Correcting an input error
+keeps an existing transaction open.
+
+If an idle session expires outside a transaction and the server confirms that
+the current statement was not executed (`BATON_INVALID`), the shell prints:
+
+```text
+Connection lost. Reconnecting...
+Connected. Session state has been reset (temporary tables and connection settings are not restored).
+```
+
+It opens a new session to the same endpoint and retries that statement once,
+within the original command timeout. A new session does not restore temporary
+tables, connection settings or transactions. No keepalive prevents idle expiry.
+
+A lost transaction or an unknown result stops the current input and leaves the
+shell open. The next SQL input opens a new session automatically. A lost response,
+including a lost `COMMIT` response, can mean the write already committed: inspect
+the database before rerunning it. Ctrl-C or a closed connection does not prove
+remote cancellation or rollback. Failed reconnects also return to the prompt.
+
+These recovery rules apply only to interactive terminals. `-e`, `-f`, pipes and
+`--non-interactive` stop on errors with the exit codes below and do not reconnect.
+Interactive errors already displayed do not make a later normal `.quit` fail;
+active-transaction cleanup, terminal I/O failures and process cancellation retain
+their exit behavior.
 
 | SQL exit code | Meaning |
 | --- | --- |

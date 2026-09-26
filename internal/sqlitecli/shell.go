@@ -46,7 +46,7 @@ func Shell(ctx context.Context, c *Client, o *Output, input io.Reader, diagnosti
 		// Cancel a pending terminal read without closing the caller's stdin.
 		stdin := readline.NewCancelableStdin(in)
 		rl, err = readline.NewEx(&readline.Config{
-			Prompt: "sqlite[tx=?]> ", HistoryLimit: 500, HistoryFile: "",
+			Prompt: c.prompt(), HistoryLimit: 500, HistoryFile: "",
 			Stdin: stdin, Stdout: out, Stderr: diagnostics,
 		})
 		if err != nil {
@@ -105,7 +105,13 @@ func Shell(ctx context.Context, c *Client, o *Output, input io.Reader, diagnosti
 		}
 		for _, stmt := range statements {
 			index++
-			r, e := c.Execute(ctx, stmt.SQL, false)
+			var r *Result
+			var e *Error
+			if interactive {
+				r, e = c.executeInteractive(ctx, stmt.SQL, diagnostics)
+			} else {
+				r, e = c.Execute(ctx, stmt.SQL, false)
+			}
 			if e == nil {
 				e = o.Result(index, r)
 			}
@@ -118,7 +124,7 @@ func Shell(ctx context.Context, c *Client, o *Output, input io.Reader, diagnosti
 	}
 	for {
 		if interactive {
-			prompt := "sqlite[tx=?]> "
+			prompt := c.prompt()
 			if buffer != "" {
 				prompt = "...> "
 			}
@@ -204,10 +210,11 @@ func Shell(ctx context.Context, c *Client, o *Output, input io.Reader, diagnosti
 			}
 		}
 		if e != nil {
-			if !interactive || !dotCommand || e.ExitCode != 2 {
+			if !interactive || e.ExitCode == 6 || e.ExitCode == 130 || ctx.Err() != nil {
 				return e
 			}
-			if _, err := fmt.Fprintln(diagnostics, e.Error()); err != nil {
+			buffer = ""
+			if _, err := fmt.Fprintf(diagnostics, "Error [%s]: %s\n", e.Code, e.Message); err != nil {
 				return outputError()
 			}
 		}
