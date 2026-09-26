@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,5 +58,50 @@ func TestAppsHelpAndValidation(t *testing.T) {
 	var out, diagnostics bytes.Buffer
 	if code := runCLI(context.Background(), []string{"apps", "upload", "--project", "bad/project", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
 		t.Fatalf("invalid project code=%d", code)
+	}
+}
+
+func TestAppsFailureRetainsRequestID(t *testing.T) {
+	for _, jsonMode := range []bool{false, true} {
+		t.Run(fmt.Sprint(jsonMode), func(t *testing.T) {
+			requestID := ""
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestID = r.Header.Get("X-Request-ID")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(503)
+				io.WriteString(w, `{"error":{"code":"TEMPORARY_FAILURE","message":"try again"}}`)
+			}))
+			defer server.Close()
+			t.Setenv("TIANA_MGR_ORIGIN", server.URL)
+			credentials := filepath.Join(t.TempDir(), "credentials.json")
+			t.Setenv("TIANA_CREDENTIALS_FILE", credentials)
+			if err := authclient.NewFileStore(credentials, server.URL).Save(authclient.Credential{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour), User: authclient.User{ID: "user-a"}}); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"apps", "create", "--project", "billing"}
+			if jsonMode {
+				args = append(args, "--json")
+			}
+			var out, diagnostics bytes.Buffer
+			code := runCLI(context.Background(), args, nil, &out, &diagnostics)
+			if code != 4 || requestID == "" {
+				t.Fatalf("code=%d requestID=%q", code, requestID)
+			}
+			if jsonMode {
+				var result struct {
+					Error struct {
+						RequestID string `json:"request_id"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.Error.RequestID != requestID {
+					t.Fatalf("JSON lost request ID: %s", &out)
+				}
+			} else if !strings.Contains(diagnostics.String(), "Request ID: "+requestID) {
+				t.Fatalf("stderr lost request ID: %s", &diagnostics)
+			}
+		})
 	}
 }

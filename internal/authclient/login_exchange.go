@@ -3,16 +3,19 @@ package authclient
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
 
 // The shared SDK does not expose exchange for a previously started transaction.
-func (c *Client) exchangeAuthorizationCode(ctx context.Context, transaction AuthTransaction, code string) (Credential, error) {
+func (c *Client) exchangeAuthorizationCode(ctx context.Context, transaction AuthTransaction, code string) (credential Credential, resultErr error) {
 	if transaction.ID == "" || transaction.ClientSecret == "" || code == "" {
 		return Credential{}, errors.New("authentication transaction is incomplete")
 	}
@@ -25,6 +28,20 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, transaction Auth
 	if err != nil {
 		return Credential{}, errors.New("cannot create authorization exchange")
 	}
+	var identity [18]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return Credential{}, errors.New("cannot generate authorization request ID")
+	}
+	requestID := "req-" + base64.RawURLEncoding.EncodeToString(identity[:])
+	request.Header.Set("X-Request-ID", requestID)
+	if c.config.OnRequestID != nil {
+		func() { defer func() { _ = recover() }(); c.config.OnRequestID(requestID) }()
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = fmt.Errorf("%w (Request ID: %s)", resultErr, requestID)
+		}
+	}()
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Cache-Control", "no-store")
