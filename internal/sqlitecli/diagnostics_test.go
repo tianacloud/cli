@@ -50,3 +50,52 @@ func TestSessionErrorPreservesRequestIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestInteractiveRecoveryKeepsBothConnectionIdentities(t *testing.T) {
+	for _, lost := range []bool{false, true} {
+		t.Run(map[bool]string{false: "rejected-baton", true: "lost-response"}[lost], func(t *testing.T) {
+			calls := 0
+			client, _ := peerClient(t, func(req peerRequest, _ int) string {
+				if req.Requests[0].Statement != nil {
+					calls++
+					if calls == 2 {
+						if lost {
+							return ""
+						}
+						return batonRejection()
+					}
+				}
+				return httpReply(successResponse(req, "next"))
+			})
+			var output bytes.Buffer
+			ctx := diagnostics.WithWriter(context.Background(), &output)
+			if _, e := client.executeInteractive(ctx, "SELECT 1", &output); e != nil {
+				t.Fatal(e)
+			}
+			first := client.session.RequestID()
+			_, failure := client.executeInteractive(ctx, "SELECT 2", &output)
+			if lost {
+				if failure == nil || failure.RequestID != first || failure.Outcome != "unknown" {
+					t.Fatalf("lost response identity: %+v", failure)
+				}
+				if _, e := client.executeInteractive(ctx, "SELECT 3", &output); e != nil {
+					t.Fatal(e)
+				}
+			} else if failure != nil {
+				t.Fatal(failure)
+			}
+			second := client.session.RequestID()
+			if first == "" || second == "" || first == second {
+				t.Fatalf("connection identities first=%q second=%q", first, second)
+			}
+			for _, id := range []string{first, second} {
+				if !strings.Contains(output.String(), "Request ID: "+id+" (sqlite)") {
+					t.Fatalf("missing diagnostic %q: %s", id, output.String())
+				}
+			}
+			if e := client.Finish(ctx, nil); e != nil {
+				t.Fatal(e)
+			}
+		})
+	}
+}

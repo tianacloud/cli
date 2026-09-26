@@ -20,6 +20,8 @@ github.com/tianacloud/sdk-go v0.1.0-rc.4 h1:8WDMLYsTN0iDYcEobijY8sppDpxUTIKO+cAP
 github.com/tianacloud/sdk-go v0.1.0-rc.4/go.mod h1:AOZaHOcz4zQs0GoLGOCTyAA4qr5om9xyJtFUylrlvw4=
 github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.3 h1:KXZGvcLEDx2ZhZftC/Sp7hqxMpWusnO4yqHJM8Bl0/I=
 github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.3/go.mod h1:aMbcr+k1gop6/k3pVphZJnCef27GNbJ2455TAvokL40=
+github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.4 h1:vOrr3spgFa5pZIuEog6DDeFhp6hoyVNCIdFCLoQ1TVE=
+github.com/tianacloud/sdk-go-sqlite v0.1.0-rc.4/go.mod h1:aMbcr+k1gop6/k3pVphZJnCef27GNbJ2455TAvokL40=
 github.com/urfave/cli/v3 v3.11.0 h1:P/euJp99kb9p0tlVY+iYTLYYTAQlfl0hR2gUO1Img1Q=
 github.com/urfave/cli/v3 v3.11.0/go.mod h1:ysVLtOEmg2tOy6PknnYVhDoouyC/6N42TMeoMzskhso=
 golang.org/x/net v0.57.0 h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=
