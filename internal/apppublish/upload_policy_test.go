@@ -84,3 +84,35 @@ func TestUploadPlanPreservesPrivateACLPublicTagAndSignedURL(t *testing.T) {
 		t.Fatalf("object PUT count = %d, want 1", puts.Load())
 	}
 }
+
+func TestUploadFailureRetainsManagementPlanRequestID(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app.js"), []byte("export default 1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	manifest, failure := scanArtifacts(t.Context(), root, "")
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	file := manifest.Files[0]
+	objects := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { w.WriteHeader(503) }))
+	defer objects.Close()
+	var planIDs []string
+	runner, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
+		planIDs = append(planIDs, req.Header.Get("X-Request-ID"))
+		json.NewEncoder(w).Encode(map[string]any{"files": []artifactLink{{Path: file.Path, Method: "PUT", URL: objects.URL + "/object", ExpiresAt: time.Now().Add(time.Minute), Headers: map[string]string{"Content-Type": file.ContentType, "Content-MD5": file.MD5, "X-Oss-Forbid-Overwrite": "true"}}}})
+	})
+	runner.UploadHTTP = objects.Client()
+	failure = runner.uploadArtifactBatch(t.Context(), identity{PrincipalID: "prn-test"}, "/api/v1/web-projects/billing/versions/v1", root, manifest.Files)
+	if failure == nil || failure.Code != "UPLOAD_INCOMPLETE" {
+		t.Fatalf("failure: %+v", failure)
+	}
+	if len(planIDs) != 3 || planIDs[2] == "" || failure.RequestID != planIDs[2] {
+		t.Fatalf("lost plan request ID: error=%+v plans=%v", failure, planIDs)
+	}
+}

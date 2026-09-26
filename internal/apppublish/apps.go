@@ -308,7 +308,13 @@ func scanArtifacts(ctx context.Context, root *os.Root, entry string) (artifactMa
 	return m, nil
 }
 
-func (r Runner) uploadArtifactBatch(ctx context.Context, id identity, base string, root *os.Root, files []artifactFile) *Error {
+func (r Runner) uploadArtifactBatch(ctx context.Context, id identity, base string, root *os.Root, files []artifactFile) (failure *Error) {
+	var planRequestID string
+	defer func() {
+		if failure != nil && failure.RequestID == "" {
+			failure.RequestID = planRequestID
+		}
+	}()
 	byPath := map[string]artifactFile{}
 	for _, f := range files {
 		byPath[f.Path] = f
@@ -316,6 +322,7 @@ func (r Runner) uploadArtifactBatch(ctx context.Context, id identity, base strin
 	// Every retry asks MGR which objects exist. Never treat an ambiguous PUT as failure or success by itself.
 	for attempt := 0; attempt < 3; attempt++ {
 		res, e := r.request(ctx, id, "POST", base+"/uploads", map[string]any{"files": files})
+		planRequestID = res.RequestID
 		if e != nil {
 			return e
 		}

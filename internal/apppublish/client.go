@@ -3,6 +3,7 @@ package apppublish
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,8 +96,9 @@ func (r Runner) currentIdentity(ctx context.Context) (identity, *Error) {
 }
 
 type httpResult struct {
-	Status int
-	Body   json.RawMessage
+	RequestID string
+	Status    int
+	Body      json.RawMessage
 }
 
 func (r Runner) request(ctx context.Context, id identity, method, path string, body any) (result httpResult, failure *Error) {
@@ -109,9 +111,11 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 	if current.User.ID != id.PrincipalID || (id.TenantID != "" && current.User.TenantID != id.TenantID) {
 		return httpResult{}, authError(authclient.ErrAuthenticationRequired)
 	}
+	requestID := "req-" + rand.Text()
+	ctx = auth.WithRequestID(ctx, requestID)
 	var raw json.RawMessage
 	status, err := r.Client.RequestProjectJSON(ctx, method, path, body, current, &raw)
-	result = httpResult{status, raw}
+	result = httpResult{Status: status, Body: raw, RequestID: requestID}
 	defer func() {
 		if failure != nil {
 			failure.RequestID = auth.RequestIDOf(err)
