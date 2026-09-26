@@ -19,7 +19,8 @@ document.body.append(loadingHost);
 async function request(path, method = 'GET', payload) {
   const url = new URL('_tiana/' + path, base);
   if (!localPreview) url.searchParams.set('version', resolvedVersion);
-  const headers = {'X-Tiana-Bootstrap': '1'};
+  const requestId = 'req-' + crypto.randomUUID();
+  const headers = {'X-Tiana-Bootstrap': '1', 'X-Request-ID': requestId};
   if (!localPreview) {
     const proof = document.cookie.split('; ').find(item => item.startsWith('tiana_mgr_csrf='));
     if (proof) headers['X-CSRF-Token'] = decodeURIComponent(proof.split('=').slice(1).join('='));
@@ -28,8 +29,12 @@ async function request(path, method = 'GET', payload) {
     headers['Content-Type'] = 'application/json';
     headers['Idempotency-Key'] = payload.request_id;
   }
-  const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, body: payload ? JSON.stringify(payload) : undefined});
-  return {response, data: response.status === 204 ? null : await response.json()};
+  try {
+    const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, body: payload ? JSON.stringify(payload) : undefined});
+    return {response, requestId, data: response.status === 204 ? null : await response.json()};
+  } catch (cause) {
+    throw Object.assign(new Error('应用请求失败，请重试。', {cause}), {requestId});
+  }
 }
 function credentialExpiryMilliseconds(value) {
   if (localPreview && typeof value === 'string') return Date.parse(value);
@@ -52,11 +57,13 @@ async function loadApplication() {
     if (!pendingConnection) {
       pendingConnection = (async () => {
         const payload = localPreview ? undefined : {request_id: crypto.randomUUID(), expires_at: Math.floor(Date.now() / 1000) + 10 * 60};
-        const {response, data} = await request('connection', 'POST', payload);
-        if (!response.ok) throw new Error('数据库授权未完成，请重新登录或刷新页面后重试。');
-        const origin = new URL(data.origin);
+        const {response, data, requestId} = await request('connection', 'POST', payload);
+        if (!response.ok) throw Object.assign(new Error('数据库授权未完成，请重新登录或刷新页面后重试。'), {requestId});
+        let origin;
+        try { origin = new URL(data.origin); }
+        catch (cause) { throw Object.assign(new Error('数据库连接信息无效。', {cause}), {requestId}); }
         const expiresAt = credentialExpiryMilliseconds(data.expires_at);
-        if (data.instance_id !== manifest.database_instance_id || !data.tianaToken || data.sql_api !== 'hrana-v3' || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || origin.protocol !== 'https:' || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') throw new Error('数据库连接信息无效。');
+        if (data.instance_id !== manifest.database_instance_id || !data.tianaToken || data.sql_api !== 'hrana-v3' || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || origin.protocol !== 'https:' || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') throw Object.assign(new Error('数据库连接信息无效。'), {requestId});
         credential = Object.freeze(data);
         credentialExpiresAt = expiresAt;
         pendingConnection = undefined;
@@ -83,8 +90,16 @@ async function loadApplication() {
   loadingHost.remove();
   loaderScript?.remove();
 }
-loadApplication().catch(() => {
+loadApplication().catch(error => {
   loading.querySelector('span').textContent = '应用加载失败，请刷新后重试。';
+  if (error.requestId) {
+    const identity = document.createElement('p');
+    identity.textContent = 'Request ID: ' + error.requestId;
+    const copy = document.createElement('button');
+    copy.textContent = '复制 Request ID';
+    copy.addEventListener('click', () => { void navigator.clipboard.writeText(error.requestId).then(() => { copy.textContent = '已复制'; }); });
+    loading.querySelector('section').append(identity, copy);
+  }
   const retry = document.createElement('button');
   retry.textContent = '重新加载';
   retry.addEventListener('click', () => location.reload(), {once: true});

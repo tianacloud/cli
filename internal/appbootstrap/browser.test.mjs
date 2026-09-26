@@ -39,10 +39,51 @@ try {
  assert.equal(await page.locator('#tiana-loading').count(),0);
  assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
  assert.equal(await page.evaluate(()=>document.cookie.includes('tiana_preview')),false);
+ await context.grantPermissions(['clipboard-read','clipboard-write'],{origin});
+ for(const mode of ['http','json','network']) {
+  let requestID;
+  await context.route('**/_tiana/connection', async route=>{
+   requestID=route.request().headers()['x-request-id'];
+   if(mode==='network')return route.abort();
+   return route.fulfill({status:mode==='http'?503:200,contentType:'application/json',body:mode==='json'?'{':'{}'});
+  });
+  await page.reload();
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+  assert.ok(requestID,'request ID must precede fetch');
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),requestID);
+  assert.ok(await page.getByText('Request ID: '+requestID,{exact:true}).isVisible());
+  await context.unroute('**/_tiana/connection');
+ }
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
  await page.evaluate(()=>fetch(new URL('_tiana/logout',location.href),{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}}));
  await page.reload();
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
  assert.equal((await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js')).status(),401);
+ for (const mode of ['http','json','network']) {
+  let requestID;
+  await context.route('**/_tiana/login',route=>{
+   requestID=route.request().headers()['x-request-id'];
+   if(mode==='network')return route.abort();
+   return route.fulfill({status:mode==='http'?503:200,contentType:'application/json',body:mode==='json'?'{':'{}'});
+  });
+  await page.reload();
+  await page.locator('#tiana-sign-in').click();
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+  assert.ok(requestID);
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),requestID);
+  await context.unroute('**/_tiana/login');
+ }
+ let sessionID;
+ await context.route('**/_tiana/session',route=>{sessionID=route.request().headers()['x-request-id'];return route.abort();});
+ await page.reload();
+ await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+ assert.ok(sessionID);
+ await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),sessionID);
+ await context.unroute('**/_tiana/session');
  assert.deepEqual(errors,[]);
  console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout.');
 } finally {await browser.close();}

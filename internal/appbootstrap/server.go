@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tianacloud/sdk-go/auth"
 )
 
 //go:embed runtime/index.html runtime/bootstrap.js runtime/authorize.html runtime/authorize.js runtime/authorize.css
@@ -83,6 +85,19 @@ func (s *Server) Close() {
 	}
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	requestID := r.Header.Get("X-Request-ID")
+	if requestID == "" {
+		var identity [18]byte
+		if _, err := rand.Read(identity[:]); err != nil {
+			s.failure(w, 500, "REQUEST_ID_UNAVAILABLE")
+			return
+		}
+		requestID = "req-" + base64.RawURLEncoding.EncodeToString(identity[:])
+		r.Header.Set("X-Request-ID", requestID)
+	}
+	w.Header().Set("X-Request-ID", requestID)
+	r = r.WithContext(auth.WithRequestID(r.Context(), requestID))
+
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -291,7 +306,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := base64.RawURLEncoding.EncodeToString(proof)
-	flowCtx, stop := context.WithDeadline(context.Background(), flow.ExpiresAt)
+	flowCtx, stop := context.WithDeadline(auth.WithRequestID(context.Background(), r.Header.Get("X-Request-ID")), flow.ExpiresAt)
 	v := &session{state: "pending", prompt: flow.VerificationURL, expires: flow.ExpiresAt, cancel: stop}
 	s.sessions[id] = v
 	http.SetCookie(w, &http.Cookie{Name: s.cookie, Value: id, Path: s.config.BasePath, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 3600})
