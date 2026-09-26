@@ -55,6 +55,7 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 			dir := csrBuild(t)
 			var manifest artifactManifest
 			requested := false
+			descriptorRequestID := ""
 			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, r *http.Request) {
 				switch r.Method {
 				case "PUT":
@@ -64,6 +65,7 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant", ProjectID: "billing", VersionID: "v1", State: "published", Fingerprint: hex.EncodeToString(hash[:])})
 				case "GET":
 					requested = true
+					descriptorRequestID = r.Header.Get("X-Request-ID")
 					if r.URL.Path != "/api/v1/web-projects/billing/versions/v1/bootstrap" {
 						t.Errorf("wrong route %s", r.URL.Path)
 					}
@@ -90,6 +92,9 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 			if invalid {
 				if result.Error == nil {
 					t.Fatal("reported wrong DB binding as published app")
+				}
+				if descriptorRequestID == "" || result.Error.RequestID != descriptorRequestID {
+					t.Fatal("hosting confirmation failure lost its request ID")
 				}
 				return
 			}

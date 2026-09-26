@@ -148,12 +148,17 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		*version = "v-" + fingerprint
 	}
 	base += "/versions/" + url.PathEscape(*version)
+	lastResponseRequestID := ""
 	fail := func(e *Error) Result {
+		if e.RequestID == "" {
+			e.RequestID = lastResponseRequestID
+		}
 		v := Failure(e)
 		v.Data = map[string]string{"project_id": *project, "version_id": *version}
 		return v
 	}
 	res, e := r.request(ctx, id, "PUT", base, manifest)
+	lastResponseRequestID = res.RequestID
 	if e != nil {
 		return fail(e)
 	}
@@ -178,6 +183,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		// All local files were confirmed by OSS or the resumed HEAD check.
 		// MGR checks only the configured entrypoints and publishes atomically.
 		res, e = r.request(ctx, id, "POST", base+"/complete", struct{}{})
+		lastResponseRequestID = res.RequestID
 		if e != nil {
 			return fail(e)
 		}
@@ -191,6 +197,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 	result := map[string]any{"project_id": *project, "version_id": *version, "state": prepared.State, "file_count": len(manifest.Files), "processed_files": uploaded, "entry_path": manifest.EntryPath}
 	if manifest.Application != nil {
 		res, e := r.request(ctx, id, "GET", base+"/bootstrap", nil)
+		lastResponseRequestID = res.RequestID
 		if e != nil {
 			return fail(e)
 		}
