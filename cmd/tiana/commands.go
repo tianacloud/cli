@@ -141,7 +141,11 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 	root := &cli.Command{
 		Name: "tiana", Usage: "Tiana account, SQLite and Git commands",
 		Reader: input, Writer: output, ErrWriter: diagnostics, HideVersion: true,
-		Flags:          []cli.Flag{&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Print version", Local: true}, &cli.StringFlag{Name: "ca-file", Usage: "Deployment CA PEM for all MGR and Gateway connections"}},
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Print version", Local: true},
+			&cli.StringFlag{Name: "config", Usage: "JSON configuration file containing managementOrigin"},
+			&cli.StringFlag{Name: "ca-file", Usage: "Deployment CA PEM for all MGR and Gateway connections"},
+		},
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Bool("version") {
@@ -151,7 +155,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		},
 		Commands: []*cli.Command{
 			{Name: "version", Usage: "Print version", Action: printVersion},
-			{Name: "login", Usage: "Sign in through a browser", Description: "Sign in or create an account. The CLI prints a URL and waits for approval.", Action: noArgs(runLogin)},
+			newLoginCommand(output, diagnostics),
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Action: noArgs(runLogout)},
 			{Name: "status", Usage: "Show login status and tenant quota", Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status.", Action: noArgs(runStatus)},
 
@@ -162,6 +166,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
 				}},
 			newGitCommand(input, output, diagnostics),
+			newAppsCommand(output, diagnostics),
 		},
 	}
 	configureCommandErrors(root)
@@ -170,6 +175,17 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		ctx, err := before(ctx, cmd)
 		if err != nil {
 			return ctx, err
+		}
+		if cmd.IsSet("config") {
+			if cmd.String("config") == "" {
+				return ctx, argumentFailure(ctx, cmd, "--config requires a non-empty path")
+			}
+			settings, err := clientconfig.LoadSettings(cmd.String("config"))
+			if err != nil {
+				fmt.Fprintln(diagnostics, "tiana:", err)
+				return ctx, statusError(2)
+			}
+			ctx = clientconfig.WithSettings(ctx, settings)
 		}
 		path := cmd.String("ca-file")
 		if !cmd.IsSet("ca-file") {

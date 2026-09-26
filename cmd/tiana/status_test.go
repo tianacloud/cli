@@ -3,15 +3,51 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 const testQuotaResponse = `{"tenant_id":"tenant-status","compute_used":"123","storage_used":"456","updated_at":1790083200123,"period_start":1789948800000,"period_end":1790553600000,"instances_used":"2","limits":{"compute":"10000","storage_bytes":"2000000000","max_instances":"3","period":"week"},"blocked":false,"reason":""}`
+
+func TestStatusUsesSavedOriginWithoutEnvironment(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "Bearer access-usr_saved" {
+			t.Error("unexpected mutation or account")
+		}
+		switch r.URL.Path {
+		case "/api/v1/auth/transactions/whoami":
+			io.WriteString(w, `{"user":{"user_id":"usr_saved","email":"saved@example.test"}}`)
+		case "/api/v1/usage":
+			io.WriteString(w, testQuotaResponse)
+		default:
+			t.Error("unexpected request")
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	env := newTestEnv(t, server.URL)
+	saveTestCredential(t, server.URL, env.credentialsPath, "usr_saved")
+	for _, key := range []string{"TIANA_MGR_ORIGIN", "TIANA_AUTH_ORIGIN"} {
+		t.Setenv(key, "")
+		os.Unsetenv(key)
+	}
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	if code := runCLI(context.Background(), []string{"--ca-file", caFile, "status"}, nil, &out, &diag); code != 0 || requests != 2 || !strings.Contains(out.String(), "saved@example.test") {
+		t.Fatalf("code=%d requests=%d out=%s diagnostics=%s", code, requests, &out, &diag)
+	}
+}
 
 func TestStatusLoginAndQuota(t *testing.T) {
 	for _, mode := range []string{"success", "unknown", "maximum", "blocked", "quota-failed", "quota-malformed", "quota-bad-number", "quota-null-required", "signed-out"} {

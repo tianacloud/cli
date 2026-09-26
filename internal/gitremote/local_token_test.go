@@ -1,7 +1,9 @@
 package gitremote
 
 import (
+	"context"
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/clientconfig"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +12,7 @@ import (
 )
 
 func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
-	for _, mode := range []string{"account", "explicit", "file", "missing", "invalid-explicit"} {
+	for _, mode := range []string{"account", "configured-account", "explicit", "file", "missing", "invalid-explicit"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, key := range []string{"TIANA_TOKEN", "TIANA_TOKEN_FILE"} {
 				t.Setenv(key, "")
@@ -42,7 +44,12 @@ func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
 			if mode == "invalid-explicit" {
 				t.Setenv("TIANA_TOKEN", "")
 			}
-			cfg, err := configuration(testRepo(t))
+			ctx := context.Background()
+			if mode == "configured-account" {
+				t.Setenv("TIANA_MGR_ORIGIN", "https://other.example.test")
+				ctx = clientconfig.WithSettings(ctx, clientconfig.Settings{ManagementOrigin: origin})
+			}
+			cfg, err := configurationWithContext(ctx, testRepo(t))
 			if mode == "missing" || mode == "invalid-explicit" {
 				if err == nil {
 					t.Fatal("accepted missing credential")

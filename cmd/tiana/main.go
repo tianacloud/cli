@@ -121,9 +121,9 @@ func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
 }
 
 func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (*authclient.Client, error) {
-	origin := authclient.DefaultOrigin()
-	if origin == "" {
-		return nil, errors.New("set TIANA_MGR_ORIGIN to your HTTPS management origin")
+	origin, err := authclient.ResolveOrigin(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var store authclient.CredentialStore
 	if path := strings.TrimSpace(os.Getenv("TIANA_CREDENTIALS_FILE")); path != "" {

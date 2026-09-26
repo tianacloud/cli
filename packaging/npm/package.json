@@ -1,0 +1,23 @@
+{
+  "name": "@tianadb/cli",
+  "version": "0.2.1-beta.0",
+  "description": "Tiana CLI for account login, SQLite, Git and application publication",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "next"
+  },
+  "bin": {
+    "tiana": "bin/tiana.mjs",
+    "git-remote-tiana": "bin/git-remote-tiana.mjs"
+  },
+  "files": [
+    "bin",
+    "platforms",
+    "README.md"
+  ]
+}

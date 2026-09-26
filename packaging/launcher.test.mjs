@@ -1,0 +1,103 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { platformDirectory } from './npm/bin/launcher.mjs';
+
+async function fixture(t, body) {
+  const directory = await mkdtemp(path.join(tmpdir(), 'tiana-launcher-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await cp(new URL('./npm/bin', import.meta.url), path.join(directory, 'bin'), { recursive: true });
+  const platform = path.join(directory, 'platforms', platformDirectory(process.platform, process.arch));
+  await mkdir(platform, { recursive: true });
+  if (body) {
+    // A fixture executable, not a distributable native CLI.
+    await writeFile(path.join(platform, 'tiana'), `#!${process.execPath}\n${body}`, { mode: 0o755 });
+  }
+  return directory;
+}
+
+function launch(directory, args = []) {
+  return spawn(process.execPath, [path.join(directory, 'bin/tiana.mjs'), ...args], {
+    cwd: directory, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+}
+
+async function result(child, input = '') {
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8').on('data', data => { stdout += data; });
+  child.stderr.setEncoding('utf8').on('data', data => { stderr += data; });
+  child.stdin.end(input);
+  const [code, signal] = await once(child, 'close');
+  return { code, signal, stdout, stderr };
+}
+
+test('selects each packaged platform', () => {
+  assert.equal(platformDirectory('darwin', 'arm64'), 'darwin-arm64');
+  assert.equal(platformDirectory('linux', 'x64'), 'linux-amd64');
+  assert.equal(platformDirectory('linux', 'arm64'), undefined);
+  assert.equal(platformDirectory('win32', 'x64'), undefined);
+});
+
+test('passes argv, stdin, cwd, stdout, stderr and exit code without a shell', async t => {
+  const directory = await fixture(t, `
+let input = '';
+process.stdin.setEncoding('utf8').on('data', chunk => { input += chunk; });
+process.stdin.on('end', () => {
+  console.log(JSON.stringify({args:process.argv.slice(2),input,cwd:process.cwd()}));
+  console.error('fixture diagnostic');
+  process.exitCode = 4;
+});
+`);
+  const args = ['sql', 'execute', '--input-json', '-', '$NOT_EXPANDED', "quote' and spaces", '$(not-a-command)'];
+  const input = '{"sql":"SELECT ?","params":[{"type":"text","value":"中文\\nquote\\\""}]}\n';
+  const output = await result(launch(directory, args), input);
+  assert.equal(output.code, 4);
+  assert.equal(output.signal, null);
+  assert.deepEqual(JSON.parse(output.stdout), { args, input, cwd: await realpath(directory) });
+  assert.equal(output.stderr, 'fixture diagnostic\n');
+});
+
+test('reports an incomplete installation', async t => {
+  const directory = await fixture(t);
+  const output = await result(launch(directory));
+  assert.equal(output.code, 1);
+  assert.equal(output.stdout, '');
+  assert.match(output.stderr, /Reinstall the complete package/);
+});
+
+test('Git npm entry point uses its own CLI and preserves remote arguments', async t => {
+  const directory = await fixture(t, `console.log(JSON.stringify(process.argv.slice(2)));`);
+  const args = ['origin with spaces', 'tiana://ep-00000000000000000000000000.example.test:9443/repo.git'];
+  const child = spawn(process.execPath, [path.join(directory, 'bin/git-remote-tiana.mjs'), ...args], {cwd: directory, stdio: ['pipe','pipe','pipe']});
+  const output = await result(child);
+  assert.equal(output.code, 0);
+  assert.deepEqual(JSON.parse(output.stdout), ['git','remote-helper',...args]);
+});
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  test(`forwards ${signal} and preserves the CLI recovery exit code`, { timeout: 5000 }, async t => {
+    const directory = await fixture(t, `
+process.on('${signal}', () => { console.log('interrupted'); process.exit(4); });
+setInterval(() => {}, 1000);
+console.log('ready');
+`);
+    const child = launch(directory);
+    t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
+    const completed = result(child);
+    await once(child.stdout, 'data');
+    child.kill(signal);
+    const output = await completed;
+    assert.equal(output.code, 4);
+    assert.equal(output.stdout, 'ready\ninterrupted\n');
+  });
+}
+
+test('maps a native signal exit to a conventional shell exit code', { timeout: 5000 }, async t => {
+  const directory = await fixture(t, "process.kill(process.pid, 'SIGTERM');\n");
+  const output = await result(launch(directory));
+  assert.equal(output.code, 143);
+});

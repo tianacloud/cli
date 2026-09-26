@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
 )
 
@@ -39,7 +38,7 @@ func (t *httpTunnel) Close() error {
 }
 
 func connect(ctx context.Context, repo supervisor.Endpoint) (tunnel, error) {
-	config, err := configurationWithTrust(repo, clientconfig.FromContext(ctx))
+	config, err := configurationWithContext(ctx, repo)
 	if err != nil {
 		return nil, err
 	}

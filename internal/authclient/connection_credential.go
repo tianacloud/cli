@@ -3,6 +3,7 @@ package authclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -41,9 +42,9 @@ func ConnectionCredential(ctx context.Context) ([]byte, error) {
 			}
 		}
 	default:
-		origin := DefaultOrigin()
-		if origin == "" {
-			return nil, errors.New("set TIANA_MGR_ORIGIN and run tiana login, or provide TIANA_TOKEN/TIANA_TOKEN_FILE")
+		origin, err := ResolveOrigin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w; or provide TIANA_TOKEN/TIANA_TOKEN_FILE", err)
 		}
 		path := strings.TrimSpace(os.Getenv("TIANA_CREDENTIALS_FILE"))
 		var store CredentialStore

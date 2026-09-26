@@ -68,6 +68,10 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 	}
 	var out, diag bytes.Buffer
 	args := []string{"connect", "--adapter", "sqld", "--allow-unisolated-loopback", "--", native, "db", "shell", "https://ep-00000000000000000000000000.db.example.test", "SELECT __builtin_native_fixture"}
+	if local {
+		t.Setenv("TIANA_MGR_ORIGIN", "https://other.example.test")
+		args = append([]string{"--config", writeTestConfig(t, "https://mgr.example.test")}, args...)
+	}
 	code := runCLI(context.Background(), args, strings.NewReader(""), &out, &diag)
 	if code != 19 || diag.Len() != 0 {
 		t.Fatalf("code=%d diag=%s", code, &diag)

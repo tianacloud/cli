@@ -24,11 +24,7 @@ type config struct {
 	token   *supervisor.SecretToken
 }
 
-func configuration(repo supervisor.Endpoint) (config, error) {
-	return configurationWithTrust(repo, nil)
-}
-
-func configurationWithTrust(repo supervisor.Endpoint, trust *clientconfig.Trust) (config, error) {
+func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (config, error) {
 	c := config{address: net.JoinHostPort(repo.Hostname(), repo.Port()), tls: &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, NextProtos: []string{"h2"}, ServerName: repo.Hostname()}}
 	if address, ok := os.LookupEnv("TIANA_GATEWAY_ADDRESS"); ok {
 		host, port, err := net.SplitHostPort(address)
@@ -38,7 +34,7 @@ func configurationWithTrust(repo supervisor.Endpoint, trust *clientconfig.Trust)
 		}
 		c.address = address
 	}
-	if trust != nil {
+	if trust := clientconfig.FromContext(ctx); trust != nil {
 		c.tls.RootCAs = trust.Roots
 	} else if path, ok := os.LookupEnv("TIANA_CA_FILE"); ok {
 		data, err := readRegular(path, 65536, false)
@@ -71,7 +67,7 @@ func configurationWithTrust(repo supervisor.Endpoint, trust *clientconfig.Trust)
 		}
 		c.tls.RootCAs = roots
 	}
-	value, err := authclient.ConnectionCredential(context.Background())
+	value, err := authclient.ConnectionCredential(ctx)
 	if err != nil {
 		return c, err
 	}

@@ -56,6 +56,7 @@ func TestStdinCredentialRejectsOversizedFirstLine(t *testing.T) {
 
 func TestConnectCredentialSourcesDoNotFallBack(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", "tia_"+strings.Repeat("A", 43))
+	t.Setenv("TIANA_CREDENTIALS_FILE", t.TempDir()+"/absent")
 	for _, tc := range []struct {
 		name     string
 		source   CredentialSource

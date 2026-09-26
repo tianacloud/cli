@@ -1,6 +1,7 @@
 package gitremote
 
 import (
+	"context"
 	"crypto/x509"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"os"
@@ -16,7 +17,7 @@ func TestGlobalTrustOverridesEnvironmentWithoutMutation(t *testing.T) {
 	t.Setenv("TIANA_TOKEN_FILE", "")
 	os.Unsetenv("TIANA_TOKEN_FILE")
 	roots := x509.NewCertPool()
-	c, err := configurationWithTrust(testRepo(t), &clientconfig.Trust{Roots: roots})
+	c, err := configurationWithContext(clientconfig.WithTrust(context.Background(), &clientconfig.Trust{Roots: roots}), testRepo(t))
 	if err != nil || c.tls.RootCAs != roots || c.tls.InsecureSkipVerify {
 		t.Fatal("global trust not applied", err)
 	}
