@@ -323,4 +323,7 @@ func TestFinishSharesCleanupDeadline(t *testing.T) {
 	if err == nil || err.Cleanup != "unconfirmed" {
 		t.Fatalf("missing close failure: %v", err)
 	}
+	if err.RequestID == "" || err.RequestID != c.session.RequestID() {
+		t.Fatalf("close failure lost connection identity: %v", err)
+	}
 }
