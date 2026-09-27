@@ -6,11 +6,27 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tianacloud/cli/internal/diagnostics"
 	tiana "github.com/tianacloud/sdk-go"
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 )
+
+func TestConnectCancellationRetainsAllocatedRequestID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var emitted bytes.Buffer
+	ctx = diagnostics.WithWriter(ctx, &emitted)
+	id := ""
+	config := tianasqlite.Config{Gateway: tiana.Config{Endpoint: nativeEndpoint, DialAddress: "127.0.0.1:1", OnRequestID: func(value string) { id = value; cancel() }}}
+	client := NewClient(config, time.Second)
+	defer client.Close()
+	_, failure := client.Execute(ctx, "SELECT 1", true)
+	if id == "" || failure == nil || failure.ExitCode != 130 || failure.RequestID != id || !strings.Contains(emitted.String(), id) {
+		t.Fatalf("allocated=%q failure=%+v diagnostics=%s", id, failure, &emitted)
+	}
+}
 
 func TestSuccessfulSQLDiagnosticUsesTunnelIdentity(t *testing.T) {
 	client, _ := peerClient(t, func(req peerRequest, _ int) string { return httpReply(successResponse(req, "1")) })

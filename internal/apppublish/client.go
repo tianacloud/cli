@@ -118,7 +118,7 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 	result = httpResult{Status: status, Body: raw, RequestID: requestID}
 	defer func() {
 		if failure != nil {
-			failure.RequestID = auth.RequestIDOf(err)
+			failure.RequestID = result.RequestID
 		}
 	}()
 	if err == nil {

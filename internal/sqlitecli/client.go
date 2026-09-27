@@ -17,6 +17,7 @@ type Client struct {
 	session          *tianasqlite.Session
 	config           tianasqlite.Config
 	initErr          error
+	requestID        *string
 	timeout          time.Duration
 	poisoned, closed bool
 }
@@ -33,8 +34,23 @@ func NewClient(config tianasqlite.Config, timeout time.Duration) *Client {
 	if config.Gateway.RootCAs != nil {
 		config.Gateway.RootCAs = config.Gateway.RootCAs.Clone()
 	}
-	session, err := tianasqlite.NewSession(config)
-	return &Client{session: session, config: config, initErr: err, timeout: timeout}
+	client := &Client{config: config, timeout: timeout}
+	client.newSession()
+	return client
+}
+
+func (c *Client) newSession() {
+	id := new(string)
+	c.requestID = id
+	config := c.config
+	callback := config.Gateway.OnRequestID
+	config.Gateway.OnRequestID = func(value string) {
+		*id = value
+		if callback != nil {
+			callback(value)
+		}
+	}
+	c.session, c.initErr = tianasqlite.NewSession(config)
 }
 func SDKConfig(endpoint, port string, token *tiana.Token, roots *x509.CertPool, timeout time.Duration) tianasqlite.Config {
 	return tianasqlite.Config{Gateway: tiana.Config{Endpoint: endpoint, Token: token, RootCAs: roots,
@@ -57,6 +73,9 @@ func (c *Client) Execute(ctx context.Context, query string, closing bool) (resul
 		id := ""
 		if c.session != nil {
 			id = c.session.RequestID()
+		}
+		if id == "" && c.requestID != nil {
+			id = *c.requestID
 		}
 		if failure != nil {
 			if failure.RequestID == "" {

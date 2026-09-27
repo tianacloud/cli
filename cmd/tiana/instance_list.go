@@ -42,11 +42,11 @@ func executeInstanceList(ctx context.Context, options listOptions, stdin io.Read
 			return err
 		}
 		if scope.engine == "git" && len(instances) == 0 {
-			fmt.Fprintln(output, "No Git repositories found.")
+			_, err := fmt.Fprintln(output, "No Git repositories found.")
+			return err
 		} else {
-			writeInstanceTable(output, instances)
+			return writeInstanceTable(output, instances)
 		}
-		return nil
 	}
 	err = client.RunAuthenticated(ctx, operation)
 	if errors.Is(err, authclient.ErrAuthenticationRequired) {
@@ -98,28 +98,42 @@ func runInteractiveListScoped(ctx context.Context, fetch instanceFetcher, stdin 
 		}
 		if page == 1 && len(result.Items) == 0 && result.Total == 0 {
 			if scope.engine == "git" {
-				fmt.Fprintln(stdout, "No Git repositories found.")
+				if _, err := fmt.Fprintln(stdout, "No Git repositories found."); err != nil {
+					return err
+				}
 			} else {
-				fmt.Fprintln(stdout, "No databases found.")
+				if _, err := fmt.Fprintln(stdout, "No databases found."); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
 		matches := scope.filter(result.Items)
 		if scope.engine != "" && len(matches) == 0 {
 			if scope.engine == "git" {
-				fmt.Fprintln(stdout, "No Git repositories on this page.")
+				if _, err := fmt.Fprintln(stdout, "No Git repositories on this page."); err != nil {
+					return err
+				}
 			} else {
-				fmt.Fprintln(stdout, "No SQLite databases on this page.")
+				if _, err := fmt.Fprintln(stdout, "No SQLite databases on this page."); err != nil {
+					return err
+				}
 			}
 		} else {
-			writeInstancePage(stdout, matches)
+			if err := writeInstancePage(stdout, matches); err != nil {
+				return err
+			}
 		}
 		if result.TotalPages == 0 || page >= result.TotalPages {
 			return nil
 		}
-		fmt.Fprint(stdout, "-- More -- (n/space/Enter: next, q: quit) ")
+		if _, err := fmt.Fprint(stdout, "-- More -- (n/space/Enter: next, q: quit) "); err != nil {
+			return err
+		}
 		next, quit, readErr := readPageCommand(reader)
-		fmt.Fprintln(stdout)
+		if _, err := fmt.Fprintln(stdout); err != nil {
+			return err
+		}
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil
@@ -157,24 +171,29 @@ func readPageCommand(reader *bufio.Reader) (next bool, quit bool, err error) {
 
 var instanceTableHeader = []string{"ID", "NAME", "ENGINE", "STATE", "URL"}
 
-func writeInstanceTable(output io.Writer, instances []authclient.Instance) {
+func writeInstanceTable(output io.Writer, instances []authclient.Instance) error {
 	if len(instances) == 0 {
-		fmt.Fprintln(output, "No databases found.")
-		return
+		_, err := fmt.Fprintln(output, "No databases found.")
+		return err
 	}
-	writeInstancePage(output, instances)
+	return writeInstancePage(output, instances)
 }
 
-func writeInstancePage(output io.Writer, instances []authclient.Instance) {
+func writeInstancePage(output io.Writer, instances []authclient.Instance) error {
 	rows := make([][]string, 0, len(instances))
 	for _, instance := range instances {
 		rows = append(rows, []string{instance.ID, instance.DisplayName, instance.Engine, instanceDisplayState(instance), connectionURLColumn(instance)})
 	}
 	widths := tableWidths(append([][]string{instanceTableHeader}, rows...))
-	fmt.Fprintln(output, formatTableRow(instanceTableHeader, widths))
-	for _, row := range rows {
-		fmt.Fprintln(output, formatTableRow(row, widths))
+	if _, err := fmt.Fprintln(output, formatTableRow(instanceTableHeader, widths)); err != nil {
+		return err
 	}
+	for _, row := range rows {
+		if _, err := fmt.Fprintln(output, formatTableRow(row, widths)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func tableWidths(rows [][]string) []int {

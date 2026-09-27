@@ -39,6 +39,11 @@ func main() {
 }
 
 func run(args []string) int {
+	// Return stdout EPIPE to command error handling. Catching the signal keeps
+	// exec children on their default SIGPIPE behavior instead of inheriting SIG_IGN.
+	brokenPipe := make(chan os.Signal, 1)
+	signal.Notify(brokenPipe, syscall.SIGPIPE)
+	defer signal.Stop(brokenPipe)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runCLI(ctx, args, os.Stdin, os.Stdout, os.Stderr)
@@ -98,12 +103,20 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 }
 
 func runLogin(ctx context.Context, output, errorOutput io.Writer) int {
-	client, err := newAuthClient(ctx, output, false)
+	loginContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	progress := &loginProgressWriter{Writer: output, cancel: cancel}
+	client, err := newAuthClient(loginContext, progress, false)
 	if err != nil {
 		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
 		return 1
 	}
-	if _, err = client.Login(ctx); err != nil {
+	_, err = client.Login(loginContext)
+	if progress.err != nil {
+		writeCommandError(errorOutput, progress.err)
+		return 1
+	}
+	if err != nil {
 		writeCommandError(errorOutput, err)
 		return 1
 	}
@@ -119,7 +132,10 @@ func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
 		writeCommandError(errorOutput, err)
 		return 1
 	}
-	fmt.Fprintln(output, "✓ Signed out")
+	if _, err := fmt.Fprintln(output, "✓ Signed out"); err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
 	return 0
 }
 

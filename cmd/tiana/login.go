@@ -14,6 +14,27 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+type loginProgressWriter struct {
+	io.Writer
+	cancel context.CancelFunc
+	err    error
+}
+
+func (w *loginProgressWriter) Write(p []byte) (int, error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	n, err := w.Writer.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		w.err = err
+		w.cancel()
+	}
+	return n, err
+}
+
 func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "login", Usage: "Sign in through a browser", Flags: []cli.Flag{
 		&cli.BoolFlag{Name: "start", Usage: "Return a reusable browser sign-in link without waiting"},
@@ -58,12 +79,21 @@ func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 				return statusError(1)
 			}
 		} else if pending {
-			fmt.Fprintln(output, transaction.VerificationURIComplete)
-			fmt.Fprintln(output, next)
+			if _, err := fmt.Fprintln(output, transaction.VerificationURIComplete); err != nil {
+				writeCommandError(diagnostics, err)
+				return statusError(1)
+			}
+			if _, err := fmt.Fprintln(output, next); err != nil {
+				writeCommandError(diagnostics, err)
+				return statusError(1)
+			}
 		} else if err != nil {
 			writeCommandError(diagnostics, err)
 		} else {
-			fmt.Fprintln(output, "✓ Signed in")
+			if _, err := fmt.Fprintln(output, "✓ Signed in"); err != nil {
+				writeCommandError(diagnostics, err)
+				return statusError(1)
+			}
 		}
 		if pending && cmd.Bool("start") && !cmd.Bool("no-open") && !cmd.Bool("json") {
 			openLoginBrowser(ctx, transaction.VerificationURIComplete)

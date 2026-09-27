@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-
-	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 )
 
 // executeInteractive owns recovery policy; scripts keep the single-session API.
@@ -17,7 +15,7 @@ func (c *Client) executeInteractive(ctx context.Context, query string, diagnosti
 		if _, err := fmt.Fprintln(diagnostics, "Connection lost. Reconnecting..."); err != nil {
 			return outputError()
 		}
-		c.session, c.initErr = tianasqlite.NewSession(c.config)
+		c.newSession()
 		c.poisoned = false
 		reconnecting = true
 		return nil

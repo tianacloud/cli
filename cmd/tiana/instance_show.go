@@ -34,7 +34,10 @@ func executeSQLiteShow(ctx context.Context, options showOptions, output, errorOu
 	state := instanceDisplayState(instance)
 	if !options.urlOnly && options.branch == "" && (state == "DELETING" || state == "DELETED") {
 		// The instance remains inspectable after its default branch is removed.
-		printInstanceDetail(output, instance)
+		if err := printInstanceDetail(output, instance); err != nil {
+			writeCommandError(errorOutput, err)
+			return 1
+		}
 		return 0
 	}
 	detail, err := client.ResolveBranch(ctx, instance.ID, options.branch)
@@ -50,25 +53,50 @@ func executeSQLiteShow(ctx context.Context, options showOptions, output, errorOu
 			fmt.Fprintf(errorOutput, "tiana: instance %s has no connection URL yet\n", safeDisplay(instance.ID))
 			return 1
 		}
-		fmt.Fprintln(output, url)
+		if _, err := fmt.Fprintln(output, url); err != nil {
+			writeCommandError(errorOutput, err)
+			return 1
+		}
 		return 0
 	}
-	printInstanceDetail(output, instance)
-	fmt.Fprintf(output, "Branch name:    %s\nBranch ID:      %s\nDefault branch: %t\nBranch state:   %s\nBranch runtime: %s\nEndpoint:       %s\n", safeDisplay(detail.Branch.Name), safeDisplay(detail.Branch.ID), detail.Branch.Root, safeDisplay(detail.Branch.LifecycleState), safeDisplay(detail.Branch.RuntimeState), safeDisplay(detail.Branch.EndpointID))
+	if err := printInstanceDetail(output, instance); err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
+	_, err = fmt.Fprintf(output, "Branch name:    %s\nBranch ID:      %s\nDefault branch: %t\nBranch state:   %s\nBranch runtime: %s\nEndpoint:       %s\n", safeDisplay(detail.Branch.Name), safeDisplay(detail.Branch.ID), detail.Branch.Root, safeDisplay(detail.Branch.LifecycleState), safeDisplay(detail.Branch.RuntimeState), safeDisplay(detail.Branch.EndpointID))
+	if err != nil {
+		writeCommandError(errorOutput, err)
+		return 1
+	}
 	return 0
 }
 
-func printInstanceDetail(output io.Writer, instance authclient.Instance) {
+func printInstanceDetail(output io.Writer, instance authclient.Instance) error {
 	connection := connectionURLColumn(instance)
-	fmt.Fprintf(output, "Name:           %s\n", safeDisplay(instance.DisplayName))
-	fmt.Fprintf(output, "ID:             %s\n", safeDisplay(instance.ID))
-	fmt.Fprintf(output, "Engine:         %s\n", safeDisplay(instance.Engine))
-	fmt.Fprintf(output, "Product state:  %s\n", safeDisplay(instanceDisplayState(instance)))
-	fmt.Fprintf(output, "Runtime status: %s\n", safeDisplay(runtimeStateDescription(instance)))
-	fmt.Fprintf(output, "Connection URL: %s\n", safeDisplay(connection))
-	if instance.CreatedAt != "" {
-		fmt.Fprintf(output, "Created at:     %s\n", safeDisplay(instance.CreatedAt))
+	if _, err := fmt.Fprintf(output, "Name:           %s\n", safeDisplay(instance.DisplayName)); err != nil {
+		return err
 	}
+	if _, err := fmt.Fprintf(output, "ID:             %s\n", safeDisplay(instance.ID)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(output, "Engine:         %s\n", safeDisplay(instance.Engine)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(output, "Product state:  %s\n", safeDisplay(instanceDisplayState(instance))); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(output, "Runtime status: %s\n", safeDisplay(runtimeStateDescription(instance))); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(output, "Connection URL: %s\n", safeDisplay(connection)); err != nil {
+		return err
+	}
+	if instance.CreatedAt != "" {
+		if _, err := fmt.Fprintf(output, "Created at:     %s\n", safeDisplay(instance.CreatedAt)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // resolveInstanceWithLogin resolves a reference, completing browser

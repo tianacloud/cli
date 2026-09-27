@@ -50,9 +50,15 @@ func executeSQLiteBranchesList(ctx context.Context, reference, after, search str
 	for _, branch := range page.Items {
 		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\n", safeDisplay(branch.Name), safeDisplay(branch.ID), branch.Root, safeDisplay(branch.LifecycleState), safeDisplay(branch.RuntimeState), safeDisplay(branch.EndpointID))
 	}
-	_ = table.Flush()
+	if err := table.Flush(); err != nil {
+		writeCommandError(diagnostics, err)
+		return 1
+	}
 	if page.NextCursor != "" {
-		fmt.Fprintf(output, "Next cursor: %s\n", safeDisplay(page.NextCursor))
+		if _, err := fmt.Fprintf(output, "Next cursor: %s\n", safeDisplay(page.NextCursor)); err != nil {
+			writeCommandError(diagnostics, err)
+			return 1
+		}
 	}
 	return 0
 }

@@ -108,9 +108,15 @@ func executeGitShow(ctx context.Context, reference string, urlOnly bool, output,
 			fmt.Fprintln(diagnostics, "tiana: Git instance has no valid connection URL yet")
 			return 1
 		}
-		fmt.Fprintln(output, locator)
+		if _, err := fmt.Fprintln(output, locator); err != nil {
+			writeCommandError(diagnostics, err)
+			return 1
+		}
 	} else {
-		printInstanceDetail(output, instance)
+		if err := printInstanceDetail(output, instance); err != nil {
+			writeCommandError(diagnostics, err)
+			return 1
+		}
 	}
 	return 0
 }
