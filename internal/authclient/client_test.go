@@ -365,8 +365,7 @@ func TestLoginHonorsCancellation(t *testing.T) {
 }
 
 func TestDefaultOriginRequiresDeploymentConfiguration(t *testing.T) {
-	t.Setenv("TIANA_MGR_ORIGIN", "")
-	t.Setenv("TIANA_AUTH_ORIGIN", "")
+	t.Setenv("TIANA_API_ORIGIN", "")
 	if got := DefaultOrigin(); got != "" {
 		t.Fatalf("default origin=%q", got)
 	}

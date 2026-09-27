@@ -139,11 +139,10 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		}
 	}
 	root := &cli.Command{
-		Name: "tiana", Usage: "Tiana account, SQLite and Git commands",
+		Name: "tiana", Usage: "Tiana account, Web, SQLite and Git commands",
 		Reader: input, Writer: output, ErrWriter: diagnostics, HideVersion: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Print version", Local: true},
-			&cli.StringFlag{Name: "config", Usage: "JSON configuration file containing managementOrigin"},
 			&cli.StringFlag{Name: "ca-file", Usage: "Deployment CA PEM for all MGR and Gateway connections"},
 		},
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
@@ -166,8 +165,14 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
 				}},
 			newGitCommand(input, output, diagnostics),
-			newAppsCommand(output, diagnostics),
+			newWebCommand(input, output, diagnostics),
 		},
+	}
+	for _, command := range root.Commands {
+		switch command.Name {
+		case "web", "sqlite", "git":
+			command.Category = "Products"
+		}
 	}
 	configureCommandErrors(root)
 	before := root.Before
@@ -175,17 +180,6 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		ctx, err := before(ctx, cmd)
 		if err != nil {
 			return ctx, err
-		}
-		if cmd.IsSet("config") {
-			if cmd.String("config") == "" {
-				return ctx, argumentFailure(ctx, cmd, "--config requires a non-empty path")
-			}
-			settings, err := clientconfig.LoadSettings(cmd.String("config"))
-			if err != nil {
-				fmt.Fprintln(diagnostics, "tiana:", err)
-				return ctx, statusError(2)
-			}
-			ctx = clientconfig.WithSettings(ctx, settings)
 		}
 		path := cmd.String("ca-file")
 		if !cmd.IsSet("ca-file") {
@@ -277,7 +271,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 		}},
 	}}
 	commands := []*cli.Command{create, list, show, newInstanceDeleteCommand(input, output, diagnostics, sqliteManagementScope), branches, newSQLCommand(sqlAction)}
-	return &cli.Command{Name: "sqlite", Usage: "Manage SQLite instances and execute SQL", Description: "Use an MGR instance ID, not an ep-... Endpoint ID. Name lookup requires MGR display_name support. SQL uses native sdk-go with verified TLS; no SQL replay. --atomic is unavailable.", Action: groupAction, Commands: commands}
+	return &cli.Command{Name: "sqlite", Usage: "SQLite product commands", Description: "Use an MGR instance ID, not an ep-... Endpoint ID. Name lookup requires MGR display_name support. SQL uses native sdk-go with verified TLS; no SQL replay. --atomic is unavailable.", Action: groupAction, Commands: commands}
 }
 
 func newSQLCommand(action sqlCommandAction) *cli.Command {

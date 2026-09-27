@@ -26,9 +26,9 @@ async function request(path, method = 'GET', payload) {
   }
   if (payload) {
     headers['Content-Type'] = 'application/json';
-    headers['Idempotency-Key'] = payload.request_id;
+
   }
-  const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, body: payload ? JSON.stringify(payload) : undefined});
+  const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, signal: AbortSignal.timeout(12000), body: payload ? JSON.stringify(payload) : undefined});
   return {response, data: response.status === 204 ? null : await response.json()};
 }
 function credentialExpiryMilliseconds(value) {
@@ -47,12 +47,31 @@ async function loadApplication() {
   let credential;
   let credentialExpiresAt = 0;
   let pendingConnection;
-  const context = Object.freeze({appId: manifest.app_id, localPreview, async connection() {
+  const auth = Object.freeze({async getAccessToken({signal} = {}) {
+    if (signal?.aborted) throw signal.reason;
+    const pending = context.connection().then(value => value.tianaToken);
+    if (!signal) return pending;
+    return new Promise((resolve, reject) => {
+      const abort = () => { signal.removeEventListener('abort', abort); reject(signal.reason); };
+      signal.addEventListener('abort', abort, {once: true});
+      pending.then(value => { signal.removeEventListener('abort', abort); resolve(value); },
+        error => { signal.removeEventListener('abort', abort); reject(error); });
+      if (signal.aborted) abort();
+    });
+  }});
+  const context = Object.freeze({appId: manifest.app_id, localPreview, auth, async connection() {
     if (credential && credentialExpiresAt > Date.now() + 30000) return credential;
     if (!pendingConnection) {
       pendingConnection = (async () => {
-        const payload = localPreview ? undefined : {request_id: crypto.randomUUID(), expires_at: Math.floor(Date.now() / 1000) + 10 * 60};
-        const {response, data} = await request('connection', 'POST', payload);
+        const payload = localPreview ? undefined : {};
+        const deadline = Date.now() + 10000;
+        let result;
+        do {
+          result = await request('connection', 'POST', payload);
+          if (result.response.status !== 503 || result.data?.error?.code !== 'APP_ACCOUNT_AUTH_PENDING' || Date.now() >= deadline) break;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } while (true);
+        const {response, data} = result;
         if (!response.ok) throw new Error('数据库授权未完成，请重新登录或刷新页面后重试。');
         const origin = new URL(data.origin);
         const expiresAt = credentialExpiryMilliseconds(data.expires_at);
@@ -62,9 +81,13 @@ async function loadApplication() {
         pendingConnection = undefined;
         return credential;
       })();
+      // Both routes recover server-owned authorization. Lost lookup responses
+      // do not repeat a refresh rotation or create a different hosted grant.
+      pendingConnection = pendingConnection.catch(error => {
+        pendingConnection = undefined;
+        throw error;
+      });
     }
-    // Retain a failed request until this document is reloaded. A lost creation
-    // response must not cause automatic, repeated credential issuance.
     return pendingConnection;
   }});
 

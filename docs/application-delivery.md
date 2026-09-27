@@ -18,10 +18,11 @@ or business framework requirement is added.
 tiana status
 tiana sqlite create billing --wait
 tiana git create billing-source --wait
-tiana apps serve --dir dist --port 4174
-tiana apps create --project billing --name Billing --json
-tiana apps upload --project billing --version release-1 --dir dist --json
-tiana apps status --project billing --version release-1 --json
+tiana web create Billing -m "Team billing dashboard" --json
+# Save data.id as WEB_ID; set manifest app_id to WEB_ID before building dist.
+tiana web serve --dir dist --port 4174
+tiana web upload WEB_ID --version release-1 --dir dist --json
+tiana web status WEB_ID --version release-1 --json
 ```
 
 Record the real instance IDs and Git remote URL. Push the matching source commit
@@ -34,16 +35,49 @@ published descriptor is reported as a hosted application URL under `/web/ID/`.
 
 ## Preview authentication boundary
 
-The old preview loaded a local InstanceToken file. The new main deliberately
-removed that cache and uses account credentials for native connections. Preview
-cannot expose that broad account credential to arbitrary browser application code.
-It therefore opens a separate browser authorization, keeps the account session in
-memory, verifies access to the manifest's immutable SQLite instance, and requests
-an endpoint-scoped credential lasting at most ten minutes. That preview-only
-issuance uses the existing MGR scoped-token API, not a restored CLI token command.
-It has one stable request ID per issuance, caches the result in memory and stops
-on an uncertain/pending response; sign out and investigate before starting again.
-The CLI account file and old instance-token files remain untouched by preview.
+`web serve` first reuses the saved CLI account through the SDK's locked store.
+It prints a one-use, five-minute local authorization URL. Open that exact URL to
+establish a path-bound HttpOnly preview cookie without another Console login.
+The launch proof travels in a fragment, is removed before app code loads, and is
+exchanged only by a same-origin POST; it is not an account token. Treat the URL as
+a temporary local capability. Other visitors must use the Console login flow.
+
+The SDK owns account refresh/persistence and cross-process locking. Preview pins
+the original user/tenant, checks the immutable SQLite binding and waits for grant
+synchronization. Refresh credentials never reach JavaScript. Browser logout drops
+only that preview cookie; it does not log out the CLI. Stopping the server clears
+local sessions. A missing/unusable saved account retains separate Console login
+with an in-memory credential store. Trusted app code receives tenant account scope.
+
+Use the provider with the corresponding serverless SDK build so long-running
+applications receive replacement access tokens:
+
+```js
+const connection = await window.tiana.connection();
+const databaseFetch = createTianaFetch({
+  origin: connection.origin,
+  auth: window.tiana.auth,
+  requestBodyMode: 'buffered',
+});
+```
+
+`window.tiana.connection()` provides connection metadata and an access snapshot
+in `tianaToken`. Use `auth: window.tiana.auth` for data adapters so long-running
+clients can renew. No static-token fallback. `sql_api: hrana-v3` is unchanged.
+
+The browser requests a replacement within 30 seconds of expiry. One per-browser
+broker serializes management operations and shares concurrent lookups. A cancelled
+browser request does not cancel a refresh already in flight; work is bounded to
+ten seconds. After a successful rotation, MGR grant readiness gates delivery.
+If a management operation fails and the pinned auth SDK cannot distinguish a
+failed read from a consumed refresh, the broker conservatively requires a new
+login; it never replays an uncertain refresh. A pending-sync polling timeout can
+be retried using the saved replacement. No data/SQL operation is replayed here.
+
+`web create/upload/status` use account authentication. The matching hosted Web
+Bootstrap now exposes the identical provider; MGR renews short-lived tenant data
+grants using the existing HttpOnly Console session. The hosted connection POST
+body is `{}`. Deploy matching Web/MGR before publishing provider-dependent apps.
 
 Account login start/resume uses private, bounded, per-origin pending files and an
 exclusive lock. The one-use exchange is marked before transmission; restart cannot
@@ -63,3 +97,80 @@ Run Go tests/race/vet, public-source scans, `node --test packaging/*.test.mjs`,
 native binary help checks, and the Bootstrap browser harness. A fixture run is not
 a deployed Gateway/OSS acceptance. Real deployment and WorkBuddy runtime checks
 must be recorded separately.
+
+### Web identity and creation retries
+
+`web create NAME [-m DESCRIPTION] --json` asks MGR to generate `id` (`web-` plus 24 random
+base64url characters). Capture `data.id` and use that exact ID for
+`web upload ID`, `web status ID` and the manifest's `app_id`. NAME is a display
+name; it neither chooses the ID nor implies name uniqueness. No `--project`,
+`--name` or caller-supplied creation ID is accepted.
+
+The CLI locks its existing pending-command store, persists a request ID before
+POST, and clears it only after writing a confirmed receipt. Repeat the identical
+create command after interruption; do not delete the pending record or create a
+new request while the outcome is unknown. A completed command can be run again
+to create a separate Web resource with the same display name. Reuse an already
+recorded ID instead when continuing the same application.
+
+`web list` displays ID and name. Terminals page through results; redirected output
+and `web list --json` collect all pages. Listing stays bound to the same account
+and tenant; invalid/nonadvancing cursors fail instead of looping.
+
+## Delete a Web application
+
+```sh
+tiana web list --json
+tiana web delete WEB_ID                 # terminal confirmation
+tiana web delete WEB_ID --force --wait --json
+```
+
+Deletion accepts an immutable ID or exact name; duplicate names require an ID.
+It removes the application, every version and its origin-hosted files. Associated
+SQLite and Git resources are kept. `--force` / `-f` skips confirmation and is
+required without a terminal. `--wait` / `-w` waits for origin cleanup; otherwise
+success means a durable deletion was accepted (`state: deleting`).
+
+Unfinished creation or any unfinished version upload rejects deletion immediately;
+`--force` and `--wait` do not override this check. Finish the original create/upload
+first. Web creation is an atomic insert, so there is no durable server-side
+`creating` state; a completed empty application is deletable. An uploading version
+returns HTTP 409 / `WEB_UPLOAD_IN_PROGRESS`, without hiding the application or
+queuing cleanup. CLI clears that rejected delete intent so other work can proceed.
+
+Accepted deletion hides the application and blocks uploads/hosting. Files and
+version metadata are cleaned in bounded batches, with retries for cleanup errors.
+There is no upload-signature grace or daily re-sweep of completed deletions.
+Public copies already downloaded/cached expire under their cache policy.
+
+The CLI persists origin/account/tenant and the resolved ID before DELETE. Unknown
+responses, output failure and interrupted waiting preserve that intent. Repeat the
+same command or use the saved ID; do not re-resolve a name or delete the pending
+file to bypass it. Stopping the CLI does not cancel server deletion. A confirmed
+receipt clears the local intent. If deletion stays pending, inspect the server cleanup logs. Cleanup failures stay
+queued; --wait polls until completion or cancellation, without a stored error code.
+
+### Web application description
+
+`web create NAME -m "Description"` also accepts `--description`. It is optional
+(default empty) and limited to 1024 UTF-8 bytes. Unicode, line breaks and tabs are
+preserved; other control characters are rejected. This is application metadata,
+not a version identifier or manifest field. Creation, `web list --json` and the
+MGR project detail response include `description`. Repeat the same name and
+description to recover an interrupted creation; changing either cannot replace
+an existing pending request. Matching MGR schema 26 support is required.
+
+
+### Source repository association
+
+For a Tiana Git-hosted application, include paired `git_instance_id` and
+`source_commit` in the generated `tiana.app.json`. Use the actual `git-...` ID
+and a full lowercase 40- or 64-character commit hash. Commit clean source first,
+then derive HEAD in the build step and write it only to ignored build output;
+do not embed a commit's hash into its own tracked manifest. Verify the remote
+release ref points to that commit before uploading. The CLI validates format;
+MGR validates tenant/product availability, not the Git object or build provenance.
+
+The fields travel with each immutable Web version and appear in Console details.
+Adding/changing either requires a new version. Both omitted means unlinked; a
+partial binding is invalid. Requires the matching CLI/MGR/Console rollout.

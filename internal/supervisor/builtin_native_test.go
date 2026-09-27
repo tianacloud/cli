@@ -91,7 +91,7 @@ func testBuiltinActualTurso(t *testing.T, local bool) {
 		if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+		t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 		path := filepath.Join(t.TempDir(), "credentials.json")
 		t.Setenv("TIANA_CREDENTIALS_FILE", path)
 		if err := authclient.NewFileStore(path, "https://mgr.example.test").Save(authclient.Credential{AccessToken: builtinTestToken, RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {

@@ -22,8 +22,12 @@ func isHelp(args []string) bool {
 // recorded operation that a new invocation cannot replace without risking a
 // duplicate resource.
 func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authclient.PendingCommand) {
-	fmt.Fprintln(errorOutput, "tiana: an unfinished database operation must be completed first")
+	fmt.Fprintln(errorOutput, "tiana: an unfinished product operation must be completed first")
 	switch pending.Command {
+	case "web.delete":
+		fmt.Fprintf(errorOutput, "Recover the Web deletion with:\n  tiana web delete %s --force --wait\n", safeDisplay(quoteCommandArgs([]string{pending.InstanceID})))
+	case "web.create":
+		fmt.Fprintf(errorOutput, "Finish the Web operation with:\n  tiana web %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "git.create":
 		fmt.Fprintf(errorOutput, "Finish the Git operation with:\n  tiana git %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "db.create":

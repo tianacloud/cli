@@ -5,6 +5,7 @@ const origin=process.argv[3];
 const browser=await chromium.launch({headless:true});
 try {
  const context=await browser.newContext();
+ await context.route('https://fonts.googleapis.com/**',r=>r.fulfill({contentType:'text/css',body:''}));
  await context.route('https://console.example/authorize', route=>route.fulfill({contentType:'text/html',body:'<h1>Explicit Console test fixture</h1>'}));
  const page=await context.newPage();
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -37,12 +38,47 @@ try {
  await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
  assert.equal(await page.locator('#app').getAttribute('data-failed-mount'),null);
  assert.equal(await page.locator('#tiana-loading').count(),0);
+ // Exercise provider renewal, concurrent callers and abort isolation in a real browser.
+ let connections=0;
+ await page.route('**/_tiana/connection',async route=>{
+   connections++;
+   const response=await route.fetch();
+   const data=await response.json();
+   data.tianaToken='fixture-access-'+connections;
+   data.expires_at=new Date(Date.now()+(connections===1?1000:3600000)).toISOString();
+   if(connections>1)await new Promise(resolve=>setTimeout(resolve,50));
+   await route.fulfill({response,json:data});
+ });
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ const renewal=await page.evaluate(async()=>{
+   const controller=new AbortController();
+   const cancelled=window.tiana.auth.getAccessToken({signal:controller.signal}).catch(error=>error.name);
+   const one=window.tiana.auth.getAccessToken();
+   const two=window.tiana.auth.getAccessToken();
+   controller.abort();
+   return Promise.all([cancelled,one,two]);
+ });
+ assert.deepEqual(renewal,['AbortError','fixture-access-2','fixture-access-2']);
+ assert.equal(connections,2);
+ await page.unroute('**/_tiana/connection');
  assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
  assert.equal(await page.evaluate(()=>document.cookie.includes('tiana_preview')),false);
  await page.evaluate(()=>fetch(new URL('_tiana/logout',location.href),{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}}));
  await page.reload();
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
  assert.equal((await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js')).status(),401);
+ const launch=await (await context.request.get(origin+'/_fixture/launch')).json();
+ await page.goto(launch.url);
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(await page.evaluate(()=>window.tiana.auth.getAccessToken()),'fixture-saved-access');
+ assert.equal(new URL(page.url()).hash,'');
+ assert.equal(await page.locator('#tiana-sign-in').count(),0);
+ const stranger=await browser.newContext();
+ const replay=await stranger.newPage();await replay.goto(launch.url);
+ await replay.getByText('本地授权链接已失效，请重新启动预览或使用 Console 登录。',{exact:true}).waitFor();
+ assert.equal((await stranger.request.get(origin+'/web/billing/_tiana/app')).status(),401);
+ await stranger.close();
  assert.deepEqual(errors,[]);
  console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout.');
 } finally {await browser.close();}

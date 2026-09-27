@@ -10,12 +10,16 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func newAppsCommand(output, diagnostics io.Writer) *cli.Command {
+func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
 	action := func(ctx context.Context, cmd *cli.Command) error {
-		if cmd.NArg() != 0 {
-			return argumentFailure(ctx, cmd, "apps commands do not accept positional arguments")
+		if cmd.NArg() != 1 {
+			return argumentFailure(ctx, cmd, "Provide NAME for create, or ID for upload/status")
 		}
-		o := apppublish.Options{Command: cmd.Name, Project: cmd.String("project"), Name: cmd.String("name"), Dir: cmd.String("dir"), Version: cmd.String("version"), Entry: cmd.String("entry"), UploadCAFile: cmd.String("upload-ca-file")}
+		o := apppublish.Options{Command: cmd.Name, ID: cmd.Args().First(), Dir: cmd.String("dir"), Version: cmd.String("version"), Entry: cmd.String("entry"), UploadCAFile: cmd.String("upload-ca-file")}
+		if cmd.Name == "create" {
+			o.Name, o.ID = o.ID, ""
+			o.Description = cmd.String("description")
+		}
 		if err := o.Validate(); err != nil {
 			return statusError(writeAppResult(apppublish.Failure(err), cmd.Bool("json"), output, diagnostics))
 		}
@@ -23,6 +27,9 @@ func newAppsCommand(output, diagnostics io.Writer) *cli.Command {
 		if err != nil {
 			fmt.Fprintln(diagnostics, "tiana: cannot initialize app publishing credentials")
 			return statusError(1)
+		}
+		if o.Command == "create" {
+			return statusError(executeWebCreate(ctx, client, o, cmd.Bool("json"), output, diagnostics))
 		}
 		result := (apppublish.Runner{Client: client}).Run(ctx, o)
 		code := writeAppResult(result, cmd.Bool("json"), output, diagnostics)
@@ -32,16 +39,18 @@ func newAppsCommand(output, diagnostics io.Writer) *cli.Command {
 		return statusError(code)
 	}
 	common := func() []cli.Flag {
-		return []cli.Flag{stringOption("project", "Application project ID", ""), boolOption("json", "Write a structured JSON result")}
+		return []cli.Flag{boolOption("json", "Write a structured JSON result")}
 	}
-	createFlags := append(common(), stringOption("name", "Project display name (defaults to ID)", ""))
+	createFlags := append(common(), &cli.StringFlag{Name: "description", Aliases: []string{"m"}, Usage: "Application description (up to 1024 UTF-8 bytes)", Local: true})
 	uploadFlags := append(common(), stringOption("dir", "Already-built static output directory", ""), stringOption("version", "Immutable version ID (defaults to content-derived ID)", ""), stringOption("entry", "Optional entry file relative to the output directory", ""), stringOption("upload-ca-file", "Additional trusted object-storage CA PEM", ""))
 	statusFlags := append(common(), stringOption("version", "Version ID", ""))
-	return &cli.Command{Name: "apps", Usage: "Upload built application files to private object storage", Action: groupAction, Commands: []*cli.Command{
-		newAppsServeCommand(output, diagnostics),
-		{Name: "create", Usage: "Create an application project", Flags: createFlags, Action: action},
-		{Name: "upload", Usage: "Upload a build directory and publish a complete version", Description: "Preserves arbitrary file paths under tenant/project/version. Repeating unchanged files resumes the same version; it does not build or host the app.", Flags: uploadFlags, Action: action},
-		{Name: "status", Usage: "Inspect a version's upload and publication status", Flags: statusFlags, Action: action},
+	return &cli.Command{Name: "web", Usage: "Web product commands", Action: groupAction, Commands: []*cli.Command{
+		newWebServeCommand(output, diagnostics),
+		newWebListCommand(input, output, diagnostics),
+		newWebDeleteCommand(input, output, diagnostics),
+		{Name: "create", Usage: "Create a Web application with a server-generated ID", ArgsUsage: "NAME", Flags: createFlags, Action: action},
+		{Name: "upload", Usage: "Upload a build directory and publish a complete version", ArgsUsage: "ID", Description: "Preserves arbitrary file paths under tenant/project/version. Repeating unchanged files resumes the same version; it does not build or host the app.", Flags: uploadFlags, Action: action},
+		{Name: "status", Usage: "Inspect a version's upload and publication status", ArgsUsage: "ID", Flags: statusFlags, Action: action},
 	}}
 }
 
@@ -59,7 +68,12 @@ func writeAppResult(result apppublish.Result, jsonMode bool, output, diagnostics
 	if result.Error != nil {
 		fmt.Fprintf(diagnostics, "tiana: %s\n%s\n", result.Error.Message, result.Error.NextAction)
 		if data, ok := result.Data.(map[string]string); ok {
-			fmt.Fprintf(diagnostics, "Project: %s\nVersion: %s\n", data["project_id"], data["version_id"])
+			if data["id"] != "" {
+				fmt.Fprintf(diagnostics, "ID: %s\n", data["id"])
+			}
+			if data["version_id"] != "" {
+				fmt.Fprintf(diagnostics, "Version: %s\n", data["version_id"])
+			}
 		}
 		return code
 	}

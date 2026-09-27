@@ -29,7 +29,7 @@ func (s *pinnedProjectCredential) Delete() error         { return ErrAuthenticat
 
 // RequestProjectJSON pins a publication request to the already checked account.
 func (c *Client) RequestProjectJSON(ctx context.Context, method, path string, body any, credential Credential, result any) (int, error) {
-	if credential.AccessToken == "" || !strings.HasPrefix(path, "/api/v1/web-projects/") || strings.ContainsAny(path, "\\\r\n") {
+	if credential.AccessToken == "" || (path != "/api/v1/web-projects" && !strings.HasPrefix(path, "/api/v1/web-projects?after=") && !strings.HasPrefix(path, "/api/v1/web-projects/")) || strings.ContainsAny(path, "\\\r\n") {
 		return 0, errors.New("invalid project request")
 	}
 	cfg := c.config

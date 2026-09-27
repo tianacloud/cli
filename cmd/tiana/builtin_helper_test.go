@@ -49,7 +49,7 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 		if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+		t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 		path := filepath.Join(t.TempDir(), "credentials.json")
 		t.Setenv("TIANA_CREDENTIALS_FILE", path)
 		if err := authclient.NewFileStore(path, "https://mgr.example.test").Save(authclient.Credential{AccessToken: "tia_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
@@ -68,10 +68,6 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 	}
 	var out, diag bytes.Buffer
 	args := []string{"connect", "--adapter", "sqld", "--allow-unisolated-loopback", "--", native, "db", "shell", "https://ep-00000000000000000000000000.db.example.test", "SELECT __builtin_native_fixture"}
-	if local {
-		t.Setenv("TIANA_MGR_ORIGIN", "https://other.example.test")
-		args = append([]string{"--config", writeTestConfig(t, "https://mgr.example.test")}, args...)
-	}
 	code := runCLI(context.Background(), args, strings.NewReader(""), &out, &diag)
 	if code != 19 || diag.Len() != 0 {
 		t.Fatalf("code=%d diag=%s", code, &diag)

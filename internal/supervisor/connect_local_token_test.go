@@ -18,7 +18,7 @@ func TestConnectUsesAccountWithoutTokenPrompt(t *testing.T) {
 				os.Unsetenv(key)
 			}
 			origin := "https://mgr.example.test"
-			t.Setenv("TIANA_MGR_ORIGIN", origin)
+			t.Setenv("TIANA_API_ORIGIN", origin)
 			path := filepath.Join(t.TempDir(), "credentials.json")
 			t.Setenv("TIANA_CREDENTIALS_FILE", path)
 			legacy := filepath.Join(t.TempDir(), "instance-tokens.json")

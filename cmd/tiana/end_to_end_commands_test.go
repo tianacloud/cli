@@ -9,13 +9,13 @@ import (
 
 func TestApplicationWorkflowCommandSurface(t *testing.T) {
 	var output, diagnostics bytes.Buffer
-	code := runCLI(context.Background(), []string{"apps", "--help"}, strings.NewReader(""), &output, &diagnostics)
+	code := runCLI(context.Background(), []string{"web", "--help"}, strings.NewReader(""), &output, &diagnostics)
 	if code != 0 {
-		t.Fatalf("apps help exit %d: %s", code, diagnostics.String())
+		t.Fatalf("web help exit %d: %s", code, diagnostics.String())
 	}
 	for _, command := range []string{"serve", "create", "upload", "status"} {
 		if !strings.Contains(output.String(), command) {
-			t.Errorf("apps help missing %s", command)
+			t.Errorf("web help missing %s", command)
 		}
 	}
 }
@@ -30,5 +30,32 @@ func TestChatLoginCommandSurface(t *testing.T) {
 		if !strings.Contains(output.String(), flag) {
 			t.Errorf("login help missing %s", flag)
 		}
+	}
+}
+
+func TestWebCommandReplacesApps(t *testing.T) {
+	for _, args := range [][]string{{"apps"}, {"apps", "--help"}, {"help", "apps"}, {"apps", "create", "--project", "billing"}} {
+		var output, diagnostics bytes.Buffer
+		if code := runCLI(context.Background(), args, nil, &output, &diagnostics); code != 2 || output.Len() != 0 {
+			t.Fatalf("removed apps accepted: args=%v code=%d out=%s", args, code, &output)
+		}
+	}
+	var output, diagnostics bytes.Buffer
+	if code := runCLI(context.Background(), []string{"--help"}, nil, &output, &diagnostics); code != 0 {
+		t.Fatalf("root help failed: %d %s", code, &diagnostics)
+	}
+	_, products, found := strings.Cut(output.String(), "Products:")
+	if !found || strings.Contains(output.String(), "Resources:") {
+		t.Fatalf("wrong group: %s", &output)
+	}
+	products, _, _ = strings.Cut(products, "GLOBAL OPTIONS:")
+	var names []string
+	for _, line := range strings.Split(products, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			names = append(names, fields[0])
+		}
+	}
+	if strings.Join(names, ",") != "sqlite,git,web" {
+		t.Fatalf("wrong products: %v", names)
 	}
 }

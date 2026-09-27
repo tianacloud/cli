@@ -173,8 +173,13 @@ func TestNativeGitOverConnect(t *testing.T) {
 	if err := authclient.NewFileStore(accountPath, "https://mgr.example.test").Save(authclient.Credential{AccessToken: "account-secret", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
+	// A real Git child process must use the inherited management environment,
+	// even when unique-account discovery cannot choose an origin.
+	if err := authclient.NewFileStore(accountPath, "https://other.example.test").Save(authclient.Credential{AccessToken: "other-secret", RefreshToken: "other-refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 
-	env := append(append([]string{}, baseEnv...), "TIANA_MGR_ORIGIN=https://mgr.example.test", "TIANA_CREDENTIALS_FILE="+accountPath, "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
+	env := append(append([]string{}, baseEnv...), "TIANA_API_ORIGIN=https://mgr.example.test", "TIANA_CREDENTIALS_FILE="+accountPath, "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
 	url := "tiana://" + hostname + ":" + strings.Split(server.Listener.Addr().String(), ":")[1] + "/repo.git"
 	must := func(args ...string) string {
 		t.Helper()

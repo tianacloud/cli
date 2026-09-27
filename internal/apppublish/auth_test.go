@@ -68,7 +68,7 @@ func TestProjectRequestRefreshesExpiredCredential(t *testing.T) {
 		if req.Header.Get("Authorization") != "Bearer fresh-access" {
 			t.Error("did not use refreshed account credential")
 		}
-		json.NewEncoder(w).Encode(map[string]string{"project_id": "billing"})
+		json.NewEncoder(w).Encode(map[string]string{"id": "web-AAAAAAAAAAAAAAAAAAAAAAAA", "name": "Billing", "owner_id": "prn-test", "tenant_id": "tenant-a"})
 	})
 	credential, err := r.Client.LoadCredential()
 	if err != nil {
@@ -84,7 +84,7 @@ func TestProjectRequestRefreshesExpiredCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Client = client
-	if code := runTest(r, out, context.Background(), []string{"apps", "create", "--project", "billing", "--json"}); code != 0 || requests != 2 {
+	if code := runTest(r, out, context.Background(), []string{"web", "create", "Billing", "--json"}); code != 0 || requests != 2 {
 		t.Fatalf("refresh failed code=%d requests=%d output=%s", code, requests, out)
 	}
 }

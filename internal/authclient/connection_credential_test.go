@@ -18,7 +18,7 @@ func TestConnectionCredentialSources(t *testing.T) {
 			}
 			dir := t.TempDir()
 			path := filepath.Join(dir, "credentials.json")
-			t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+			t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 			t.Setenv("TIANA_CREDENTIALS_FILE", path)
 			legacy := filepath.Join(dir, "instance-tokens.json")
 			os.WriteFile(legacy, []byte("broken legacy cache"), 0600)
@@ -137,11 +137,11 @@ func TestConnectionCredentialDoesNotCrossOriginsOrWriteAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TIANA_CREDENTIALS_FILE", path)
-	t.Setenv("TIANA_MGR_ORIGIN", "https://second.example.test")
+	t.Setenv("TIANA_API_ORIGIN", "https://second.example.test")
 	if value, err := ConnectionCredential(context.Background()); err == nil || value != nil {
 		t.Fatal("used another origin's account")
 	}
-	t.Setenv("TIANA_MGR_ORIGIN", first)
+	t.Setenv("TIANA_API_ORIGIN", first)
 	value, err := ConnectionCredential(context.Background())
 	defer clear(value)
 	if err != nil || string(value) != "account-secret" {

@@ -7,41 +7,59 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
 type Runner struct {
-	Client     *authclient.Client
-	UploadHTTP *http.Client
+	PrincipalID, TenantID string
+	Client                *authclient.Client
+	UploadHTTP            *http.Client
 }
-type Options struct{ Command, Project, Name, Dir, Version, Entry, UploadCAFile string }
+type Options struct{ Command, ID, RequestID, Name, Description, Dir, Version, Entry, UploadCAFile string }
 
 func (o Options) Validate() *Error {
-	if !appID(o.Project) {
-		return inputError("Use --project with 1..80 letters, digits, hyphens or underscores")
+	if o.Command != "create" && !appID(o.ID) {
+		return inputError("Provide a valid Web ID")
 	}
 	switch o.Command {
 	case "create":
-		if o.Dir != "" || o.Version != "" || o.Entry != "" || o.UploadCAFile != "" {
-			return inputError("apps create accepts only --project, --name and --json")
+		if o.ID != "" || strings.TrimSpace(o.Name) == "" || len(o.Name) > 128 || !utf8.ValidString(o.Name) || o.Dir != "" || o.Version != "" || o.Entry != "" || o.UploadCAFile != "" {
+			return inputError("Use web create NAME [-m DESCRIPTION] [--json]; the server generates the ID")
+		}
+		for _, r := range o.Name {
+			if unicode.IsControl(r) {
+				return inputError("Web name cannot contain control characters")
+			}
+		}
+		if len(o.Description) > 1024 || !utf8.ValidString(o.Description) {
+			return inputError("Web description must be valid UTF-8 and at most 1024 bytes")
+		}
+		for _, r := range o.Description {
+			if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
+				return inputError("Web description contains unsupported control characters")
+			}
 		}
 	case "status":
-		if !appID(o.Version) || o.Dir != "" || o.Entry != "" || o.UploadCAFile != "" || o.Name != "" {
-			return inputError("Use apps status --project ID --version ID")
+		if !appID(o.Version) || o.Dir != "" || o.Entry != "" || o.UploadCAFile != "" || o.Name != "" || o.Description != "" {
+			return inputError("Use web status ID --version ID")
 		}
 	case "upload":
-		if o.Dir == "" || (o.Version != "" && !appID(o.Version)) || o.Name != "" {
-			return inputError("Use apps upload --project ID --dir DIR [--version ID] [--entry PATH]")
+		if o.Dir == "" || (o.Version != "" && !appID(o.Version)) || o.Name != "" || o.Description != "" {
+			return inputError("Use web upload ID --dir DIR [--version ID] [--entry PATH]")
 		}
 	default:
-		return inputError("Choose apps create, upload or status")
+		return inputError("Choose web create, upload or status")
 	}
 	return nil
 }
 
 type Error struct {
+	HTTPStatus int    `json:"-"`
 	Code       string `json:"code"`
 	Message    string `json:"message"`
 	NextAction string `json:"next_action"`
@@ -65,7 +83,7 @@ func Failure(err *Error) Result {
 	return Result{Status: status, Error: err}
 }
 func inputError(message string) *Error {
-	return &Error{Code: "INVALID_INPUT", Message: message, NextAction: "Use tiana apps --help", ExitCode: 2}
+	return &Error{Code: "INVALID_INPUT", Message: message, NextAction: "Use tiana web --help", ExitCode: 2}
 }
 func authError(err error) *Error {
 	if errors.Is(err, authclient.ErrAuthenticationRequired) || errors.Is(err, authclient.ErrCredentialNotFound) {
@@ -132,13 +150,13 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 		if method != "GET" && api.Status >= 500 {
 			exit = 4
 		}
-		return result, &Error{Code: code, Message: message, NextAction: "Retry the same command or inspect apps status for this version", ExitCode: exit}
+		return result, &Error{HTTPStatus: api.Status, Code: code, Message: message, NextAction: "Retry the same command or inspect web status for this version", ExitCode: exit}
 	}
 	if ctx.Err() != nil {
 		return result, appError("UPLOAD_INTERRUPTED", "Publishing was interrupted; retry the same version")
 	}
 	if method != "GET" {
-		return result, &Error{Code: "MGR_OUTCOME_UNKNOWN", Message: "The management write may have completed; its response was not received", NextAction: "Retry the same version or inspect apps status", ExitCode: 4}
+		return result, &Error{Code: "MGR_OUTCOME_UNKNOWN", Message: "The management write may have completed; its response was not received", NextAction: "Retry the same version or inspect web status", ExitCode: 4}
 	}
 	return result, appError("MGR_UNAVAILABLE", "Could not reach MGR")
 }

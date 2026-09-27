@@ -15,6 +15,8 @@ import (
 
 const MaxFileSize = 128 << 20
 
+var sourceCommit = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
 type Manifest struct {
@@ -26,6 +28,8 @@ type Manifest struct {
 	Entry              string   `json:"entry"`
 	Styles             []string `json:"styles"`
 	DatabaseInstanceID string   `json:"database_instance_id"`
+	GitInstanceID      string   `json:"git_instance_id,omitempty"`
+	SourceCommit       string   `json:"source_commit,omitempty"`
 }
 
 type Build struct {
@@ -65,6 +69,9 @@ func LoadBuild(dir string) (_ *Build, err error) {
 	}
 	if m.SchemaVersion != 1 || !identifier.MatchString(m.AppID) || len(m.Name) > 160 || strings.TrimSpace(m.Name) == "" || m.Rendering != "csr" || m.Routing != "hash" || !identifier.MatchString(m.DatabaseInstanceID) {
 		return nil, errors.New("application requires schema 1, CSR, hash routing, app and database IDs")
+	}
+	if (m.GitInstanceID != "" || m.SourceCommit != "") && (!strings.HasPrefix(m.GitInstanceID, "git-") || len(m.GitInstanceID) <= 4 || !identifier.MatchString(m.GitInstanceID) || !sourceCommit.MatchString(m.SourceCommit)) {
+		return nil, errors.New("source binding requires a Git instance ID and full lowercase commit hash")
 	}
 	if !safePath(m.Entry) || (path.Ext(m.Entry) != ".js" && path.Ext(m.Entry) != ".mjs") || len(m.Styles) > 32 {
 		return nil, errors.New("invalid application module entry")

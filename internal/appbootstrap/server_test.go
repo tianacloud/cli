@@ -187,3 +187,56 @@ func TestLocalBootstrapEnvironmentIsExplicit(t *testing.T) {
 		t.Fatalf("missing local runtime environment: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestLocalAccountLaunchCapability(t *testing.T) {
+	s := previewFixture(t, nil)
+	identity := Identity{ID: "owner", Connection: func(context.Context) (Connection, error) {
+		return Connection{InstanceID: "ins_billing", Token: "account-access"}, nil
+	}}
+	link, err := s.AuthorizeLocalAccount(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := strings.Split(link, "#tiana_launch=")[1]
+	request := func(secret, origin, host string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://127.0.0.1:4174/web/billing/_tiana/local-login", nil)
+		r.Host = host
+		r.Header.Set("Origin", origin)
+		r.Header.Set("X-Tiana-Bootstrap", "1")
+		r.Header.Set("X-Tiana-Launch", secret)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w
+	}
+	for _, args := range [][3]string{{"", "http://127.0.0.1:4174", "127.0.0.1:4174"}, {proof, "https://evil.example.test", "127.0.0.1:4174"}, {proof, "http://127.0.0.1:4174", "evil.example.test"}} {
+		if request(args[0], args[1], args[2]).Code != 403 {
+			t.Fatal("untrusted launch accepted")
+		}
+	}
+	w := request(proof, "http://127.0.0.1:4174", "127.0.0.1:4174")
+	if w.Code != 200 || len(w.Result().Cookies()) != 1 || strings.Contains(w.Body.String(), "account-access") {
+		t.Fatal("launch failed or leaked credential")
+	}
+	cookie := w.Result().Cookies()[0]
+	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatal("unsafe cookie")
+	}
+	if previewRequest(s, "GET", "/web/billing/", cookie).Code != 200 {
+		t.Fatal("not authorized")
+	}
+	if request(proof, "http://127.0.0.1:4174", "127.0.0.1:4174").Code != 403 {
+		t.Fatal("launch replayed")
+	}
+	previewRequest(s, "POST", "/web/billing/_tiana/logout", cookie)
+	if previewRequest(s, "GET", "/web/billing/_tiana/app", cookie).Code != 401 {
+		t.Fatal("logout ineffective")
+	}
+	_, err = s.AuthorizeLocalAccount(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.launchExpires = time.Now().Add(-time.Second)
+	if request(s.launchProof, "http://127.0.0.1:4174", "127.0.0.1:4174").Code != 403 {
+		t.Fatal("expired capability accepted")
+	}
+}

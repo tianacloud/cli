@@ -50,7 +50,7 @@ plain HTTPS selects Git's normal HTTP transport instead.
 | --- | --- |
 | `TIANA_TOKEN_FILE` | Optional owned regular 0600 token file, at most 512 credential bytes plus optional LF/CRLF; no symlink or special file. |
 | `TIANA_TOKEN` | Optional opaque connection credential; mutually exclusive with token file. |
-| `TIANA_MGR_ORIGIN` | Management origin selecting the account session; falls back to `TIANA_AUTH_ORIGIN`. No MGR request is made. |
+| `TIANA_API_ORIGIN` | Management origin inherited from the launcher, selecting the account session. No MGR request is made. |
 | `TIANA_CA_FILE` | Deployment CA PEM, regular file, at most 64 KiB / 8 certificates. |
 | `TIANA_GATEWAY_ADDRESS` | Optional physical host:port override; preserves Endpoint identity. |
 
@@ -67,7 +67,7 @@ To use the account session:
 
 ```sh
 unset TIANA_TOKEN TIANA_TOKEN_FILE
-export TIANA_MGR_ORIGIN=https://console.example.test
+export TIANA_API_ORIGIN=https://console.example.test
 tiana login
 git clone tiana://ep-00000000000000000000000000.git.example.test/repo.git
 ```

@@ -3,7 +3,6 @@ package gitremote
 import (
 	"context"
 	"github.com/tianacloud/cli/internal/authclient"
-	"github.com/tianacloud/cli/internal/clientconfig"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,14 +11,14 @@ import (
 )
 
 func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
-	for _, mode := range []string{"account", "configured-account", "explicit", "file", "missing", "invalid-explicit"} {
+	for _, mode := range []string{"account", "multiple-accounts", "explicit", "file", "missing", "invalid-explicit"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, key := range []string{"TIANA_TOKEN", "TIANA_TOKEN_FILE"} {
 				t.Setenv(key, "")
 				os.Unsetenv(key)
 			}
 			origin := "https://mgr.example.test"
-			t.Setenv("TIANA_MGR_ORIGIN", origin)
+			t.Setenv("TIANA_API_ORIGIN", origin)
 			path := filepath.Join(t.TempDir(), "credentials.json")
 			t.Setenv("TIANA_CREDENTIALS_FILE", path)
 			legacy := filepath.Join(t.TempDir(), "instance-tokens.json")
@@ -45,9 +44,10 @@ func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
 				t.Setenv("TIANA_TOKEN", "")
 			}
 			ctx := context.Background()
-			if mode == "configured-account" {
-				t.Setenv("TIANA_MGR_ORIGIN", "https://other.example.test")
-				ctx = clientconfig.WithSettings(ctx, clientconfig.Settings{ManagementOrigin: origin})
+			if mode == "multiple-accounts" {
+				if err := authclient.NewFileStore(path, "https://other.example.test").Save(authclient.Credential{AccessToken: "other-secret", RefreshToken: "other-refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			cfg, err := configurationWithContext(ctx, testRepo(t))
 			if mode == "missing" || mode == "invalid-explicit" {
