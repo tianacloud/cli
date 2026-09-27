@@ -51,6 +51,7 @@ func newAppsServeCommand(output, diagnostics io.Writer) *cli.Command {
 			fmt.Fprintln(diagnostics, "tiana: preview port unavailable; select another --port")
 			return statusError(1)
 		}
+		defer listener.Close()
 		server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 		stopped := make(chan struct{})
 		go func() {
@@ -61,7 +62,10 @@ func newAppsServeCommand(output, diagnostics io.Writer) *cli.Command {
 			}
 		}()
 		defer close(stopped)
-		fmt.Fprintf(output, "Local preview: %s%s\nSign in using the Console button. This build has not been published.\n", origin, base)
+		if _, err := fmt.Fprintf(output, "Local preview: %s%s\nSign in using the Console button. This build has not been published.\n", origin, base); err != nil {
+			writeCommandError(diagnostics, err)
+			return statusError(1)
+		}
 		err = server.Serve(listener)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(diagnostics, "tiana: preview server stopped unexpectedly")
