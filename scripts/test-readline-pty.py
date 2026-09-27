@@ -143,6 +143,9 @@ def recovery(binary):
             s.expect(prompt)
             if diagnostic:
                 assert any(d in s.trace[start:] for d in (diagnostic if isinstance(diagnostic, tuple) else (diagnostic,))), s.trace[start:]
+            failure = re.search(rb"Error \[(SQLITE_ERROR|BATON_INVALID|[A-Z_]+)\]:", s.trace[start:])
+            if failure and failure.group(1) != b"INPUT_ERROR":
+                assert re.search(rb"Request ID: req-[A-Za-z0-9_-]+", s.trace[start:]), s.trace[start:]
         command("insert inot t1 values(3,'c');", off, b"INPUT_ERROR")
         command("SELECT 1;", off, b"0 rows")
         command("SELECT 2;", off, b"Reconnecting...")

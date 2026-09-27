@@ -217,6 +217,11 @@ func Shell(ctx context.Context, c *Client, o *Output, input io.Reader, diagnosti
 			if _, err := fmt.Fprintf(diagnostics, "Error [%s]: %s\n", e.Code, e.Message); err != nil {
 				return outputError()
 			}
+			if e.RequestID != "" {
+				if _, err := fmt.Fprintf(diagnostics, "Request ID: %s (sqlite)\n", e.RequestID); err != nil {
+					return outputError()
+				}
+			}
 		}
 		if line.err == io.EOF {
 			return nil
