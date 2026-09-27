@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,9 +51,18 @@ func TestCSRScanRejectsHTMLBeforeUpload(t *testing.T) {
 }
 
 func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
-	for _, invalid := range []bool{false, true} {
-		t.Run(map[bool]string{false: "valid", true: "inconsistent descriptor"}[invalid], func(t *testing.T) {
+	for _, invalid := range []string{"", "database", "repository", "commit"} {
+		t.Run("receipt-"+invalid, func(t *testing.T) {
 			dir := csrBuild(t)
+			name := filepath.Join(dir, "tiana.app.json")
+			raw, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw = []byte(strings.Replace(string(raw), `"schema_version":1`, `"schema_version":1,"git_instance_id":"git-source","source_commit":"`+strings.Repeat("a", 40)+`"`, 1))
+			if err = os.WriteFile(name, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
 			var manifest artifactManifest
 			requested := false
 			descriptorRequestID := ""
@@ -62,7 +72,7 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					json.NewDecoder(r.Body).Decode(&manifest)
 					raw, _ := json.Marshal(manifest)
 					hash := sha256.Sum256(raw)
-					json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant", ProjectID: "billing", VersionID: "v1", State: "published", Fingerprint: hex.EncodeToString(hash[:])})
+					json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant", ID: "billing", VersionID: "v1", State: "published", Fingerprint: hex.EncodeToString(hash[:])})
 				case "GET":
 					requested = true
 					descriptorRequestID = r.Header.Get("X-Request-ID")
@@ -70,8 +80,13 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 						t.Errorf("wrong route %s", r.URL.Path)
 					}
 					app := *manifest.Application
-					if invalid {
+					switch invalid {
+					case "database":
 						app.DatabaseInstanceID = "sqlite-other"
+					case "repository":
+						app.GitInstanceID = "git-other"
+					case "commit":
+						app.SourceCommit = strings.Repeat("b", 40)
 					}
 					data, _ := json.Marshal(app)
 					var view map[string]any
@@ -85,13 +100,13 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					t.Errorf("unexpected %s", r.Method)
 				}
 			})
-			result := r.Run(t.Context(), Options{Command: "upload", Project: "billing", Dir: dir, Version: "v1"})
+			result := r.Run(t.Context(), Options{Command: "upload", ID: "billing", Dir: dir, Version: "v1"})
 			if !requested {
 				t.Fatal("did not confirm published Bootstrap metadata")
 			}
-			if invalid {
+			if invalid != "" {
 				if result.Error == nil {
-					t.Fatal("reported wrong DB binding as published app")
+					t.Fatal("reported wrong binding as published app")
 				}
 				if descriptorRequestID == "" || result.Error.RequestID != descriptorRequestID {
 					t.Fatal("hosting confirmation failure lost its request ID")

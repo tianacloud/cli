@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Actual apps create/upload processes with isolated verified management/object TLS."""
-import argparse, hashlib, http.server, json, os, re, signal, socket, ssl, subprocess, tempfile, threading
+"""Actual web create/upload processes with isolated verified management/object TLS."""
+import argparse, hashlib, http.server, json, os, re, signal, socket, ssl, subprocess, tempfile, threading, time
 from pathlib import Path
 from urllib.parse import urlsplit
 
 p = argparse.ArgumentParser()
 p.add_argument('binary', type=Path)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--object-timeout-only', action='store_true')
 p.add_argument('--extra-only', action='store_true')
 p.add_argument('--extra-upload-only', action='store_true')
 a = p.parse_args()
@@ -31,7 +32,9 @@ class Peer(http.server.BaseHTTPRequestHandler):
             assert rid and self.headers.get('Authorization') == 'Bearer app-fixture-access'
             data = json.loads(raw or b'null')
             if '/versions/' not in path:
-                stage, body = 'create', {'project_id': 'fixture', 'name': data['name']}
+                stage, body = 'create', {'id': 'web-AAAAAAAAAAAAAAAAAAAAAAAA', 'name': data['name'], 'description':data['description'], 'owner_id':'fixture-user','tenant_id':'fixture-tenant'}
+                assert self.command=='POST' and data['request_id']
+                state['business_request_id']=data['request_id']
                 assert data['name'] == state['name']
             elif path.endswith('/uploads'):
                 stage = 'plan'
@@ -46,13 +49,17 @@ class Peer(http.server.BaseHTTPRequestHandler):
             else:
                 stage = 'prepare'
                 state['manifest'] = data.get('application',{})
-                state['version'] = {'tenant_id':'fixture-tenant','project_id':'fixture','version_id':path.split('/')[-1],
+                state['version'] = {'tenant_id':'fixture-tenant','id':'fixture','version_id':path.split('/')[-1],
                     'fingerprint':hashlib.sha256(raw.strip()).hexdigest(),'state':'published' if state['fault']=='published' else 'uploading'}
                 body = dict(state['version'])
         state['requests'].append({'stage':stage,'method':self.command,'request_id':rid,'path':path})
         fault = state['fault'] if stage == state['stage'] else ''
         status = 200
-        if fault.startswith('http'):
+        if fault=='object-timeout':
+            if sum(r['stage']=='object' for r in state['requests'])==1:
+                state['release'].wait(125);return
+            status=503
+        elif fault.startswith('http'):
             status, body = int(fault[4:]), {'error': {'code':'FIXTURE_REJECTED','message':'fixture'}}
         elif fault == 'timeout':
             state['release'].wait(32); return
@@ -85,29 +92,27 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     creds = root/'credential.json'
     creds.write_text(json.dumps({'credentials':{origin:{'access_token':'app-fixture-access','refresh_token':'app-fixture-refresh','expires_at':'2099-01-01T00:00:00Z','user':{'user_id':'fixture-user','tenant_id':'fixture-tenant'}}}}));creds.chmod(0o600)
     env={k:v for k,v in os.environ.items() if not k.startswith('TIANA_') and 'proxy' not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(creds))
+    env.update(TIANA_API_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(creds),TIANA_PENDING_COMMAND_FILE=str(root/'pending.json'))
     if diag: env['TIANA_DIAGNOSTICS']='1'
-    argv=['apps',command,'--project','fixture']
-    if command=='create':
-        if fault=='default-name':state['name']='fixture'
-        else:argv+=['--name',state['name']]
-    else: argv+=['--dir',str(build),'--entry','index.html','--upload-ca-file',str(ca)]
+    argv=['web',command,state['name'] if command=='create' else 'fixture']
+    if command=='upload': argv+=['--dir',str(build),'--entry','index.html','--upload-ca-file',str(ca)]
     if csr:
         offset=argv.index('--entry');del argv[offset:offset+2]
         argv+=['--version','fixed-csr-v1']
     if fmt=='json': argv+=['--json']
-    if fault=='input': argv[argv.index('--project')+1]='bad/project'
+    if fault=='input': argv[2]='' if command=='create' else 'bad/project'
     if fault=='missing-dir': argv[argv.index('--dir')+1]=str(root/'absent')
     if fault=='missing-entry': argv[argv.index('--entry')+1]='missing.html'
     reader=writer=None
     if fault=='pipe': reader,writer=os.pipe();os.close(reader)
+    started=time.monotonic()
     child=subprocess.Popen([str(binary),*argv],env=env,stdin=subprocess.DEVNULL,stdout=writer if writer is not None else subprocess.PIPE,stderr=subprocess.PIPE)
     if writer is not None: os.close(writer)
     try:
         if fault=='cancel':
             assert state['reached'].wait(10),f'not reached {stage}'
             child.send_signal(signal.SIGINT)
-        out,err=child.communicate(timeout=35)
+        out,err=child.communicate(timeout=150 if fault=='object-timeout' else 35)
     finally:
         state['release'].set()
         if child.poll() is None: child.kill();child.wait()
@@ -117,9 +122,11 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     elif fault=='cancel':expected=130
     elif fault=='input':expected=2
     elif fault not in ['', 'published','expired','uncertain','csr','default-name']:expected=1
-    if stage=='complete' and fault=='identity':expected=4
+    if stage in ['complete','create'] and fault=='identity':expected=4
     failures=[]
     if child.returncode!=expected: failures.append(f'exit {child.returncode} expected {expected}')
+    elapsed=time.monotonic()-started
+    if fault=='object-timeout' and not 119<=elapsed<140:failures.append(f'object deadline elapsed {elapsed}')
     requests=list(state['requests']);mgr=[r for r in requests if r['stage']!='object']; ids={r['request_id'] for r in mgr}
     result=None
     if fmt=='json' and fault!='pipe':
@@ -133,7 +140,7 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     if expected==0 and not diag and printed:failures.append('default success ID noise')
     stages=[r['stage'] for r in requests]
     if command=='create' and len(requests)>1:failures.append('create replay')
-    if fault in ['http503','redirect'] and stage=='object' and stages.count('object')!=3:failures.append('object retry bound')
+    if fault in ['http503','redirect','object-timeout'] and stage=='object' and stages.count('object')!=3:failures.append('object retry bound')
     if fault=='uncertain' and (stages.count('object')!=1 or stages.count('plan')!=2 or stages.count('complete')!=1):failures.append('uncertain object not resumed')
     if fault=='expired' and (stages.count('plan')!=2 or stages.count('object')!=1):failures.append('expired plan not renewed')
     if fault=='published' and stages!=['prepare']:failures.append('published resumed with writes')
@@ -141,7 +148,7 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     if fault=='changed' and 'object' in stages:failures.append('changed file uploaded')
     if any('forbidden-redirect' in r['path'] for r in requests):failures.append('redirect followed')
     if 'app-fixture-access' in out+err or 'app-fixture-refresh' in out+err:failures.append('credential printed')
-    rows.append({'command':command,'format':fmt,'diagnostics':diag,'stage':stage,'fault':fault or 'none','exit':child.returncode,'requests':requests,'failures':failures,'stdout_sha256':hashlib.sha256(out.encode()).hexdigest(),'stderr_sha256':hashlib.sha256(err.encode()).hexdigest()})
+    rows.append({'command':command,'format':fmt,'diagnostics':diag,'stage':stage,'fault':fault or 'none','exit':child.returncode,'elapsed_seconds':elapsed,'requests':requests,'failures':failures,'stdout_sha256':hashlib.sha256(out.encode()).hexdigest(),'stderr_sha256':hashlib.sha256(err.encode()).hexdigest()})
     a.output.write_text(json.dumps({'in_progress':True,'rows':rows},indent=2)+'\n')
 
 with tempfile.TemporaryDirectory(prefix='tiana-app-publish-') as temp:
@@ -156,18 +163,20 @@ with tempfile.TemporaryDirectory(prefix='tiana-app-publish-') as temp:
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         for command in ['create','upload']:
-            if a.extra_upload_only and command=='create':continue
+            if (a.extra_upload_only or a.object_timeout_only) and command=='create':continue
             cases=[('', ''),('', 'input'),('', 'pipe')]
-            if command=='create':cases += [('create',f) for f in ['http403','http409','http503','invalid','disconnect','cancel']]
+            if command=='create':cases += [('create',f) for f in ['identity','http403','http409','http503','invalid','disconnect','cancel']]
             else:
                 cases += [('',f) for f in ['missing-dir','missing-entry','published']]
                 cases += [(s,f) for s in ['prepare','plan','complete'] for f in ['http503','invalid','cancel','identity' if s!='plan' else 'cardinality']]
                 cases += [('object',f) for f in ['http503','redirect','uncertain','cancel']]+[('plan','expired'),('plan','changed')]
             if a.extra_only or a.extra_upload_only:
-                cases=[('', 'default-name'),('create','timeout')] if command=='create' else [('', 'csr')]+[('bootstrap',f) for f in ['http503','invalid','identity','cancel']]+[('plan','timeout')]
+                cases=[('create','timeout')] if command=='create' else [('', 'csr')]+[('bootstrap',f) for f in ['http503','invalid','identity','cancel']]+[('plan','timeout')]
+            if a.object_timeout_only:cases=[('object','object-timeout')]
             for fmt in ['text','json']:
                 for diag in [False,True]:
                     for stage,fault in cases:
+                        if a.object_timeout_only and (fmt!='json' or diag):continue
                         if fault=='timeout' and (fmt!='json' or diag):continue
                         with tempfile.TemporaryDirectory(dir=root) as case:check(command,fmt,diag,stage,fault,Path(case),f'https://127.0.0.1:{server.server_port}',root/'ca.pem')
     finally:server.shutdown();server.server_close();thread.join()

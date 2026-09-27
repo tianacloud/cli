@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual deletion CLI modes against a verified, isolated TLS peer."""
+"""Actual branch deletion CLI modes against a verified, isolated TLS peer."""
 import argparse
 import hashlib
 import http.server
@@ -40,18 +40,22 @@ class Peer(http.server.BaseHTTPRequestHandler):
         instance = {"id": "fixture-id", "display_name": "fixture-name", "engine": state["engine"], "product_state": "ACTIVE"}
         status = 200
         if state.get("observe"):
-            stage, body = "inspect", dict(instance, product_state="DELETED")
+            stage, body = ("inspect-branches", {"items": []}) if path.endswith("/branches") else ("inspect-instance", instance)
         elif path == "/api/v1/instances/fixture-name":
             stage, status, body = "name-lookup", 404, {"error": {"code": "INSTANCE_NOT_FOUND"}}
         elif path == "/api/v1/instances":
             stage, body = "name-list", {"items": [instance], "total_pages": 1}
         elif path == "/api/v1/instances/fixture-id" and self.command == "GET":
             stage, body = "lookup", instance
-        elif path == "/api/v1/instances/fixture-id" and self.command == "DELETE":
+        elif path == "/api/v1/instances/fixture-id/branches":
+            stage, body = "branches", {"items": [{"branch_id":"child", "name":"child-name"}]}
+        elif path == "/api/v1/instances/fixture-id/branches/child" and self.command == "GET":
+            stage, body = "branch", {"instance_id":"fixture-id", "branch":{"branch_id":"child", "name":"child-name"}}
+        elif path == "/api/v1/instances/fixture-id/branches/child" and self.command == "DELETE":
             stage, status, body = "delete", 202, {"instance_id": "fixture-id", "operation_id": "17"}
-            assert payload["request_id"]
+            assert payload is None and self.headers.get("Idempotency-Key")
         elif path == "/api/v1/instances/fixture-id/operations/17":
-            stage, body = "operation", {"instance_id": "fixture-id", "operation_id": "17", "kind": "DELETE_INSTANCE", "state": "success"}
+            stage, body = "operation", {"instance_id": "fixture-id", "operation_id": "17", "kind": "DELETE_BRANCH", "branch_id":"child", "state": "success"}
         else:
             raise AssertionError(path)
         request_id = self.headers.get("X-Request-ID")
@@ -70,6 +74,10 @@ class Peer(http.server.BaseHTTPRequestHandler):
             body["state"] = "unknown"
         elif fault == "receipt":
             body = {"instance_id": "fixture-id"}
+        elif fault == "wrong-branch":
+            body["branch"]["branch_id"] = "another"
+        elif fault == "protected":
+            body["branch"]["protected"] = True
         elif fault == "wrong-engine":
             body["engine"] = "other"
         elif fault == "duplicate":
@@ -180,30 +188,23 @@ def check(mode, diagnostic, stage, fault, root, origin, ca):
     if stage in ["delete", "operation"] and fault and fault != "progress":
         state["observe"], state["fault"] = True, ""
         offset = len(state["requests"])
-        code2, _, err2 = run([mode["engine"], "show", "fixture-id"], env, None, False, False)
+        code2, _, err2 = run(["sqlite", "branch", "list", "fixture-id"], env, None, False, False)
         observed = state["requests"][offset:]
-        if code2 != 0 or [r["stage"] for r in observed] != ["inspect"]:
+        if code2 != 0 or [r["stage"] for r in observed] != ["inspect-instance", "inspect-branches"]:
             failures.append("read-only recovery inspection failed")
-        recovery = {"exit": code2, "requests": observed, "mode": "explicit inspection of immutable ID; fixture result is not backend recovery proof"}
+        recovery = {"exit": code2, "requests": observed, "mode": "explicit read-only branch list under immutable instance ID; fixture result is not backend recovery proof"}
     rows.append({"mode": mode["name"], "diagnostics": diagnostic, "stage": stage, "fault": fault or "none", "exit": code,
                  "requests": sent, "recovery": recovery, "stdout_sha256": hashlib.sha256(out.encode()).hexdigest(), "stderr_sha256": hashlib.sha256(err.encode()).hexdigest(), "failures": failures})
     args.output.write_text(json.dumps({"in_progress": True, "rows": rows}, indent=2) + "\n")
 
 
 modes = []
-for engine in ["sqlite", "git"]:
-    for name, flags, reference, stages, wait, prompt in [
-        ("accepted", ["--force"], "fixture-id", ["lookup", "delete"], False, None),
-        ("wait", ["-f", "--wait"], "fixture-id", ["lookup", "delete", "operation"], True, None),
-        ("name-short-wait", ["--force", "-w"], "fixture-name", ["name-lookup", "name-list", "delete", "operation"], True, None),
-        ("wait-false", ["-f", "--wait=false"], "fixture-id", ["lookup", "delete"], False, None),
-        ("terminal-yes", [], "fixture-id", ["lookup", "delete"], False, "yes"),
-        ("terminal-no", [], "fixture-id", ["lookup"], False, "no"),
-        ("terminal-cancel", [], "fixture-id", ["lookup"], False, "cancel"),
-    ]:
-        modes.append(dict(name=engine + "-" + name, engine=engine, argv=[engine, "delete", *flags, reference], stages=stages, wait=wait, prompt=prompt))
-    for name, argv in [("no-force", [engine, "delete", "fixture-id"]), ("json", [engine, "delete", "-f", "fixture-id", "--json"]), ("arity", [engine, "delete", "-f"])]:
-        modes.append(dict(name=engine + "-reject-" + name, engine=engine, argv=argv, stages=[], exit=2))
+for by_id in [True,False]:
+    for label,flags,prompt in [('wait',['-f','--wait'],None),('accepted',['--force'],None),('terminal-yes',[], 'yes'),('terminal-no',[], 'no'),('terminal-cancel',[],'cancel')]:
+        stages=['lookup']+([] if by_id else ['branches'])+['branch']
+        if prompt not in ['no','cancel']:stages+=['delete']
+        if label=='wait':stages+=['operation']
+        modes.append(dict(name=('id-' if by_id else 'name-')+label,engine='sqlite',argv=['sqlite','branch','delete','fixture-id','child' if by_id else 'child-name']+(['--by-id'] if by_id else [])+flags,stages=stages,wait=label=='wait',prompt=prompt))
 
 with tempfile.TemporaryDirectory(prefix="tiana-delete-peer-") as temp:
     root = Path(temp)
@@ -223,14 +224,13 @@ with tempfile.TemporaryDirectory(prefix="tiana-delete-peer-") as temp:
     try:
         for mode in modes:
             cases = [("", "")]
-            if mode["name"] == "sqlite-wait":
-                cases += [(stage, fault) for stage in mode["stages"] for fault in ["http403", "http503", "invalid", "disconnect", "cancel"]]
-                cases += [("lookup", "wrong-engine"), ("delete", "receipt"), ("delete", "pipe")]
-                cases += [("operation", f) for f in ["http404", "identity", "kind", "failed", "unknown", "progress"]]
-            if mode["name"] == "git-wait":
-                cases += [(stage, "cancel") for stage in ["delete", "operation"]] + [("delete", "pipe")]
-            if mode["name"] == "sqlite-name-short-wait":
-                cases += [("name-list", f) for f in ["duplicate", "missing", "http503", "cancel"]]
+            if mode['name']=='id-wait':
+                cases += [(stage, fault) for stage in mode['stages'] for fault in ['http403','http503','invalid','disconnect','cancel']]
+                cases += [('branch','wrong-branch'),('branch','protected'),('delete','receipt'),('delete','pipe')]
+                cases += [('operation',f) for f in ['http404','identity','kind','failed','unknown','progress']]
+            if mode['name']=='name-wait':
+                cases += [('branches',f) for f in ['http503','invalid','disconnect','cancel']]
+            if mode['name']=='id-accepted':cases += [('delete','pipe')]
             for diagnostic in [False, True]:
                 for stage, fault in cases:
                     with tempfile.TemporaryDirectory(dir=root) as case:

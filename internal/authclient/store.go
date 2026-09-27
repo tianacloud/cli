@@ -8,10 +8,12 @@ import (
 	"github.com/tianacloud/sdk-go/auth"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Deployments select their management origin explicitly through SDK auth env.
-func DefaultOrigin() string { return auth.DefaultOrigin() }
+// The CLI accepts only the management origin inherited from its launcher.
+// Do not use SDK DefaultOrigin: older SDK releases also accept a legacy alias.
+func DefaultOrigin() string { return strings.TrimSpace(os.Getenv("TIANA_API_ORIGIN")) }
 
 type CredentialStore = auth.CredentialStore
 type FileStore = auth.FileStore

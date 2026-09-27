@@ -172,7 +172,7 @@ def check(mode, diagnostic, stage, fault, root, origin, ca):
         "expires_at": "2099-01-01T00:00:00Z", "user": {"user_id": "fixture-user", "tenant_id": "fixture-tenant"}}}}))
     credentials.chmod(0o600)
     env = {k: v for k, v in os.environ.items() if not k.startswith("TIANA_") and "proxy" not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin, TIANA_CA_FILE=str(ca), TIANA_CREDENTIALS_FILE=str(credentials), TIANA_PENDING_COMMAND_FILE=str(pending))
+    env.update(TIANA_API_ORIGIN=origin, TIANA_CA_FILE=str(ca), TIANA_CREDENTIALS_FILE=str(credentials), TIANA_PENDING_COMMAND_FILE=str(pending))
     if diagnostic:
         env["TIANA_DIAGNOSTICS"] = "1"
     code, out, err = invoke(mode["argv"], env, fault == "cancel")
@@ -251,7 +251,7 @@ def check_boundary(mode, diagnostic, fault, stage, root, origin, ca):
         "expires_at": "2099-01-01T00:00:00Z", "user": {"user_id": "fixture-user", "tenant_id": "fixture-tenant"}}}}))
     credentials.chmod(0o600)
     env = {k: v for k, v in os.environ.items() if not k.startswith("TIANA_") and "proxy" not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin, TIANA_CA_FILE=str(ca), TIANA_CREDENTIALS_FILE=str(credentials))
+    env.update(TIANA_API_ORIGIN=origin, TIANA_CA_FILE=str(ca), TIANA_CREDENTIALS_FILE=str(credentials))
     if diagnostic:
         env["TIANA_DIAGNOSTICS"] = "1"
     with tempfile.TemporaryDirectory(dir=args.boundary_filesystem) as storage:

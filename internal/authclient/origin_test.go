@@ -12,7 +12,7 @@ import (
 
 func unsetOriginEnvironment(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{"TIANA_MGR_ORIGIN", "TIANA_AUTH_ORIGIN", "TIANA_TOKEN", "TIANA_TOKEN_FILE"} {
+	for _, name := range []string{"TIANA_API_ORIGIN", "TIANA_MGR_ORIGIN", "TIANA_AUTH_ORIGIN", "TIANA_TOKEN", "TIANA_TOKEN_FILE"} {
 		t.Setenv(name, "")
 		if err := os.Unsetenv(name); err != nil {
 			t.Fatal(err)
@@ -59,17 +59,53 @@ func TestResolveOriginReusesOnlySavedAccountWithoutChangingStore(t *testing.T) {
 func TestResolveOriginExplicitConfigurationNeverReadsSavedAccounts(t *testing.T) {
 	unsetOriginEnvironment(t)
 	t.Setenv("TIANA_CREDENTIALS_FILE", t.TempDir())
-	t.Setenv("TIANA_AUTH_ORIGIN", "https://auth.example.test")
-	if got, err := ResolveOrigin(context.Background()); err != nil || got != "https://auth.example.test" {
-		t.Fatalf("auth fallback: %q %v", got, err)
-	}
-	t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
+	t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 	if got, err := ResolveOrigin(context.Background()); err != nil || got != "https://mgr.example.test" {
 		t.Fatalf("mgr precedence: %q %v", got, err)
 	}
-	t.Setenv("TIANA_MGR_ORIGIN", "invalid-origin")
+	t.Setenv("TIANA_API_ORIGIN", "invalid-origin")
 	if got, err := ResolveOrigin(context.Background()); err != nil || got != "invalid-origin" {
 		t.Fatalf("invalid explicit value was replaced: %q %v", got, err)
+	}
+}
+
+func TestLegacyOriginVariablesIgnored(t *testing.T) {
+	for _, legacy := range []string{"TIANA_MGR_ORIGIN", "TIANA_AUTH_ORIGIN"} {
+		for _, mode := range []string{"missing", "empty", "explicit", "saved", "multiple"} {
+			t.Run(legacy+"/"+mode, func(t *testing.T) {
+				unsetOriginEnvironment(t)
+				t.Setenv(legacy, "https://legacy.example.test")
+				path := filepath.Join(t.TempDir(), "credentials.json")
+				t.Setenv("TIANA_CREDENTIALS_FILE", path)
+				const origin = "https://mgr.example.test"
+				if mode == "explicit" || mode == "saved" || mode == "multiple" {
+					if err := NewFileStore(path, origin).Save(Credential{AccessToken: "selected-secret", RefreshToken: "selected-refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if mode == "explicit" {
+					t.Setenv("TIANA_API_ORIGIN", "  "+origin+"  ")
+				}
+				if mode == "empty" {
+					t.Setenv("TIANA_API_ORIGIN", " ")
+				}
+				if mode == "multiple" {
+					if err := NewFileStore(path, "https://legacy.example.test").Save(Credential{AccessToken: "legacy-secret", RefreshToken: "legacy-refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				got, err := ResolveOrigin(context.Background())
+				token, credentialErr := ConnectionCredential(context.Background())
+				defer clear(token)
+				if mode == "explicit" || mode == "saved" {
+					if err != nil || got != origin || credentialErr != nil || string(token) != "selected-secret" {
+						t.Fatalf("selected wrong origin/account: origin=%q err=%v credentialErr=%v", got, err, credentialErr)
+					}
+				} else if err == nil || got != "" || credentialErr == nil {
+					t.Fatalf("legacy origin unexpectedly enabled account selection: origin=%q err=%v credentialErr=%v", got, err, credentialErr)
+				}
+			})
+		}
 	}
 }
 
@@ -123,7 +159,7 @@ func TestResolveOriginFailsClosed(t *testing.T) {
 				}
 				t.Setenv("TIANA_CREDENTIALS_FILE", link)
 			case "explicit-empty":
-				t.Setenv("TIANA_MGR_ORIGIN", "")
+				t.Setenv("TIANA_API_ORIGIN", "")
 			}
 			got, err := ResolveOrigin(context.Background())
 			if err == nil || got != "" {

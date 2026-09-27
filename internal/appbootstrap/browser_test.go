@@ -2,6 +2,7 @@ package appbootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func TestBootstrapBrowser(t *testing.T) {
 				return Identity{}, ctx.Err()
 			}
 			return Identity{ID: "fixture-owner", Label: "Fixture", Connection: func(context.Context) (Connection, error) {
-				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-instance-token", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)}, nil
+				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-access-token", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)}, nil
 			}}, nil
 		}}, nil
 	}})
@@ -59,6 +60,15 @@ func TestBootstrapBrowser(t *testing.T) {
 	defer handler.Close()
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/_fixture/launch":
+			link, err := handler.AuthorizeLocalAccount(Identity{ID: "saved-owner", Connection: func(context.Context) (Connection, error) {
+				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-saved-access", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}, nil
+			}})
+			if err != nil {
+				t.Error(err)
+			}
+			json.NewEncoder(w).Encode(map[string]string{"url": link})
+			return
 		case "/_fixture/approve":
 			once.Do(func() { close(approved) })
 			w.WriteHeader(204)

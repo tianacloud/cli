@@ -3,6 +3,11 @@
 Use `tiana` to sign in, manage SQLite and Git instances, run SQL, and connect
 native clients to Tiana Endpoints.
 
+Root help groups `web`, `sqlite` and `git` under `Products`. Use `tiana web`
+for application listing, deletion, preview, creation, upload and publication status. Deployment
+selection uses `TIANA_API_ORIGIN`, configured before starting the CLI or agent.
+The former command and origin-variable names are not compatibility aliases.
+
 - [Build and install](#build-and-install)
 - [Configure and sign in](#configure-and-sign-in)
 - [Application delivery and npm packaging](docs/application-delivery.md)
@@ -58,28 +63,23 @@ configure GitHub SSH access, then build in a subshell:
 
 ## Configure and sign in
 
-Put your deployment's management origin in a JSON configuration file, such as
-the file distributed with a Skill. It contains no credentials and may use mode
-0644. All `example.test` addresses below are placeholders: replace them with
-your deployment's origin or connection URL.
-
-```json
-{"managementOrigin":"https://console.example.test"}
-```
+Select the deployment in the environment before starting your shell or coding
+agent. All `example.test` addresses below are placeholders: replace them with
+your deployment's HTTPS management origin or connection URL.
 
 ```sh
-tiana --config /path/to/config.json login
-tiana --config /path/to/config.json status
-tiana --config /path/to/config.json sqlite shell INSTANCE -e 'SELECT 1'
+export TIANA_API_ORIGIN=https://console.example.test
+# Start your coding agent from this environment, or run CLI commands here:
+tiana login
+tiana status
+tiana sqlite shell INSTANCE -e 'SELECT 1'
 ```
 
-`--config` applies only to this invocation and takes precedence over management
-origin environment variables and saved-account discovery. An explicit missing
-or invalid file is an error; the CLI does not silently choose another origin.
-The JSON file is limited to 64 KiB and must be a regular, non-symlink file.
-Use an HTTPS origin without credentials, a path, query or fragment. Put
-`--config` before `connect` or `git remote-helper`; native arguments after `--`
-are preserved and never receive the CLI configuration flag.
+The CLI and native Git helper inherit the same management origin. Skills must
+not inject or override it per command. If the environment is missing or
+ambiguous, configure the launcher or shell and restart the agent as needed.
+The CLI has no management configuration-file option. Connection parameters
+after `connect --` belong to the native client and are passed through unchanged.
 
 `login` prints a URL and waits for browser approval; you can open the URL on
 another device when working over SSH. `status` shows available account details
@@ -103,8 +103,8 @@ If login or quota is unavailable, the command exits nonzero.
 For a chat agent, start without blocking and resume after browser approval:
 
 ```sh
-tiana --config /path/to/config.json login --start --no-open --json
-tiana --config /path/to/config.json login --resume --json
+tiana login --start --no-open --json
+tiana login --resume --json
 ```
 
 Pending authorization exits 3 and returns `data.verification_uri`. Show that link
@@ -448,7 +448,7 @@ To use account login for connections:
 
 ```sh
 unset TIANA_TOKEN TIANA_TOKEN_FILE
-export TIANA_MGR_ORIGIN=https://console.example.test
+export TIANA_API_ORIGIN=https://console.example.test
 tiana login
 ```
 
@@ -465,16 +465,15 @@ A token file must be an owned regular file, not a symlink, and contain at most
 `~/.config/tiana/credentials.json`, or `$XDG_CONFIG_HOME/tiana/credentials.json`
 when set. Credential files require mode 0600 and their directory mode 0700.
 
-Without `--config`, when both management-origin environment variables are unset,
-the CLI reuses the single HTTPS origin in that credential file. This works across terminal and
+When `TIANA_API_ORIGIN` is unset, the CLI reuses the single HTTPS origin
+in that credential file. This works across terminal and
 desktop-agent restarts without searching shell configuration. Multiple saved
-origins require an explicit `--config` or `TIANA_MGR_ORIGIN`; no account is chosen automatically.
+origins require `TIANA_API_ORIGIN` in the launching environment; no account is chosen automatically.
 An explicitly empty origin variable disables this saved-origin fallback.
 
 | Environment variable | Purpose |
 | --- | --- |
-| `TIANA_MGR_ORIGIN` | Management origin for login, resource commands and account selection. |
-| `TIANA_AUTH_ORIGIN` | Management origin fallback when `TIANA_MGR_ORIGIN` is unset. |
+| `TIANA_API_ORIGIN` | Management origin for login, resource commands and account selection. |
 | `TIANA_CA_FILE` | Deployment CA PEM; overridden by global `--ca-file`. |
 | `TIANA_TOKEN` | Explicit connection credential; mutually exclusive with `TIANA_TOKEN_FILE`. |
 | `TIANA_TOKEN_FILE` | Path to an explicit connection credential file. |
@@ -486,7 +485,7 @@ An explicitly empty origin variable disables this saved-origin fallback.
 
 | Symptom | What to do |
 | --- | --- |
-| Management origin missing | Use `--config /path/to/config.json` containing your deployment's HTTPS `managementOrigin`. |
+| Management origin missing | Set `TIANA_API_ORIGIN` in the launcher or shell before starting the agent. |
 | No valid login or expired access token | Run `tiana login`; check the management origin and explicit token settings. |
 | TLS handshake or certificate verification failed | Check the Endpoint hostname, port and deployment CA; use `--ca-file` or `TIANA_CA_FILE`. |
 | Unsafe credential file | Check ownership, regular-file type and mode 0600; avoid symlinks. |

@@ -35,9 +35,9 @@ func TestStatusUsesSavedOriginWithoutEnvironment(t *testing.T) {
 	defer server.Close()
 	env := newTestEnv(t, server.URL)
 	saveTestCredential(t, server.URL, env.credentialsPath, "usr_saved")
-	for _, key := range []string{"TIANA_MGR_ORIGIN", "TIANA_AUTH_ORIGIN"} {
-		t.Setenv(key, "")
-		os.Unsetenv(key)
+	t.Setenv("TIANA_API_ORIGIN", "")
+	if err := os.Unsetenv("TIANA_API_ORIGIN"); err != nil {
+		t.Fatal(err)
 	}
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
@@ -163,8 +163,7 @@ func TestStatusLoginAndQuota(t *testing.T) {
 }
 
 func TestStatusCommandReplacesWhoami(t *testing.T) {
-	t.Setenv("TIANA_MGR_ORIGIN", "")
-	t.Setenv("TIANA_AUTH_ORIGIN", "")
+	t.Setenv("TIANA_API_ORIGIN", "")
 	for _, args := range [][]string{{"whoami"}, {"whoami", "--help"}, {"help", "whoami"}, {"status", "extra"}} {
 		var out, diag bytes.Buffer
 		if code := runCLI(context.Background(), args, strings.NewReader(""), &out, &diag); code != 2 || out.Len() != 0 {

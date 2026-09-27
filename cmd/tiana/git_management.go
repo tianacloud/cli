@@ -15,7 +15,7 @@ import (
 var gitManagementScope = databaseScope{engine: "git"}
 
 func newGitCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "git", Usage: "Git service commands", Action: groupAction, Commands: []*cli.Command{
+	return &cli.Command{Name: "git", Usage: "Git product commands", Action: groupAction, Commands: []*cli.Command{
 		newGitCreateCommand(output, diagnostics),
 		newGitListCommand(input, output, diagnostics),
 		newGitShowCommand(output, diagnostics),

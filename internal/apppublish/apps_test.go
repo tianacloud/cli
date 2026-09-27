@@ -28,12 +28,12 @@ func TestAppsCreateReusesCloudAuthentication(t *testing.T) {
 	called := false
 	r, _, out, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
 		called = true
-		if req.Method != "PUT" || req.URL.Path != "/api/v1/web-projects/billing" || req.Header.Get("Authorization") != "Bearer private-access" {
+		if req.Method != "POST" || req.URL.Path != "/api/v1/web-projects" || req.Header.Get("Authorization") != "Bearer private-access" {
 			t.Errorf("unexpected project request")
 		}
-		io.WriteString(w, `{"project_id":"billing","name":"Billing"}`)
+		io.WriteString(w, `{"id":"web-AAAAAAAAAAAAAAAAAAAAAAAA","name":"Billing","owner_id":"prn-test","tenant_id":"ten-test"}`)
 	})
-	if code := runTest(r, out, context.Background(), []string{"apps", "create", "--project", "billing", "--name", "Billing", "--json"}); code != 0 || !called {
+	if code := runTest(r, out, context.Background(), []string{"web", "create", "Billing", "--json"}); code != 0 || !called {
 		t.Fatalf("project create failed: %d %s", code, out)
 	}
 }
@@ -45,7 +45,7 @@ func TestGenericMGRFailurePreservesHTTPStatus(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":"request failed"}`)
 	})
 
-	result := r.Run(t.Context(), Options{Command: "create", Project: "billing", Name: "Billing"})
+	result := r.Run(t.Context(), Options{Command: "create", Name: "Billing", RequestID: "request-test"})
 	if result.Error == nil || !strings.Contains(result.Error.Message, "HTTP 503") {
 		t.Fatalf("error=%+v", result.Error)
 	}
@@ -86,7 +86,7 @@ func TestUploadPreservesLayoutAndRefreshesExpiredAndUncertainPuts(t *testing.T) 
 			sum := sha256.Sum256(raw)
 			fingerprint = hex.EncodeToString(sum[:])
 			version = pathLast(req.URL.Path)
-			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ProjectID: "billing", VersionID: version, Fingerprint: fingerprint, State: "uploading"})
+			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ID: "billing", VersionID: version, Fingerprint: fingerprint, State: "uploading"})
 			return
 		}
 		if strings.HasSuffix(req.URL.Path, "/uploads") {
@@ -106,14 +106,14 @@ func TestUploadPreservesLayoutAndRefreshesExpiredAndUncertainPuts(t *testing.T) 
 			if len(stored) != 2 {
 				t.Error("published before upload complete")
 			}
-			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ProjectID: "billing", VersionID: version, Fingerprint: fingerprint, State: "published"})
+			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ID: "billing", VersionID: version, Fingerprint: fingerprint, State: "published"})
 			return
 		}
 		t.Errorf("unexpected request: %s", req.URL.Path)
 	})
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: objects.Certificate().Raw}), 0600)
-	if code := runTest(r, out, context.Background(), []string{"apps", "upload", "--project", "billing", "--dir", dir, "--entry", "entry.htm", "--upload-ca-file", caFile, "--json"}); code != 0 {
+	if code := runTest(r, out, context.Background(), []string{"web", "upload", "billing", "--dir", dir, "--entry", "entry.htm", "--upload-ca-file", caFile, "--json"}); code != 0 {
 		t.Fatalf("upload failed: %s", out)
 	}
 	if plans != 3 || puts.Load() != 2 || !stored["任意目录/页面 #1.js"] || manifest.EntryPath != "entry.htm" {
@@ -225,15 +225,20 @@ func runnerForTest(t *testing.T, handler http.HandlerFunc) (Runner, string, *byt
 }
 func runTest(r Runner, out *bytes.Buffer, ctx context.Context, args []string) int {
 	f := flag.NewFlagSet("test", flag.ContinueOnError)
-	o := Options{Command: args[1]}
-	f.StringVar(&o.Project, "project", "", "")
-	f.StringVar(&o.Name, "name", "", "")
+	o := Options{Command: args[1], RequestID: "test-request"}
+	if len(args) > 2 {
+		if o.Command == "create" {
+			o.Name = args[2]
+		} else {
+			o.ID = args[2]
+		}
+	}
 	f.StringVar(&o.Dir, "dir", "", "")
 	f.StringVar(&o.Version, "version", "", "")
 	f.StringVar(&o.Entry, "entry", "", "")
 	f.StringVar(&o.UploadCAFile, "upload-ca-file", "", "")
 	f.Bool("json", false, "")
-	if err := f.Parse(args[2:]); err != nil {
+	if err := f.Parse(args[3:]); err != nil {
 		return 2
 	}
 	result := r.Run(ctx, o)

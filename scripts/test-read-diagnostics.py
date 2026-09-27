@@ -197,7 +197,7 @@ def check(mode, diagnostic, fault_stage, fault, root, origin, ca):
         "user": {"user_id": "fixture-user", "tenant_id": "fixture-tenant"}}}}))
     credential_path.chmod(0o600)
     env = {k: v for k, v in os.environ.items() if not k.startswith("TIANA_") and "proxy" not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin, TIANA_CREDENTIALS_FILE=str(credential_path), TIANA_CA_FILE=str(ca))
+    env.update(TIANA_API_ORIGIN=origin, TIANA_CREDENTIALS_FILE=str(credential_path), TIANA_CA_FILE=str(ca))
     if diagnostic:
         env["TIANA_DIAGNOSTICS"] = "1"
     code, stdout, stderr = invoke(mode, env, fault)
@@ -292,7 +292,7 @@ for filtered in [False, True]:
 modes.append({"name": "sqlite-branch-list-json-rejected", "argv": ["sqlite", "branch", "list", "--json", "fixture-id"], "stages": [], "exit": 2})
 for json_mode in [False, True]:
     modes.append({"name": "apps-status-" + ("json" if json_mode else "text"), "json": json_mode,
-                  "argv": ["apps", "status", "--project", "fixture-project", "--version", "fixture-version", *(["--json"] if json_mode else [])],
+                  "argv": ["web", "status", "fixture-project", "--version", "fixture-version", *(["--json"] if json_mode else [])],
                   "stages": ["app-status"], "output": ["fixture-version", "published"]})
 
 with tempfile.TemporaryDirectory(prefix="tiana-read-diag-") as temporary:

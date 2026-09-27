@@ -134,7 +134,7 @@ func probe() int {
 					}
 					tokenPath := filepath.Join(root, "token")
 					must(os.WriteFile(tokenPath, []byte("fixture-file\r\n"), 0600))
-					env := append(append([]string{}, base...), "TIANA_CA_FILE="+caPath, "TIANA_MGR_ORIGIN=https://mgr.example.test", "TIANA_CREDENTIALS_FILE="+accountPath)
+					env := append(append([]string{}, base...), "TIANA_CA_FILE="+caPath, "TIANA_API_ORIGIN=https://mgr.example.test", "TIANA_CREDENTIALS_FILE="+accountPath)
 					if diagnostic {
 						env = append(env, "TIANA_DIAGNOSTICS=1")
 					}

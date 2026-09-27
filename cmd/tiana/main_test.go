@@ -36,7 +36,7 @@ func newTestEnv(t *testing.T, serverURL string) testEnv {
 		tokensPath:      filepath.Join(directory, "instance-tokens.json"),
 		pendingPath:     filepath.Join(directory, "pending.json"),
 	}
-	t.Setenv("TIANA_MGR_ORIGIN", serverURL)
+	t.Setenv("TIANA_API_ORIGIN", serverURL)
 	t.Setenv("TIANA_CREDENTIALS_FILE", env.credentialsPath)
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", env.tokensPath)
 	t.Setenv("TIANA_PENDING_COMMAND_FILE", env.pendingPath)
@@ -542,7 +542,7 @@ func TestSQLiteManagementHelpListsResourceCommands(t *testing.T) {
 	rootHelp := rootOutput.String()
 	for _, value := range []string{
 		"sqlite",
-		"Manage SQLite instances and execute SQL",
+		"SQLite product commands",
 	} {
 		if !strings.Contains(rootHelp, value) {
 			t.Fatalf("root help=%q missing %q", rootHelp, value)

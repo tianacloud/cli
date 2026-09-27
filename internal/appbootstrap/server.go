@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -54,11 +55,14 @@ type session struct {
 	cancel   context.CancelFunc
 }
 type Server struct {
-	config       Config
-	host, cookie string
-	mu           sync.Mutex
-	sessions     map[string]*session
-	closed       bool
+	config         Config
+	host, cookie   string
+	mu             sync.Mutex
+	sessions       map[string]*session
+	closed         bool
+	launchProof    string
+	launchExpires  time.Time
+	launchIdentity Identity
 }
 
 func NewServer(c Config) (*Server, error) {
@@ -75,10 +79,55 @@ func NewServer(c Config) (*Server, error) {
 	}
 	return &Server{config: c, host: u.Host, cookie: "tiana_preview_" + u.Port(), sessions: map[string]*session{}}, nil
 }
+
+// AuthorizeLocalAccount returns a one-use, five-minute launcher capability.
+// The fragment is consumed before loading any application code; it is not an
+// account credential and is never sent in a request URL or Referer.
+func (s *Server) AuthorizeLocalAccount(identity Identity) (string, error) {
+	if identity.ID == "" || identity.Connection == nil {
+		return "", errors.New("invalid preview identity")
+	}
+	proof := make([]byte, 32)
+	if _, err := rand.Read(proof); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return "", errors.New("preview stopped")
+	}
+	s.launchProof = base64.RawURLEncoding.EncodeToString(proof)
+	s.launchIdentity = identity
+	s.launchExpires = time.Now().Add(5 * time.Minute)
+	return s.config.Origin + s.config.BasePath + "_tiana/authorize#tiana_launch=" + s.launchProof, nil
+}
+func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	proof := r.Header.Get("X-Tiana-Launch")
+	if s.closed || s.launchProof == "" || !time.Now().Before(s.launchExpires) || subtle.ConstantTimeCompare([]byte(proof), []byte(s.launchProof)) != 1 {
+		s.failure(w, 403, "LAUNCH_AUTHORIZATION_REQUIRED")
+		return
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		s.failure(w, 500, "LOGIN_UNAVAILABLE")
+		return
+	}
+	id := base64.RawURLEncoding.EncodeToString(raw)
+	s.sessions[id] = &session{identity: s.launchIdentity, state: "ready", expires: time.Now().Add(time.Hour), cancel: func() {}}
+	s.launchProof = ""
+	s.launchIdentity = Identity{}
+	http.SetCookie(w, &http.Cookie{Name: s.cookie, Value: id, Path: s.config.BasePath, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 3600})
+	s.json(w, 200, map[string]string{"state": "ready"})
+}
+
 func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closed = true
+	s.launchProof = ""
+	s.launchIdentity = Identity{}
 	for k, v := range s.sessions {
 		v.cancel()
 		delete(s.sessions, k)
@@ -142,10 +191,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == "_tiana/authorize" && (r.Method == "GET" || r.Method == "HEAD") {
-		if _, state := s.identity(r); state == "ready" {
-			http.Redirect(w, r, s.config.BasePath, http.StatusSeeOther)
-			return
-		}
+
 		s.platformFile(w, r, "authorize.html")
 		return
 	}
@@ -162,6 +208,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch p {
+		case "_tiana/local-login":
+			s.localLogin(w, r)
+			return
 		case "_tiana/login":
 			s.login(w, r)
 			return

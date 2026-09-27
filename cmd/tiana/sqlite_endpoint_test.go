@@ -22,8 +22,7 @@ import (
 // Explicit Token mode must not resolve an instance or open account/local Token stores.
 func TestSQLiteDirectEndpointExecute(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", sqlitepeer.Token)
-	t.Setenv("TIANA_MGR_ORIGIN", "not-an-origin")
-	t.Setenv("TIANA_AUTH_ORIGIN", "not-an-origin")
+	t.Setenv("TIANA_API_ORIGIN", "not-an-origin")
 	t.Setenv("TIANA_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "absent", "account"))
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", filepath.Join(t.TempDir(), "absent", "tokens"))
 	for _, endpoint := range []string{sqlitepeer.Endpoint, "https://" + sqlitepeer.Endpoint + ":9443/"} {
@@ -91,7 +90,7 @@ func TestSQLiteDirectEndpointRequiresUsableToken(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			t.Setenv("TIANA_MGR_ORIGIN", "invalid-origin")
+			t.Setenv("TIANA_API_ORIGIN", "invalid-origin")
 			t.Setenv("TIANA_INSTANCE_TOKENS_FILE", filepath.Join(t.TempDir(), "absent"))
 			resolve := func(context.Context, string, bool) (sqliteResolution, error) {
 				t.Error("missing token attempted MGR lookup")
@@ -227,8 +226,7 @@ func TestSQLiteDirectEndpointUsesAccountWithoutMGR(t *testing.T) {
 	if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TIANA_MGR_ORIGIN", "https://mgr.example.test")
-	t.Setenv("TIANA_AUTH_ORIGIN", "")
+	t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	t.Setenv("TIANA_INSTANCE_TOKENS_FILE", path)
 	t.Setenv("TIANA_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "absent-account"))

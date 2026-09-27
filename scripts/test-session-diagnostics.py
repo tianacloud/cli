@@ -128,7 +128,7 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
         credential_path.write_text(json.dumps({"credentials": {origin: credential}}))
         credential_path.chmod(0o600)
     env = {k: v for k, v in os.environ.items() if not k.startswith("TIANA_") and "proxy" not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin, TIANA_CREDENTIALS_FILE=str(credential_path), TIANA_CA_FILE=str(certificate))
+    env.update(TIANA_API_ORIGIN=origin, TIANA_CREDENTIALS_FILE=str(credential_path), TIANA_CA_FILE=str(certificate))
     if diagnostic:
         env["TIANA_DIAGNOSTICS"] = "1"
     argv = [str(binary), command] + (["--json"] if scenario == "json-rejected" else [])

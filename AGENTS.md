@@ -11,8 +11,8 @@ push, tag or release without user authorization. Original review copies stay int
 Public source, documentation, binary strings and decoded fixtures must contain
 no private deployment addresses or credentials. Tests use reserved example.test
 hosts and synthetic secrets only. The module/import/linker paths use GitHub.
-No compiled management origin is provided: TIANA_MGR_ORIGIN, then
-TIANA_AUTH_ORIGIN, select the deployment. Missing origin fails before MGR requests.
+No compiled management origin is provided: only TIANA_API_ORIGIN from the
+launching environment selects the deployment. Missing origin fails before MGR requests.
 TLS verifies by default in source and packaging builds. Explicit debug/insecure
 build settings are not release defaults and must not be distributed.
 Trust roots are supplied explicitly through --ca-file or TIANA_CA_FILE.
@@ -534,7 +534,7 @@ SQLite shell (instance and direct endpoint), connect and Git remote-helper share
 one credential resolver. TIANA_TOKEN and TIANA_TOKEN_FILE are mutually exclusive
 explicit overrides. Presence, including an empty value, prevents account fallback;
 invalid/unsafe input fails closed. Otherwise read credentials.json for the selected
-management origin (TIANA_MGR_ORIGIN, legacy TIANA_AUTH_ORIGIN) with the existing SDK
+management origin (TIANA_API_ORIGIN) with the existing SDK
 account store. A valid unexpired access token is required; no connection-triggered
 login/refresh, candidate request, anonymous retry or credential prompt is allowed.
 Explicit files are owned regular 0600, no symlinks/special files, at most 512 token
@@ -742,3 +742,218 @@ unless separately authorized.
 - Status preserves exact uint64 USED/LIMIT numbers and adds percentage and a static 20-cell Unicode bar (█ used, ░ remaining) for compute/storage/instances. Compute the ratio with bounded-size math/big values (three rows per invocation) to avoid overflow and float64 precision loss. Round percentages to one decimal, preserving nonzero and below/above-limit distinctions. Floor exact fractions for filled cells, capped at 20, never truncate over-quota percentages.
 - MGR zero limits are real zero quotas, not unlimited; preserve 0 and show n/a percentage/no bar. Unknown usage stays unknown/no bar. No inferred quota blocking; retain the server's blocked/reason fields. No extra requests, account fields, ANSI escapes, local state or backend changes.
 - Preserve prior uncommitted branch creation work. Verify status request/output integration, zero/nil, uint64 maxima, small/nonintegral/over-limit ratios, output errors, full CLI tests/race/vet and public scan/build. Rollback affects presentation only; no data migration.
+
+
+## Launcher-owned management origin (2026-09-26)
+
+The CLI and skills must not independently route to a deployment. The user
+explicitly removed TIANA_AUTH_ORIGIN and the CLI --config option. Read only
+TIANA_API_ORIGIN from the launching Agent/shell environment; do not delegate to
+older SDK DefaultOrigin implementations that accept the removed alias. Pass the
+resolved origin explicitly to SDK clients and credential stores. This keeps
+native Git helpers and direct CLI calls on the same environment-selected account
+without changing process environment or requiring a new SDK release.
+
+Retain unique saved HTTPS-origin discovery when TIANA_API_ORIGIN is unset;
+explicit empty input and multiple saved origins still fail closed. The removed
+alias is ignored, including when only that alias is set. A CLI --config argument
+is now an unknown option; native client arguments after connect -- remain native
+arguments. Retain CA flags/environment, TLS validation and saved-origin validation.
+No credential-file migration, token changes, network retries or storage writes
+are added. Existing launchers must move the old alias to TIANA_API_ORIGIN and
+remove --config arguments before using this build. Rollback only restores the
+previous CLI interface; account and pending-login formats stay compatible.
+
+Verify alias rejection with missing/empty/explicit/unique/multiple origins,
+account selection, native argument passthrough, removed-option rejection before
+requests, existing login/SQL/Git/preview flows, race/vet and native/Linux builds.
+
+
+## API origin and web command naming (2026-09-27)
+
+User requires TIANA_API_ORIGIN, Products help grouping and web instead of apps,
+with matching agent-skills guidance and no old-name compatibility. This supersedes
+older naming notes. Only the new environment variable selects explicit routing;
+TIANA_MGR_ORIGIN and TIANA_AUTH_ORIGIN are ignored. Preserve unique saved-origin
+lookup when the new variable is absent, explicit-empty failure, TLS policy and
+per-origin account selection. Resolve in CLI and pass the origin explicitly to
+SDKs rather than adopting their older environment defaults.
+
+The web command retains serve/create/upload/status and argument semantics. The
+old apps spelling is rejected before resource execution; error recovery hints
+must use web. Products groups web/sqlite/git only. Do not rename MGR routes,
+artifact project IDs, idempotency keys, object keys, credential files or stored
+origin keys: this is a CLI surface migration, not a persistence/protocol migration.
+No extra requests, retries, locks, token handling or hot-path work is introduced.
+
+Launchers/scripts must use the new environment/command spelling. Previously saved
+accounts for the same origin remain valid; no login/file rewrite is required just
+for the rename. Rollback needs the corresponding launcher/skill spelling change.
+Verify old-name rejection, API selection over legacy values, missing/empty/saved/
+ambiguous origins, status/web/native Git account selection, unchanged HTTP routes,
+help output, full race/vet, public-source scan, packaging and native builds.
+
+
+## Server-generated Web identity (2026-09-27)
+
+User requires Web to follow SQLite/Git: create takes NAME; ID is generated only
+by MGR (`web-` + 18 random bytes in unpadded base64url), and public Web project
+and version metadata use `id`. CLI upload/status take positional ID; no old
+--project/--name creation aliases. Manifest app_id must be the returned ID.
+Display names may repeat and never select resource identity.
+
+Creation is POST /api/v1/web-projects with name and request_id. Scope idempotency
+to tenant + principal + request, persist in the same MySQL row under a unique
+index, and return the original ID across concurrency/restart/response loss. A
+changed name under a reused request conflicts. CLI uses the shared locked pending
+store, binds to origin/user/tenant, persists before sending, retains uncertain
+results and output failures, and clears after confirmed output. Skills must save
+data.id before constructing the manifest and reuse it instead of recreating.
+
+MGR schema 24 adds nullable request_id + unique index to mgr_web_projects; keep
+physical project_id columns, existing IDs and object paths to protect stored data.
+23→24 migration checks DDL then CASes schema version under the existing advisory
+lock. Request identities live as long as their resources. Cost is one bounded
+unique index per resource, no new hot-path table scans. No Control change or
+production migration/deployment is included. Public naming change requires
+coordinated CLI/MGR/Console/skill rollout. Rollback requires matching clients and
+reviewed schema rollback; never rewrite IDs or drop request recovery silently.
+
+Verify ID entropy/prefix, rejected caller IDs/old routes, isolated ownership,
+concurrent replay/name conflict, lost-response recovery, durable MySQL migration,
+CLI output/pending preservation, Console rendering, and all skill validators.
+
+
+## Web listing and deletion work in progress (2026-09-27)
+
+List uses the existing owner-scoped MGR cursor API. Plain output is ID/NAME;
+interactive terminals page, scripts/JSON collect pages. Bind origin/user/tenant
+through traversal, reject malformed/nonadvancing cursors and foreign records,
+cap traversal at 10000 pages. Exact-name resolution must inspect all pages and
+reject duplicates, never choose the first match. No new storage or Control API.
+Validate multi-page output, terminal quit, bad cursors, and identity isolation.
+
+User subsequently chose A; the approved deletion contract is recorded below.
+
+
+## Approved Web deletion — project lifecycle (2026-09-27)
+
+User approved deleting all Web versions/origin files while retaining SQLite/Git,
+and merging deletion state into mgr_web_projects. Retain request_id creation
+idempotency. Only add state (active/deleting/deleted), delete_requested_at and
+deleted_at, plus index(state,tenant_id,project_id). Do not add a separate deletion
+table or delete_storage_namespace/delete_error_code/delete_next_attempt_at fields.
+
+Mark under the project row lock shared with version creation. Reject any unfinished
+upload without side effects; incomplete CLI creation blocks deletion. Active-only
+reads and publication prevent reusing deleted IDs. Owner-scoped receipts remain
+on project rows; previously accepted create requests cannot resurrect them.
+
+Every minute, cleanup visits <=10 projects within 20 seconds. An in-memory cursor
+prevents failed rows starving later ones; restart needs only durable deleting
+state. Each project uses a <=5-second transaction holding its row FOR UPDATE SKIP
+LOCKED through bounded OSS I/O and metadata commit. This consumes a DB connection
+and can delay mutation of that deleting row, but avoids stored leases and skips
+competing workers. No new Actor Call/Monitor API. Cancellation/crash rolls back
+SQL; OSS deletion is idempotent. Preserve <=500 object/metadata batch bounds.
+
+Check existing version storage_namespace before every cleanup batch, preserving
+version records until objects are cleared. Empty apps need no OSS access. Errors
+remain in maintenance logs with resource identity; state stays deleting for a
+later pass. No persisted error code, per-row retry schedule, upload grace or daily
+sweep. CLI --wait polls state until completion/cancellation; it cannot present a
+stored cleanup failure. Origin cleanup cannot revoke issued URLs/cached copies.
+
+Schema head remains 26: revise the unpublished 24→25 migration to add lifecycle
+columns/index, preserving 23→24 request identity and 25→26 description. Validate
+partial DDL and defaults/index before version CAS. No compatibility for discarded
+experimental deletion-table layouts, and no production migration or table drop.
+Preserve previous work on codex/a1a6f054/web-project-deletion; no commit/push/release.
+
+Verify real MySQL migration recovery/drift, state defaults, missing forbidden
+fields/table, upload/delete serialization, worker exclusion/cancellation/restart,
+storage mismatch, empty app handling, bounded version cleanup, fair traversal,
+terminal receipts and CLI recovery. Run full MGR tests/race/vet and skills checks.
+
+
+## Web creation description (2026-09-27)
+
+User requested `web create -m` for application descriptions. Implement optional
+`--description` / `-m`, default empty, max 1024 UTF-8 bytes; preserve whitespace,
+line breaks and tabs, reject invalid UTF-8/other control characters. Store only
+project metadata; do not change ID generation, routing or manifests. Create/list/
+detail JSON expose description; plain list keeps its existing ID/NAME format.
+
+Creation intent includes the exact description. The same tenant/owner/request ID
+must match name and description; conflicts never overwrite metadata or mint a
+replacement request. Verify the returned description before clearing intent.
+
+MGR schema 26 adds a non-null varchar(1024) with empty default to existing rows.
+Validate additive DDL under the schema lock, CAS 25→26 and read back; recovery
+from partial DDL must be idempotent and drift must fail closed. No new index,
+extra read round trip or Control/storage-object contract. Cost is a bounded
+metadata field per app. Retain prior work on the new task branch
+codex/a1a6f054/web-description. Coordinate MGR schema/service/CLI rollout; rollback
+must not discard descriptions. No commit/push/production migration authorized.
+
+Test empty/Unicode/multiline/max-byte/invalid inputs, exact receipt validation,
+lost-response retry and pending-description conflicts, MySQL persistence/list/
+detail and migration crash/drift, then full race/vet and skills validation.
+
+## Preview and hosted account provider (2026-09-27)
+
+User requested saved CLI-login preview and matching hosted window.tiana.auth.
+CLI uses a one-use local launch capability to reuse its SDK-managed account;
+refresh secrets stay in the CLI. Hosted MGR uses the existing HttpOnly WEB session
+as renewal authority for short-lived tenant data grants; the connection POST body
+is {} with current CSRF and exact Origin. No instance token fallback or browser
+refresh token storage. Share provider calls, wait for data-plane synchronization,
+isolate cancellation, recover lost lookups but never replay SQL. Trusted app code
+has tenant scope. Keep embedded bootstrap.js byte-identical across CLI and Web.
+No schema or Control changes. Web/MGR rollout must be coordinated; old hosted
+request bodies are rejected. No commit/push/deployment in this task. Verify local
+launch capability boundaries, hosted provider browser fixtures, full Go race/vet,
+frontend build and local preview; fixtures alone do not establish live hosting.
+
+
+## Immutable Web source association (2026-09-27)
+
+The application detail page had no persisted source association despite source
+being pushed to Tiana Git. Add optional paired git_instance_id/source_commit to
+schema-1 CSR manifests. Git ID must identify a git- resource; commit is full
+lowercase SHA-1 (40 hex) or SHA-256 (64 hex). Both omitted means no association.
+CLI preserves both through upload/receipt verification; MGR stores them in the
+existing release manifest JSON and includes them in its immutable fingerprint.
+No table, column, index or schema-version change. Existing releases are not edited;
+changing or adding provenance requires a new version. Console displays current
+and historical version-specific repository links and commits.
+
+At PUT time, MGR makes one indexed tenant-scoped product metadata read, requiring
+an active Git instance not pending deletion. No Control/Actor Call/Monitor or Git
+object read/grant is added. This is point-in-time validation, not a retention lock:
+a repository may later be deleted without erasing historical provenance. The
+publisher asserts the commit; skills verify the remote version ref before upload.
+This metadata is not cryptographic proof that binaries were built from that commit.
+No tokens, arbitrary remote URLs or new permissions are stored or exposed.
+
+Persist the repository ID in source configuration, derive commit from clean HEAD
+into ignored build output after committing; never create a self-referential source
+commit. Preserve prior working changes. Build/receipt validation, immutable replay,
+tenant isolation, typed-nil/unavailable validation, JSON persistence, browser links
+and responsive layout require tests. Publish CLI/MGR/Console together before using
+new manifests; old strict decoders reject them. Rollback must keep new manifest
+fields and fingerprints readable and must not rewrite published versions. No
+commit, push or service deployment is authorized by this implementation note.
+
+
+## Coordinated main publication (2026-09-27)
+
+The user explicitly authorized commit and push to main for cli, agent-skills,
+mgr, web and serverless-js, followed by Gaia deployment of MGR and Web. This
+supersedes earlier implementation-only publication restrictions for the pending
+changes in this session. Preserve all already-reviewed pending work; integrate
+remote main without rewriting history. No npm release/version bump is implied.
+The paired source association requires the matching client/server rollout and a
+new immutable application version. Existing deployment settings and schema 26
+remain unchanged. Verify remote commit identities, clean source image provenance,
+Gaia success/IN_SYNC and live readiness/auth boundaries after deployment.

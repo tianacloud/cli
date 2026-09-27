@@ -24,6 +24,7 @@ import (
 	"unicode"
 
 	"github.com/tianacloud/cli/internal/appbootstrap"
+	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 )
 
@@ -42,7 +43,7 @@ type artifactManifest struct {
 }
 type artifactVersion struct {
 	TenantID    string           `json:"tenant_id"`
-	ProjectID   string           `json:"project_id"`
+	ID          string           `json:"id"`
 	VersionID   string           `json:"version_id"`
 	Manifest    artifactManifest `json:"manifest"`
 	Fingerprint string           `json:"fingerprint"`
@@ -73,38 +74,49 @@ func appError(code, message string) *Error {
 	if code == "PUBLISH_OUTCOME_UNKNOWN" {
 		exit = 4
 	}
-	return &Error{Code: code, Message: message, NextAction: "Retry the same apps upload command to resume the same version", ExitCode: exit}
+	return &Error{Code: code, Message: message, NextAction: "Retry the same web upload command to resume the same version", ExitCode: exit}
 }
 func (r Runner) Run(ctx context.Context, o Options) Result {
 	if err := o.Validate(); err != nil {
 		return Failure(err)
 	}
-	project, name, dir, version, entry, caFile := &o.Project, &o.Name, &o.Dir, &o.Version, &o.Entry, &o.UploadCAFile
+	project, name, dir, version, entry, caFile := &o.ID, &o.Name, &o.Dir, &o.Version, &o.Entry, &o.UploadCAFile
 	id, e := r.currentIdentity(ctx)
 	if e != nil {
 		return Failure(e)
 	}
 
+	if r.PrincipalID != "" && (id.PrincipalID != r.PrincipalID || id.TenantID != r.TenantID) {
+		return Failure(authError(authclient.ErrAuthenticationRequired))
+	}
 	base := "/api/v1/web-projects/" + url.PathEscape(*project)
 	if o.Command == "create" {
-		if *dir != "" || *version != "" || *entry != "" || *caFile != "" {
-			return Failure(inputError("apps create accepts only --project, --name and --json"))
+		if o.RequestID == "" {
+			return Failure(inputError("Web creation requires a persisted request ID"))
 		}
-		if *name == "" {
-			*name = *project
-		}
-		res, e := r.request(ctx, id, "PUT", base, map[string]string{"name": *name})
+		res, e := r.request(ctx, id, "POST", "/api/v1/web-projects", map[string]string{"name": *name, "request_id": o.RequestID, "description": o.Description})
 		if e != nil {
+			e.NextAction = "Repeat the same tiana web create command to recover this request"
 			return Failure(e)
+		}
+		var created struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			OwnerID     string `json:"owner_id"`
+			TenantID    string `json:"tenant_id"`
+		}
+		if json.Unmarshal(res.Body, &created) != nil || !validWebID(created.ID) || created.Name != o.Name || created.Description != o.Description || created.OwnerID != id.PrincipalID || (id.TenantID != "" && created.TenantID != id.TenantID) {
+			return Failure(&Error{RequestID: res.RequestID, Code: "CREATE_OUTCOME_UNKNOWN", Message: "MGR returned an inconsistent Web creation receipt", NextAction: "Repeat the same tiana web create command to recover the original request", ExitCode: 4})
 		}
 		return Success(res.Body)
 	}
 	if *name != "" {
-		return Failure(inputError("--name is only valid for apps create"))
+		return Failure(inputError("NAME is only valid for web create"))
 	}
 	if o.Command == "status" {
 		if !appID(*version) || *dir != "" || *entry != "" || *caFile != "" {
-			return Failure(inputError("Use apps status --project ID --version ID"))
+			return Failure(inputError("Use web status ID --version ID"))
 		}
 		res, e := r.request(ctx, id, "GET", base+"/versions/"+url.PathEscape(*version), nil)
 		if e != nil {
@@ -113,7 +125,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		return Success(res.Body)
 	}
 	if *dir == "" || (*version != "" && !appID(*version)) {
-		return Failure(inputError("Use apps upload --project ID --dir DIR [--version ID] [--entry PATH]"))
+		return Failure(inputError("Use web upload ID --dir DIR [--version ID] [--entry PATH]"))
 	}
 	if *caFile == "" && r.UploadHTTP == nil {
 		var roots *x509.CertPool
@@ -139,7 +151,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		return Failure(e)
 	}
 	if manifest.Application != nil && manifest.Application.AppID != *project {
-		return Failure(inputError("tiana.app.json app_id must match --project"))
+		return Failure(inputError("tiana.app.json app_id must match the Web ID"))
 	}
 	raw, _ := json.Marshal(manifest)
 	hash := sha256.Sum256(raw)
@@ -154,7 +166,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			e.RequestID = lastResponseRequestID
 		}
 		v := Failure(e)
-		v.Data = map[string]string{"project_id": *project, "version_id": *version}
+		v.Data = map[string]string{"id": *project, "version_id": *version}
 		return v
 	}
 	res, e := r.request(ctx, id, "PUT", base, manifest)
@@ -163,7 +175,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		return fail(e)
 	}
 	var prepared artifactVersion
-	if json.Unmarshal(res.Body, &prepared) != nil || (prepared.TenantID == "" || (id.TenantID != "" && prepared.TenantID != id.TenantID)) || prepared.ProjectID != *project || prepared.VersionID != *version || prepared.Fingerprint != fingerprint || (prepared.State != "uploading" && prepared.State != "published") {
+	if json.Unmarshal(res.Body, &prepared) != nil || (prepared.TenantID == "" || (id.TenantID != "" && prepared.TenantID != id.TenantID)) || prepared.ID != *project || prepared.VersionID != *version || prepared.Fingerprint != fingerprint || (prepared.State != "uploading" && prepared.State != "published") {
 		return fail(appError("INVALID_UPLOAD_PLAN", "MGR returned an inconsistent version plan"))
 	}
 	// Published versions are immutable. A repeated command needs no file transfer.
@@ -188,13 +200,13 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			return fail(e)
 		}
 		var next artifactVersion
-		if json.Unmarshal(res.Body, &next) != nil || res.Status != http.StatusOK || next.TenantID != tenant || next.ProjectID != *project || next.VersionID != *version || next.Fingerprint != fingerprint || next.State != "published" {
+		if json.Unmarshal(res.Body, &next) != nil || res.Status != http.StatusOK || next.TenantID != tenant || next.ID != *project || next.VersionID != *version || next.Fingerprint != fingerprint || next.State != "published" {
 			return fail(appError("PUBLISH_OUTCOME_UNKNOWN", "MGR has not confirmed publication of the same version"))
 		}
 		prepared = next
 
 	}
-	result := map[string]any{"project_id": *project, "version_id": *version, "state": prepared.State, "file_count": len(manifest.Files), "processed_files": uploaded, "entry_path": manifest.EntryPath}
+	result := map[string]any{"id": *project, "version_id": *version, "state": prepared.State, "file_count": len(manifest.Files), "processed_files": uploaded, "entry_path": manifest.EntryPath}
 	if manifest.Application != nil {
 		res, e := r.request(ctx, id, "GET", base+"/bootstrap", nil)
 		lastResponseRequestID = res.RequestID
@@ -437,4 +449,12 @@ func uploadClientWithCA(path string) (*http.Client, *Error) {
 		return nil, appError("UPLOAD_CA_INVALID", "Upload CA must be a regular PEM file containing 1..8 certificates, at most 64 KiB")
 	}
 	return newUploadHTTPClient(trust.Roots), nil
+}
+
+func validWebID(id string) bool {
+	if !strings.HasPrefix(id, "web-") {
+		return false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(id, "web-"))
+	return err == nil && len(raw) == 18 && "web-"+base64.RawURLEncoding.EncodeToString(raw) == id
 }

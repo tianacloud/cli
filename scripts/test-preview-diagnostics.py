@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Actual preview process failure lifecycle; HTTP client does not claim browser execution."""
-import argparse,hashlib,http.client,http.server,json,os,signal,socket,ssl,subprocess,tempfile,threading,time
+import argparse,hashlib,http.client,http.server,json,os,signal,socket,ssl,subprocess,tempfile,threading,time,re
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('binary',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--extra-only',action='store_true');a=p.parse_args();binary=a.binary.resolve();state={};rows=[]
+p=argparse.ArgumentParser();p.add_argument('binary',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--saved-only',action='store_true');p.add_argument('--credential-file',action='store_true');p.add_argument('--extra-only',action='store_true');a=p.parse_args();binary=a.binary.resolve();state={};rows=[]
 class Peer(http.server.BaseHTTPRequestHandler):
     def log_message(self,*_):pass
     def do_GET(self):self.respond()
     def do_POST(self):self.respond()
     def respond(self):
         self.rfile.read(int(self.headers.get('Content-Length',0)))
-        stage='poll' if self.path.endswith('/poll') else 'create'
-        rid=self.headers.get('X-Request-ID');assert rid=='req-preview-login'
+        stage='whoami' if self.path.endswith('/whoami') else 'instance' if '/instances/' in self.path else 'poll' if self.path.endswith('/poll') else 'create'
+        rid=self.headers.get('X-Request-ID');assert rid
+        if not state['fault'].startswith('saved-'):assert rid=='req-preview-login'
         state['requests'].append({'stage':stage,'request_id':rid})
         fault=state['fault'];status=200
         body={'transaction_id':'fixture','client_secret':'fixture-client','user_code':'TEST','verification_uri_complete':state['origin']+'/approve','expires_in':600,'poll_interval':1} if stage=='create' else {'status':'denied'}
+        if stage=='whoami':body={'user':{'user_id':'owner','tenant_id':'tenant'},'sync_status':'complete'}
+        if stage=='instance':body={'id':'ins_fixture','engine':'sqlite','endpoint_id':'ep-7k3rbz6104qg3qk2z6de5z2vmh','connection':{'hostname':'ep-7k3rbz6104qg3qk2z6de5z2vmh.db.example.test'}}
         if fault=='wrong-origin':body['verification_uri_complete']='https://other.example.test/approve'
         if fault=='http503':status,body=503,{'error':{'code':'FIXTURE','message':'fixture'}}
         if fault=='timeout':time.sleep(13);return
@@ -30,17 +33,25 @@ def check(fault,diag,root,origin,ca):
     manifest={'schema_version':1,'app_id':'fixture','name':'Fixture','rendering':'csr','routing':'hash','entry':'app.js','database_instance_id':'ins_fixture'}
     (build/'tiana.app.json').write_text(json.dumps(manifest))
     env={k:v for k,v in os.environ.items() if not k.startswith('TIANA_') and 'proxy' not in k.lower()}
-    env.update(TIANA_MGR_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(root/'untouched.json'))
+    env.update(TIANA_API_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(root/'untouched.json'))
     if diag:env['TIANA_DIAGNOSTICS']='1'
+    if fault.startswith('saved-'):
+        config=root/'config';store=config/'tiana';store.mkdir(parents=True)
+        credential=store/'credentials.json';credential.write_text(json.dumps({'credentials':{origin:{'access_token':'fixture-account','refresh_token':'fixture-refresh','expires_at':'2099-01-01T00:00:00Z','user':{'user_id':'owner','tenant_id':'tenant'}}}}));credential.chmod(0o600)
+        env['XDG_CONFIG_HOME']=str(config)
+        env.pop('TIANA_CREDENTIALS_FILE',None)
+        if a.credential_file:
+            custom=root/'account.json';credential.rename(custom)
+            env['TIANA_CREDENTIALS_FILE']=str(custom)
     reserved=socket.socket();reserved.bind(('127.0.0.1',0));port=reserved.getsockname()[1]
     if fault!='bind':reserved.close()
     else:reserved.listen()
-    argv=['apps','serve','--dir',str(build),'--port',str(port)]
+    argv=['web','serve','--dir',str(build),'--port',str(port)]
     if fault=='json':argv+=['--json']
     if fault=='input':argv[-1]='0'
     if fault=='manifest':manifest['routing']='history';(build/'tiana.app.json').write_text(json.dumps(manifest))
     writer=None
-    if fault=='pipe':reader,writer=os.pipe();os.close(reader)
+    if fault in ['pipe','saved-pipe']:reader,writer=os.pipe();os.close(reader)
     child=subprocess.Popen([str(binary),*argv],env=env,stdin=subprocess.DEVNULL,stdout=writer if writer is not None else subprocess.PIPE,stderr=subprocess.PIPE)
     if writer is not None:os.close(writer)
     responses=[];failures=[];pipe_alive=None
@@ -50,11 +61,11 @@ def check(fault,diag,root,origin,ca):
         if cookie:headers['Cookie']=cookie
         c.request(method,'/web/fixture/'+path,headers=headers);r=c.getresponse();body=r.read();info={'path':path,'status':r.status,'request_id':r.getheader('X-Request-ID')};responses.append(info);cookies=r.getheader('Set-Cookie');c.close();return r.status,body,cookies
     try:
-        if fault in ['json','input','manifest','bind','pipe']:
+        if fault in ['json','input','manifest','bind','pipe','saved-pipe']:
             out,err=child.communicate(timeout=10)
             expected=2 if fault in ['json','input'] else 1
             if child.returncode!=expected:failures.append('local failure exit')
-            if fault=='pipe':
+            if fault in ['pipe','saved-pipe']:
                 pipe_alive=False
                 if b'broken pipe' not in err:failures.append('pipe diagnostic missing')
                 probe=socket.socket()
@@ -89,6 +100,9 @@ def check(fault,diag,root,origin,ca):
                 assert request('GET','_tiana/files/app.js',cookie)[0]==401
             child.send_signal(signal.SIGINT);out,err=child.communicate(timeout=10)
             if child.returncode!=0:failures.append('SIGINT preview exit differs from existing contract')
+        if fault=='saved-pipe':
+            ids={r['request_id'] for r in state['requests']}
+            if len(state['requests'])<3 or ids-{value.decode() for value in re.findall(rb'req-[A-Za-z0-9_-]+',err)}:failures.append('saved account original IDs missing')
         if (root/'untouched.json').exists():failures.append('CLI account credential mutated')
         if any(r['request_id']!='req-preview-login' for r in responses):failures.append('browser response ID lost')
     finally:
@@ -109,7 +123,7 @@ with tempfile.TemporaryDirectory(prefix='tiana-preview-') as temp:
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         for diag in [False,True]:
-            for fault in (['timeout','shutdown-pending'] if a.extra_only else ['http503','invalid','disconnect','wrong-origin','denied','pending','json','input','manifest','bind','pipe']):
+            for fault in (['saved-pipe'] if a.saved_only else ['timeout','shutdown-pending'] if a.extra_only else ['http503','invalid','disconnect','wrong-origin','denied','pending','json','input','manifest','bind','pipe']):
                 if diag and fault=='timeout':continue
                 with tempfile.TemporaryDirectory(dir=root) as case:check(fault,diag,Path(case),f'https://127.0.0.1:{server.server_port}',root/'ca.pem')
     finally:server.shutdown();server.server_close();thread.join()

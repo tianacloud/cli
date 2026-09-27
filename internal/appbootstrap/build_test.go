@@ -1,6 +1,7 @@
 package appbootstrap
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,5 +74,60 @@ func TestStylelessApplicationUsesAnEmptyStylesList(t *testing.T) {
 	defer build.Close()
 	if build.Manifest.Styles == nil {
 		t.Fatal("Bootstrap requires an array for styleless apps")
+	}
+}
+
+func TestSourceBindingManifest(t *testing.T) {
+	for _, tc := range []struct {
+		name, repository, commit string
+		valid                    bool
+	}{
+		{"absent", "", "", true},
+		{"sha1", "git-source", strings.Repeat("a", 40), true},
+		{"sha256", "git-source", strings.Repeat("b", 64), true},
+		{"missing-commit", "git-source", "", false},
+		{"missing-repository", "", strings.Repeat("a", 40), false},
+		{"short-commit", "git-source", "abc1234", false},
+		{"uppercase", "git-source", strings.Repeat("A", 40), false},
+		{"wrong-product", "sqlite-source", strings.Repeat("a", 40), false},
+		{"empty-id", "git-", strings.Repeat("a", 40), false},
+		{"url", "https://git.example/repo", strings.Repeat("a", 40), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := buildFixture(t)
+			name := filepath.Join(dir, "tiana.app.json")
+			raw, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m Manifest
+			if err = json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			m.GitInstanceID = tc.repository
+			m.SourceCommit = tc.commit
+			raw, err = json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(name, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			b, err := LoadBuild(dir)
+			if !tc.valid {
+				if err == nil {
+					b.Close()
+					t.Fatal("invalid source binding accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer b.Close()
+			if b.Manifest.GitInstanceID != tc.repository || b.Manifest.SourceCommit != tc.commit {
+				t.Fatal("source binding lost")
+			}
+		})
 	}
 }

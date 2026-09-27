@@ -16,6 +16,7 @@ type PendingCommand struct {
 	Args                []string  `json:"args,omitempty"`
 	IdempotencyKey      string    `json:"idempotency_key"`
 	Origin              string    `json:"origin"`
+	TenantID            string    `json:"tenant_id,omitempty"`
 	UserID              string    `json:"user_id,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 	InstanceID          string    `json:"instance_id,omitempty"`

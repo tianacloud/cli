@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/pem"
 	"io"
 	"net/http"
@@ -18,22 +17,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func writeTestConfig(t *testing.T, origin string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "config.json")
-	contents, _ := json.Marshal(map[string]string{"managementOrigin": origin})
-	if err := os.WriteFile(path, contents, 0644); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestConfigReachesCommandsWithoutChangingEnvironmentOrNativeArguments(t *testing.T) {
+func TestInheritedOriginReachesCommandsWithoutChangingEnvironmentOrNativeArguments(t *testing.T) {
 	const origin = "https://configured.example.test"
-	const environmentOrigin = "https://environment.example.test"
-	t.Setenv("TIANA_MGR_ORIGIN", environmentOrigin)
-	path := writeTestConfig(t, origin)
-	for _, command := range [][]string{{"login"}, {"status"}, {"sqlite", "shell"}, {"apps", "serve"}, {"apps", "upload"}, {"connect"}, {"git", "remote-helper"}} {
+	t.Setenv("TIANA_API_ORIGIN", origin)
+	for _, command := range [][]string{{"login"}, {"status"}, {"sqlite", "shell"}, {"web", "serve"}, {"web", "upload"}, {"connect"}, {"git", "remote-helper"}} {
 		root := newCLICommand(nil, io.Discard, io.Discard, nil)
 		leaf := root
 		for _, name := range command {
@@ -55,18 +42,18 @@ func TestConfigReachesCommandsWithoutChangingEnvironmentOrNativeArguments(t *tes
 			}
 			return nil
 		}
-		args := append([]string{"tiana", "--config", path}, command...)
+		args := append([]string{"tiana"}, command...)
 		args = append(args, wantArgs...)
 		if err := root.Run(context.Background(), args); err != nil || !called {
 			t.Fatalf("%v dispatch error=%v called=%v", command, err, called)
 		}
 	}
-	if got, err := authclient.ResolveOrigin(context.Background()); err != nil || got != environmentOrigin || os.Getenv("TIANA_MGR_ORIGIN") != environmentOrigin {
+	if got, err := authclient.ResolveOrigin(context.Background()); err != nil || got != origin || os.Getenv("TIANA_API_ORIGIN") != origin {
 		t.Fatalf("invocation configuration escaped context: %q %v", got, err)
 	}
 }
 
-func TestConfigOverridesOtherAccountsForActualStatus(t *testing.T) {
+func TestInheritedOriginSelectsAccountForActualStatus(t *testing.T) {
 	requests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -86,38 +73,39 @@ func TestConfigOverridesOtherAccountsForActualStatus(t *testing.T) {
 	env := newTestEnv(t, server.URL)
 	saveTestCredential(t, server.URL, env.credentialsPath, "configured")
 	saveTestCredential(t, "https://other.example.test", env.credentialsPath, "other")
-	t.Setenv("TIANA_MGR_ORIGIN", "https://other.example.test")
-	path := writeTestConfig(t, server.URL)
+	t.Setenv("TIANA_API_ORIGIN", server.URL)
 	ca := filepath.Join(t.TempDir(), "root.pem")
 	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0644); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"--config", path, "status"}, {"status", "--config", path}} {
-		var out, diag bytes.Buffer
-		if code := runCLI(context.Background(), append([]string{"--ca-file", ca}, args...), nil, &out, &diag); code != 0 || !strings.Contains(out.String(), "configured@example.test") {
-			t.Fatalf("code=%d diagnostics=%s", code, &diag)
-		}
+	var out, diag bytes.Buffer
+	if code := runCLI(context.Background(), []string{"--ca-file", ca, "status"}, nil, &out, &diag); code != 0 || !strings.Contains(out.String(), "configured@example.test") {
+		t.Fatalf("code=%d diagnostics=%s", code, &diag)
 	}
-	if requests != 4 {
+	if requests != 2 {
 		t.Fatalf("requests=%d", requests)
 	}
 }
 
-func TestExplicitInvalidConfigStopsBeforeCommand(t *testing.T) {
-	t.Setenv("TIANA_MGR_ORIGIN", "https://otherwise-valid.example.test")
-	valid := writeTestConfig(t, "https://configured.example.test")
-	invalid := writeTestConfig(t, "http://invalid.example.test")
+func TestRemovedConfigStopsBeforeCommand(t *testing.T) {
+	t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 	for _, args := range [][]string{
-		{"--config", "", "sqlite", "shell", "id"},
-		{"--config", valid + ".missing", "sqlite", "shell", "id"},
-		{"--config", invalid, "sqlite", "shell", "id"},
-		{"--config", valid, "sqlite", "shell", "id", "--config", valid},
+		{"--config", "unused.json", "sqlite", "shell", "id"},
+		{"sqlite", "shell", "id", "--config", "unused.json"},
+		{"--config=unused.json", "status"},
+		{"status", "--config", "unused.json"},
+		{"--config", "unused.json", "connect", "--", "client"},
+		{"--config", "unused.json", "git", "remote-helper", "origin", "tiana://ep.example.test/repo.git"},
 	} {
 		called := false
 		var out, diag bytes.Buffer
 		code := runCLIWithSQL(context.Background(), args, nil, &out, &diag, func(context.Context, sqliteOptions) int { called = true; return 0 })
 		if code != 2 || called {
-			t.Fatalf("invalid config accepted: code=%d called=%v", code, called)
+			t.Fatalf("removed config accepted: args=%v code=%d called=%v", args, code, called)
 		}
+	}
+	var out, diag bytes.Buffer
+	if code := runCLI(context.Background(), []string{"--help"}, nil, &out, &diag); code != 0 || strings.Contains(out.String(), "--config") {
+		t.Fatalf("removed config in help: code=%d output=%s", code, &out)
 	}
 }
