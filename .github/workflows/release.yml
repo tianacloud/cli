@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -22,7 +22,7 @@ jobs:
           import { execFileSync } from 'node:child_process';
           const base='https://gitee.com/api/v5/repos/tianacloud/cli-releases/releases/1172873/attach_files';
           const headers={Authorization:`Bearer ${process.env.GITEE_TOKEN}`};
-          for (const size of [64, 5*1024*1024]) {
+          for (const size of [5*1024*1024]) {
             const form=new FormData();form.append('file',new Blob([randomBytes(size)]),'diagnostic-runner.bin');
             const start=Date.now();
             try {
