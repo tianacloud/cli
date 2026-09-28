@@ -29,6 +29,12 @@ class PublicSourceScanTest(unittest.TestCase):
                 with self.subTest(octets=octets, encoding=encoding):
                     self.assertEqual(self.scan(content), 1)
 
+    def test_allows_configured_deployment_only(self):
+        host = b"console.service.internal.tiana.com"
+        self.assertEqual(self.scan(b"https://" + host), 0)
+        self.assertEqual(self.scan(b"other." + host), 1)
+        self.assertEqual(self.scan(host + b".example"), 1)
+
     def test_rejects_private_hostname(self):
         address = b".".join([b"host", b"internal", b"example"])
         self.assertEqual(self.scan(address), 1)

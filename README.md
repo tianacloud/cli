@@ -5,7 +5,8 @@ native clients to Tiana Endpoints.
 
 Root help groups `web`, `sqlite` and `git` under `Products`. Use `tiana web`
 for application listing, deletion, preview, creation, upload and publication status. Deployment
-selection uses `TIANA_API_ORIGIN`, configured before starting the CLI or agent.
+selection uses `TIANA_API_ORIGIN`, a single saved account origin, or the built-in
+deployment default, in that order.
 The former command and origin-variable names are not compatibility aliases.
 
 The `web` commands use the App `app_id` returned by `/api/v1/apps`. Hosted App
@@ -144,8 +145,9 @@ tiana --ca-file /path/to/root-ca.pem sqlite list
 Management origins in configuration files use HTTPS. Explicit environment
 configuration also permits HTTP on loopback for local development.
 TLS verifies certificates and hostnames. `--ca-file` takes precedence over
-`TIANA_CA_FILE`; otherwise system trust is used. Put global options before the
-subcommand, especially when using `connect`.
+`TIANA_CA_FILE`; otherwise the embedded `internal/clientconfig/default.crt` is
+added to system trust. The binary does not need a separate CA file at runtime.
+Put global options before the subcommand, especially when using `connect`.
 
 Sign out with:
 
@@ -489,7 +491,8 @@ When `TIANA_API_ORIGIN` is unset, the CLI reuses the single HTTPS origin
 in that credential file. This works across terminal and
 desktop-agent restarts without searching shell configuration. Multiple saved
 origins require `TIANA_API_ORIGIN` in the launching environment; no account is chosen automatically.
-An explicitly empty origin variable disables this saved-origin fallback.
+With no saved account, the CLI uses `https://console.service.internal.tiana.com`.
+An explicitly empty origin variable is an error.
 
 | Environment variable | Purpose |
 | --- | --- |

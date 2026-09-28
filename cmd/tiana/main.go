@@ -81,7 +81,7 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		return 2
 	}
 
-	if trust := clientconfig.FromContext(ctx); trust != nil {
+	if trust := clientconfig.FromContext(ctx); trust != nil && (!trust.IsDefault || parsed.Connect.Gateway.CAFile == "") {
 		parsed.Connect.Gateway.CACertificates = trust.Certificates
 		parsed.Connect.Gateway.CAFile = ""
 	}

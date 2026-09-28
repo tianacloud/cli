@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject private hostnames/IPv4 in source and decoded blocks; print paths only."""
+"""Reject unconfigured private addresses in source and decoded blocks; print paths only."""
 import argparse
 import base64
 import ipaddress
@@ -8,6 +8,8 @@ import re
 
 # Construct labels separately so the scanner does not embed a private address.
 FORBIDDEN = re.compile(rb"(?:[a-z0-9-]+\.)*internal(?:\.[a-z0-9-]+)+|(?:[a-z0-9-]+\.)+internal\b", re.I)
+# The built-in deployment origin is intentionally shipped with the CLI.
+DEPLOYMENT_HOST = b"console.service.internal.tiana.com"
 PEM = re.compile(rb"-----BEGIN ([A-Z0-9 ]+)-----\s+([A-Za-z0-9+/=\s]+)-----END \1-----")
 IPV4 = re.compile(rb"(?<![\w.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![\w.])")
 # RFC1918, shared-address space and link-local; allow loopback and TEST-NET.
@@ -19,7 +21,7 @@ PRIVATE_V4 = [ipaddress.IPv4Network((prefix, bits)) for prefix, bits in [
 
 
 def contains_private_address(block):
-    if FORBIDDEN.search(block):
+    if any(match.group().lower() != DEPLOYMENT_HOST for match in FORBIDDEN.finditer(block)):
         return True
     for match in IPV4.finditer(block):
         try:

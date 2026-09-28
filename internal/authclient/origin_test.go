@@ -102,6 +102,10 @@ func TestLegacyOriginVariablesIgnored(t *testing.T) {
 					if err != nil || got != origin || credentialErr != nil || string(token) != "selected-secret" {
 						t.Fatalf("selected wrong origin/account: origin=%q err=%v credentialErr=%v", got, err, credentialErr)
 					}
+				} else if mode == "missing" {
+					if err != nil || got != fallbackOrigin || credentialErr == nil {
+						t.Fatalf("default origin=%q err=%v credentialErr=%v", got, err, credentialErr)
+					}
 				} else if err == nil || got != "" || credentialErr == nil {
 					t.Fatalf("legacy origin unexpectedly enabled account selection: origin=%q err=%v credentialErr=%v", got, err, credentialErr)
 				}
@@ -166,6 +170,12 @@ func TestResolveOriginFailsClosed(t *testing.T) {
 				t.Setenv("TIANA_API_ORIGIN", "")
 			}
 			got, err := ResolveOrigin(context.Background())
+			if mode == "missing" || mode == "empty" {
+				if err != nil || got != fallbackOrigin {
+					t.Fatalf("default origin=%q err=%v", got, err)
+				}
+				return
+			}
 			if err == nil || got != "" {
 				t.Fatalf("unexpected successful resolution: %q", got)
 			}

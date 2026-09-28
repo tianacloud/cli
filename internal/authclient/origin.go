@@ -11,7 +11,9 @@ import (
 	"github.com/tianacloud/cli/internal/localfile"
 )
 
-// ResolveOrigin uses the inherited management environment or one saved account origin.
+const fallbackOrigin = "https://console.service.internal.tiana.com"
+
+// ResolveOrigin uses the inherited management environment or one saved account origin, then the deployment default.
 func ResolveOrigin(_ context.Context) (string, error) {
 	if origin := DefaultOrigin(); origin != "" {
 		return origin, nil
@@ -30,7 +32,7 @@ func ResolveOrigin(_ context.Context) (string, error) {
 	}
 	contents, err := localfile.Read(path, 8<<20, true)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", missing
+		return fallbackOrigin, nil
 	}
 	if err != nil {
 		return "", errors.New("cannot read account credentials: require an owned regular mode-0600 file, no symlinks, at most 8 MiB")
@@ -43,7 +45,7 @@ func ResolveOrigin(_ context.Context) (string, error) {
 		return "", errors.New("credential store is invalid; set TIANA_API_ORIGIN before starting the agent or shell")
 	}
 	if len(file.Credentials) == 0 {
-		return "", missing
+		return fallbackOrigin, nil
 	}
 	if len(file.Credentials) != 1 {
 		return "", errors.New("multiple saved management origins; select one with TIANA_API_ORIGIN before starting the agent or shell")

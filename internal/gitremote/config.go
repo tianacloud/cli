@@ -67,6 +67,13 @@ func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (co
 		}
 		c.tls.RootCAs = roots
 	}
+	if c.tls.RootCAs == nil {
+		trust, err := clientconfig.Load("")
+		if err != nil {
+			return c, err
+		}
+		c.tls.RootCAs = trust.Roots
+	}
 	value, err := authclient.ConnectionCredential(ctx)
 	if err != nil {
 		return c, err

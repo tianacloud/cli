@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tianacloud/cli/internal/buildconfig"
+	"github.com/tianacloud/cli/internal/clientconfig"
 )
 
 type gatewayTrust struct {
@@ -74,6 +75,13 @@ func resolveGatewayTrust(options GatewayOptions) (gatewayTrust, error) {
 		}
 		trust.InsecureTLS = false
 		trust.UseWebPKIRoots = true
+	}
+	if len(trust.RootCertDER) == 0 {
+		defaults, err := clientconfig.Load("")
+		if err != nil {
+			return gatewayTrust{}, err
+		}
+		trust.RootCertDER = defaults.Certificates
 	}
 	return trust, nil
 }

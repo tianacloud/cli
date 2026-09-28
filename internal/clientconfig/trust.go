@@ -4,13 +4,18 @@ package clientconfig
 import (
 	"context"
 	"crypto/x509"
+	_ "embed"
 	"encoding/pem"
 	"errors"
 
 	"github.com/tianacloud/cli/internal/localfile"
 )
 
+//go:embed default.crt
+var defaultCA []byte
+
 type Trust struct {
+	IsDefault    bool
 	Roots        *x509.CertPool
 	Certificates [][]byte
 }
@@ -24,18 +29,23 @@ func FromContext(ctx context.Context) *Trust {
 	return trust
 }
 
-// Load adds at most eight bounded deployment CAs to system trust. A supplied
+// Load adds at most eight bounded deployment CAs to system trust.
+// An empty path selects the embedded default.crt. A supplied
 // invalid file never falls back to system roots or insecure verification.
 func Load(path string) (*Trust, error) {
-	data, err := localfile.Read(path, 64*1024, false)
-	if err != nil {
-		return nil, errors.New("cannot read CA file: expected a regular, non-symlink file of at most 64 KiB")
+	data := defaultCA
+	if path != "" {
+		var err error
+		data, err = localfile.Read(path, 64*1024, false)
+		if err != nil {
+			return nil, errors.New("cannot read CA file: expected a regular, non-symlink file of at most 64 KiB")
+		}
 	}
 	roots, err := x509.SystemCertPool()
 	if err != nil {
 		roots = x509.NewCertPool()
 	}
-	t := &Trust{Roots: roots}
+	t := &Trust{Roots: roots, IsDefault: path == ""}
 	for len(data) > 0 {
 		block, rest := pem.Decode(data)
 		if block == nil {

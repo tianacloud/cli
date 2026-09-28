@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -107,5 +108,29 @@ func TestRemovedConfigStopsBeforeCommand(t *testing.T) {
 	var out, diag bytes.Buffer
 	if code := runCLI(context.Background(), []string{"--help"}, nil, &out, &diag); code != 0 || strings.Contains(out.String(), "--config") {
 		t.Fatalf("removed config in help: code=%d output=%s", code, &out)
+	}
+}
+
+func TestDefaultCAReachesCommands(t *testing.T) {
+	t.Setenv("TIANA_CA_FILE", "")
+	t.Chdir(t.TempDir())
+	for _, args := range [][]string{{"status"}, {"sqlite", "list"}, {"connect"}, {"git", "remote-helper"}, {"web", "list"}} {
+		root := newCLICommand(nil, io.Discard, io.Discard, nil)
+		leaf := root
+		for _, name := range args {
+			leaf = leaf.Command(name)
+		}
+		called := false
+		leaf.Action = func(ctx context.Context, cmd *cli.Command) error {
+			called = true
+			trust := clientconfig.FromContext(ctx)
+			if trust == nil || !trust.IsDefault || len(trust.Certificates) != 2 {
+				t.Fatal("missing embedded trust")
+			}
+			return nil
+		}
+		if err := root.Run(context.Background(), append([]string{"tiana"}, args...)); err != nil || !called {
+			t.Fatalf("%v: %v", args, err)
+		}
 	}
 }

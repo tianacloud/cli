@@ -197,14 +197,12 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		if cmd.IsSet("ca-file") && path == "" {
 			return ctx, argumentFailure(ctx, cmd, "--ca-file requires a non-empty path")
 		}
-		if path != "" {
-			trust, err := clientconfig.Load(path)
-			if err != nil {
-				fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
-				return ctx, statusError(2)
-			}
-			ctx = clientconfig.WithTrust(ctx, trust)
+		trust, err := clientconfig.Load(path)
+		if err != nil {
+			fmt.Fprintln(diagnostics, "tiana:", safeDisplay(err.Error()))
+			return ctx, statusError(2)
 		}
+		ctx = clientconfig.WithTrust(ctx, trust)
 		return ctx, nil
 	}
 	return root
