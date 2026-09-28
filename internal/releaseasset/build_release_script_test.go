@@ -108,7 +108,10 @@ func TestBuildReleaseRejectsUnsupportedPlatform(t *testing.T) {
 
 func newBuildReleaseFixture(t *testing.T, kernel, machine string) (string, string) {
 	t.Helper()
-	fixture := t.TempDir()
+	fixture, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	cliScripts := filepath.Join(fixture, "cli", "scripts")
 	sdk := filepath.Join(fixture, "sdk")
 	bin := filepath.Join(fixture, "bin")
