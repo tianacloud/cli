@@ -1,60 +1,20 @@
 # CLI release
 
-## GitHub Actions (recommended)
+## Local release (recommended)
 
-In npm's `@tianadb/cli` package settings, add a GitHub Actions trusted publisher:
-
-| Field | Value |
-| --- | --- |
-| Organization | `tianacloud` |
-| Repository | `cli` |
-| Workflow filename | `release.yml` |
-| Environment | Leave empty |
-| Allowed actions | Allow direct `npm publish` |
-
-The GitHub repository needs `SDK_READ_TOKEN` for native tests of the private Go
-SDKs. npm publication uses OIDC and needs no npm secret. Workflow permissions and
-`repository.url` are already configured. The workflow must be present on the
-default branch to use **Run workflow**.
-
-Build and upload from a Linux/macOS machine with working Gitee access:
+Run from a CLI checkout on Linux or macOS. Log in once with an npm account that
+can publish `@tianadb/cli`, then run the release script:
 
 ```sh
-./scripts/release.mjs 0.2.2-beta.0 --upload-only
+npm login --registry=https://registry.npmjs.org/
+./scripts/release.mjs 0.2.2-beta.0 --dry-run
+./scripts/release.mjs 0.2.2-beta.0
 ```
 
-This builds all seven platforms, uploads their archives and the npm tarball to
-Gitee, verifies anonymous downloads, and prints `version`, `tag`, and
-`npm_sha256`. This step needs the Gitee token and does not need npm login.
-Keep the output directory under `dist/releases/` until publication completes.
-
-Open GitHub Actions → **Release CLI** → **Run workflow**. Select the source branch
-used for the build, enter the printed version and `npm_sha256`, and choose
-`latest` or `next`. Keep `dry_run` selected for the first run; after it passes,
-repeat with identical inputs and clear `dry_run`. Native Linux/macOS/Windows
-tests must pass before the release job runs. The job downloads the small npm
-package from Gitee and verifies its SHA-256, package name and version. A real
-run publishes those exact bytes using OIDC and checks installation with a fresh
-npm cache. GitHub runners do not rebuild or upload the large platform archives.
-
-Gitee upload and npm publication can run on separate machines. To move the
-upload step, use the same CLI checkout and prerequisites below, supply the Gitee
-token locally, and retain the printed checksum. An interrupted npm publication
-can be retried from Actions without rebuilding or uploading the platform files.
-
-OIDC authentication happens during `npm publish`, so it does not run `npm whoami`.
-The publish command sets the selected dist-tag. On a rerun, an identical version
-and matching tag are accepted; changing an existing tag separately requires an
-interactive npm login. See [trusted publishing](https://docs.npmjs.com/trusted-publishers/).
-
-## Local release
-
-Run from a CLI checkout on Linux or macOS:
-
-```sh
-./scripts/release.mjs --dry-run
-./scripts/release.mjs
-```
+The script builds seven platforms, uploads and verifies Gitee attachments, and
+publishes npm directly from this machine. Browser login and any npm publishing
+2FA confirmation are completed by the npm account owner. Renew an expired npm
+login with the same command. GitHub Actions setup is optional.
 
 The version defaults to `packaging/npm/package.json`. Update its version before
 releasing changed artifacts, or pass an explicit version:
@@ -124,7 +84,15 @@ run `npm rebuild -g @tianadb/cli --ignore-scripts=false` to install the binary.
 
 ## Interrupted publication
 
-Retain the source and version, resolve the reported authentication/network error,
+If Gitee upload completed and only npm publication needs retrying, reuse the
+printed output directory without rebuilding:
+
+```sh
+node scripts/publish-npm.mjs dist/releases/VERSION-SUFFIX/packed VERSION latest
+```
+
+This publishes the exact tarball retained from that build. Otherwise, retain the
+source and version, resolve the reported authentication/network error,
 and rerun the command. Existing Gitee attachments are verified before missing
 attachments are uploaded. Conflicting bytes stop publication; use a new version
 for changed content. Already published npm content is accepted only when its
@@ -134,3 +102,50 @@ Published attachments are not overwritten and npm versions are not unpublished.
 Run `node --test packaging/*.test.mjs` for archive, installer and publication
 checks. Cross-compilation proves binary availability, while functional platform
 acceptance also requires running the CLI and its tests on that platform.
+
+## Optional GitHub Actions publication
+
+In npm's `@tianadb/cli` package settings, add a GitHub Actions trusted publisher:
+
+| Field | Value |
+| --- | --- |
+| Organization | `tianacloud` |
+| Repository | `cli` |
+| Workflow filename | `release.yml` |
+| Environment | Leave empty |
+| Allowed actions | Allow direct `npm publish` |
+
+The GitHub repository needs `SDK_READ_TOKEN` for native tests of the private Go
+SDKs. npm publication uses OIDC and needs no npm secret. Workflow permissions and
+`repository.url` are already configured. The workflow must be present on the
+default branch to use **Run workflow**.
+
+Build and upload from a Linux/macOS machine with working Gitee access:
+
+```sh
+./scripts/release.mjs 0.2.2-beta.0 --upload-only
+```
+
+This builds all seven platforms, uploads their archives and the npm tarball to
+Gitee, verifies anonymous downloads, and prints `version`, `tag`, and
+`npm_sha256`. This step needs the Gitee token and does not need npm login.
+Keep the output directory under `dist/releases/` until publication completes.
+
+Open GitHub Actions → **Release CLI** → **Run workflow**. Select the source branch
+used for the build, enter the printed version and `npm_sha256`, and choose
+`latest` or `next`. Keep `dry_run` selected for the first run; after it passes,
+repeat with identical inputs and clear `dry_run`. Native Linux/macOS/Windows
+tests must pass before the release job runs. The job downloads the small npm
+package from Gitee and verifies its SHA-256, package name and version. A real
+run publishes those exact bytes using OIDC and checks installation with a fresh
+npm cache. GitHub runners do not rebuild or upload the large platform archives.
+
+Gitee upload and npm publication can run on separate machines. To move the
+upload step, use the same CLI checkout and prerequisites below, supply the Gitee
+token locally, and retain the printed checksum. An interrupted npm publication
+can be retried from Actions without rebuilding or uploading the platform files.
+
+OIDC authentication happens during `npm publish`, so it does not run `npm whoami`.
+The publish command sets the selected dist-tag. On a rerun, an identical version
+and matching tag are accepted; changing an existing tag separately requires an
+interactive npm login. See [trusted publishing](https://docs.npmjs.com/trusted-publishers/).
