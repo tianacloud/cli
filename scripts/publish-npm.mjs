@@ -8,7 +8,7 @@ if (!directory || !version || extra.length) {
 } else {
   try {
     publishNpm(directory, version, tag);
-    console.log(`Published @tianadb/cli@${version} to ${tag}.`);
+    console.log(`Published @tianacloud/cli@${version} to ${tag}.`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

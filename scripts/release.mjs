@@ -44,6 +44,6 @@ async function main() {
     return;
   }
   publishNpm(packed, version, values.tag);
-  console.log(`Published @tianadb/cli@${version} to ${values.tag}.`);
+  console.log(`Published @tianacloud/cli@${version} to ${values.tag}.`);
 }
 main().catch(error => { console.error(`Release failed: ${error.message}`); process.exitCode = 1; });

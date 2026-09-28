@@ -67,7 +67,7 @@ jobs:
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const pkg = JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/release-package.json"));
-            if (pkg.name !== "@tianadb/cli" || pkg.version !== process.env.RELEASE_VERSION) {
+            if (pkg.name !== "@tianacloud/cli" || pkg.version !== process.env.RELEASE_VERSION) {
               throw new Error("Downloaded npm package name or version does not match");
             }'
       - name: Publish npm using trusted publishing
@@ -82,5 +82,5 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           prefix="$(mktemp -d "$RUNNER_TEMP/tiana-npm-install.XXXXXX")"
-          npm install --global --ignore-scripts=false --prefix "$prefix" --cache "$prefix/cache" "@tianadb/cli@$RELEASE_VERSION"
+          npm install --global --ignore-scripts=false --prefix "$prefix" --cache "$prefix/cache" "@tianacloud/cli@$RELEASE_VERSION"
           "$prefix/bin/tiana" --version
