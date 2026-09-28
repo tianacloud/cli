@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -60,11 +61,19 @@ type SQLDAdapter struct{}
 
 func (SQLDAdapter) ID() string { return SQLDAdapterID }
 
+func nativeClientName(program string) string {
+	name := filepath.Base(program)
+	if runtime.GOOS == "windows" {
+		name = strings.TrimSuffix(strings.ToLower(name), ".exe")
+	}
+	return name
+}
+
 func (SQLDAdapter) Matches(program string, explicit bool) bool {
 	if program == "" {
 		return false
 	}
-	name := filepath.Base(program)
+	name := nativeClientName(program)
 	// The v1.0.32 Turso grammar is the only reviewed native shape. An unknown
 	// libsql grammar must not be guessed from its basename.
 	_ = explicit
@@ -76,7 +85,7 @@ func (SQLDAdapter) Matches(program string, explicit bool) bool {
 // deliberately accepts only a canonical HTTPS Endpoint URL, not a Turso Cloud
 // database name or a heuristic locator found elsewhere in argv.
 func (SQLDAdapter) ResolveEndpoint(argv []string) (Endpoint, error) {
-	if len(argv) < 3 || filepath.Base(argv[0]) != "turso" || argv[1] != "db" || argv[2] != "shell" {
+	if len(argv) < 3 || nativeClientName(argv[0]) != "turso" || argv[1] != "db" || argv[2] != "shell" {
 		return Endpoint{}, ErrUnsupportedClient
 	}
 	if len(argv) < 4 {
@@ -218,6 +227,9 @@ func helperEnvironment(environment []string, tokenSource CredentialSource) []str
 	filtered := result[:0]
 	for _, entry := range result {
 		name, _, _ := strings.Cut(entry, "=")
+		if runtime.GOOS == "windows" {
+			name = strings.ToUpper(name)
+		}
 		if name == "TURSO_AUTH_TOKEN" || name == "LIBSQL_AUTH_TOKEN" {
 			continue
 		}
@@ -233,8 +245,14 @@ func helperEnvironment(environment []string, tokenSource CredentialSource) []str
 func allowlistedChildEnvironment(environment []string, credentialKey string) []string {
 	result := make([]string, 0, len(environment)+1)
 	seen := make(map[string]struct{}, len(environment))
+	if runtime.GOOS == "windows" {
+		credentialKey = strings.ToUpper(credentialKey)
+	}
 	for _, entry := range environment {
 		key, _, ok := strings.Cut(entry, "=")
+		if runtime.GOOS == "windows" {
+			key = strings.ToUpper(key)
+		}
 		if !ok || key == "" || key == credentialKey {
 			continue
 		}
@@ -250,6 +268,12 @@ func allowlistedChildEnvironment(environment []string, credentialKey string) []s
 func allowedEnvironmentKey(key string) bool {
 	if _, route := routeEnvironmentNames[key]; route || strings.HasPrefix(key, "TIANA_") {
 		return false
+	}
+	if runtime.GOOS == "windows" {
+		switch key {
+		case "SYSTEMROOT", "WINDIR", "USERPROFILE", "USERNAME", "APPDATA", "LOCALAPPDATA", "PATHEXT", "COMSPEC", "HOMEDRIVE", "HOMEPATH":
+			return true
+		}
 	}
 	switch key {
 	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "TZ", "TMPDIR", "TMP", "TEMP", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "TURSO_AUTH_TOKEN", "LIBSQL_AUTH_TOKEN":

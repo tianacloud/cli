@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -143,18 +144,21 @@ func TestResolveOriginFailsClosed(t *testing.T) {
 				contents = []byte(strings.Repeat("x", (8<<20)+1))
 			}
 			if mode != "missing" {
-				if err := os.WriteFile(path, contents, 0600); err != nil {
+				if err := writeFixtureFile(path, contents, 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			switch mode {
 			case "public":
-				os.Chmod(path, 0644)
+				chmodFixtureFile(path, 0644)
 			case "directory":
 				t.Setenv("TIANA_CREDENTIALS_FILE", filepath.Dir(path))
 			case "symlink":
 				link := path + ".link"
 				if err := os.Symlink(path, link); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("symlinks need developer mode or privilege: %v", err)
+					}
 					t.Fatal(err)
 				}
 				t.Setenv("TIANA_CREDENTIALS_FILE", link)

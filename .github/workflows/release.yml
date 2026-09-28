@@ -1,0 +1,101 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New npm version (for example 0.2.2-beta.0)
+        required: true
+        type: string
+      tag:
+        description: npm distribution tag
+        type: choice
+        options: [latest, next]
+        default: latest
+      dry_run:
+        description: Build and test without uploading or publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/platforms.yml
+    secrets: inherit
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GOPRIVATE: github.com/tianacloud/sdk-go,github.com/tianacloud/sdk-go-sqlite
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.5'
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.20.0
+      - name: Download private SDK dependencies
+        env:
+          SDK_READ_TOKEN: ${{ secrets.SDK_READ_TOKEN }}
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ''
+        run: |
+          test -n "$SDK_READ_TOKEN"
+          export GIT_ASKPASS
+          GIT_ASKPASS="$(mktemp "$RUNNER_TEMP/tiana-sdk-askpass.XXXXXX")"
+          trap 'rm -f "$GIT_ASKPASS"' EXIT
+          cat > "$GIT_ASKPASS" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$SDK_READ_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$GIT_ASKPASS"
+          go mod download
+      - name: Build, upload to Gitee and publish npm
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            ./scripts/release.mjs "$RELEASE_VERSION" --tag "$RELEASE_TAG" --dry-run
+          else
+            test -n "$GITEE_TOKEN"
+            token_file="$(mktemp "$RUNNER_TEMP/tiana-gitee-token.XXXXXX")"
+            trap 'rm -f "$token_file"' EXIT
+            printf '%s' "$GITEE_TOKEN" > "$token_file"
+            ./scripts/release.mjs "$RELEASE_VERSION" --tag "$RELEASE_TAG" --gitee-token-file "$token_file"
+          fi
+      - name: Verify clean npm installation
+        if: ${{ !inputs.dry_run }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          prefix="$(mktemp -d "$RUNNER_TEMP/tiana-npm-install.XXXXXX")"
+          npm install --global --ignore-scripts=false --prefix "$prefix" --cache "$prefix/cache" "@tianadb/cli@$RELEASE_VERSION"
+          "$prefix/bin/tiana" --version

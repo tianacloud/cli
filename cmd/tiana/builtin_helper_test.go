@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
-	if filepath.Base(os.Args[0]) == "turso" && len(os.Args) >= 5 && os.Args[4] == "SELECT __builtin_native_fixture" {
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "turso" && len(os.Args) >= 5 && os.Args[4] == "SELECT __builtin_native_fixture" {
 		if os.Getenv("TIANA_TOKEN") != "" || strings.Contains(strings.Join(os.Args, " "), "tia_") {
 			os.Exit(80)
 		}
@@ -63,6 +64,9 @@ func testBuiltinConnectCredential(t *testing.T, local bool) {
 		t.Fatal(err)
 	}
 	native := filepath.Join(t.TempDir(), "turso")
+	if runtime.GOOS == "windows" {
+		native += ".exe"
+	}
 	if err = os.Symlink(exe, native); err != nil {
 		t.Fatal(err)
 	}

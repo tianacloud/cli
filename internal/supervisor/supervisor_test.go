@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -99,17 +98,6 @@ func (h *fakeHelper) Drain(context.Context) error {
 }
 func (h *fakeHelper) WaitStopped(context.Context) error { return h.stopErr }
 func (h *fakeHelper) Close() error                      { return nil }
-
-func writeNativeFixture(t *testing.T, exitCode int) string {
-	t.Helper()
-	directory := t.TempDir()
-	program := filepath.Join(directory, "turso")
-	script := []byte("#!/bin/sh\nexit " + string(rune('0'+exitCode)) + "\n")
-	if err := os.WriteFile(program, script, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return program
-}
 
 func TestSupervisorDestroysTokenAtCredentialBoundary(t *testing.T) {
 	program := writeNativeFixture(t, 7)

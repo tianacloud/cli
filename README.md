@@ -25,9 +25,24 @@ both without a trailing slash. Existing App IDs retain their values.
 
 ## Build and install
 
-Requirements: Go 1.25 or later, Git, and access to the repository's Go dependencies.
-Linux amd64 and macOS arm64 are supported build targets. A Go build includes the
-SQLite shell, Git transport and connect helper.
+Install with Node.js 20 or later:
+
+```sh
+npm install -g @tianadb/cli
+tiana --version
+```
+
+The installer downloads the matching archive from the public
+[Gitee release repository](https://gitee.com/tianacloud/cli-releases/releases).
+Targets are macOS amd64/arm64, Linux amd64/arm64/riscv64 and Windows amd64/arm64.
+Windows uses PowerShell to extract the archive; macOS/Linux use tar.
+
+For source builds, use Go 1.25 or later, Git, and access to the repository's Go
+dependencies. A Go build includes the SQLite shell, Git transport and connect
+helper. The following source-install commands are for macOS/Linux; use the npm
+installer on Windows to install both command shims.
+
+See [release instructions](docs/cli-release.md) for one-command publishing.
 
 ```sh
 git clone https://github.com/tianacloud/cli.git
@@ -467,7 +482,8 @@ export TIANA_TOKEN_FILE=/path/to/connection-token
 A token file must be an owned regular file, not a symlink, and contain at most
 512 credential bytes with an optional trailing newline. Account credentials use
 `~/.config/tiana/credentials.json`, or `$XDG_CONFIG_HOME/tiana/credentials.json`
-when set. Credential files require mode 0600 and their directory mode 0700.
+when set. On Linux/macOS, credential files require mode 0600 and their directory mode 0700.
+On Windows, Tiana creates private files and directories with an owner-only ACL.
 
 When `TIANA_API_ORIGIN` is unset, the CLI reuses the single HTTPS origin
 in that credential file. This works across terminal and

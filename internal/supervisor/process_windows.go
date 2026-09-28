@@ -3,16 +3,26 @@
 package supervisor
 
 import (
+	"golang.org/x/sys/windows"
 	"os"
 	"os/exec"
 	"os/signal"
+	"syscall"
 )
 
-func configureNativeProcess(_ *exec.Cmd) {}
-func configureHelperProcess(_ *exec.Cmd) {}
+func configureNativeProcess(command *exec.Cmd) {
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+}
+func configureHelperProcess(command *exec.Cmd) { configureNativeProcess(command) }
 func forwardNativeSignal(command *exec.Cmd, value os.Signal) {
 	if command != nil && command.Process != nil {
-		_ = command.Process.Signal(value)
+		if value == os.Interrupt {
+			// CTRL_C_EVENT cannot target a process group. CTRL_BREAK_EVENT reaches
+			// this native child and its console descendants without interrupting us.
+			_ = windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(command.Process.Pid))
+		} else {
+			_ = command.Process.Signal(value)
+		}
 	}
 }
 func nativeExitCode(command *exec.Cmd, _ error) int {

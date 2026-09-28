@@ -6,58 +6,56 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { targets, binaryName, archiveName } from './npm/bin/platforms.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const packager = path.join(repo, 'scripts/package-cli.mjs');
-const { version } = JSON.parse(readFileSync(path.join(repo, 'packaging/npm/package.json'), 'utf8'));
+const version = '9.8.7-test.1';
 const digest = filename => createHash('sha256').update(readFileSync(filename)).digest('hex');
-const platforms = ['darwin-arm64', 'linux-amd64'];
 
-test('two-platform packaging with explicitly synthetic native fixtures', { timeout: 120000 }, async t => {
+test('seven-platform archives and a small npm downloader package', { timeout: 180000, skip: process.platform === 'win32' }, async t => {
   const root = mkdtempSync(path.join(tmpdir(), 'tiana-package-test-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const assets = path.join(root, 'assets');
-  for (const platform of platforms) {
-    const [os, arch] = platform.split('-');
-    const directory = path.join(assets, platform);
+  for (const target of targets) {
+    const [os, arch] = target.split('-');
+    const directory = path.join(assets, target);
     mkdirSync(directory, { recursive: true });
-    execFileSync('go', ['build', '-o', path.join(directory, 'tiana'), './packaging/testdata/native.go'], {
-      cwd: repo, env: { ...process.env, GOOS: os, GOARCH: arch, CGO_ENABLED: '0' },
+    const name = binaryName(target);
+    execFileSync('go', ['build', '-o', path.join(directory, name), './packaging/testdata/native.go'], {
+      cwd: repo, env: { ...process.env, GOOS: os, GOARCH: arch, CGO_ENABLED: '0', GOWORK: 'off' },
     });
-    copyFileSync(path.join(repo, 'scripts/git-remote-tiana'), path.join(directory, 'git-remote-tiana'));
-    const files = Object.fromEntries(['tiana', 'git-remote-tiana'].map(name => [name, digest(path.join(directory, name))]));
+    const files = { [name]: digest(path.join(directory, name)) };
     writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ version, platform: os, arch, insecure_tls: false, files }));
-    writeFileSync(path.join(directory, 'SHA256SUMS'), Object.entries(files).map(([name, hash]) => `${hash}  ${name}\n`).join(''));
   }
-  await t.test('packs every asset and installs offline with a new cache', () => {
+  await t.test('archives all seven binaries and pins their URLs and hashes', () => {
     const output = path.join(root, 'packed');
-    execFileSync(process.execPath, [packager, assets, output]);
+    execFileSync(process.execPath, [packager, assets, output, version]);
     const tarball = path.join(output, `tiana-cli-${version}.tgz`);
     const contents = execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' });
-    for (const platform of platforms) {
-      for (const name of ['tiana', 'git-remote-tiana', 'manifest.json', 'SHA256SUMS']) {
-        assert.ok(contents.split('\n').includes(`package/platforms/${platform}/${name}`));
-      }
-    }
+    assert.ok(contents.includes('package/bin/install.mjs'));
+    assert.ok(contents.includes('package/release.json'));
     const pkg = JSON.parse(execFileSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' }));
-    assert.equal(pkg.scripts, undefined);
-    assert.equal(pkg.dependencies, undefined);
-    assert.equal(pkg.optionalDependencies, undefined);
+    assert.equal(pkg.scripts.postinstall, 'node bin/install.mjs');
     assert.equal(pkg.version, version);
     assert.equal(pkg.bin['git-remote-tiana'], 'bin/git-remote-tiana.mjs');
-    const prefix = path.join(root, 'install');
-    execFileSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', path.join(root, 'empty-cache'), '--prefix', prefix, tarball]);
-    const outputText = execFileSync(path.join(prefix, 'node_modules/.bin/tiana'), [], { encoding: 'utf8' });
-    assert.equal(outputText, `packaging fixture ${process.platform}/${process.arch === 'x64' ? 'amd64' : process.arch}\n`);
-    const gitOutput = execFileSync(path.join(prefix, 'node_modules/.bin/git-remote-tiana'), ['origin', 'tiana://example/repo.git'], { encoding: 'utf8' });
-    assert.equal(gitOutput, outputText);
+    const release = JSON.parse(readFileSync(path.join(output, 'package/release.json')));
+    assert.deepEqual(Object.keys(release.assets), targets);
+    for (const target of targets) {
+      const name = archiveName(version, target);
+      assert.equal(release.assets[target].sha256, digest(path.join(output, name)));
+      assert.equal(release.assets[target].url, `https://gitee.com/tianacloud/cli-releases/releases/download/v${version}/${name}`);
+      const archiveFiles = execFileSync(target.startsWith('windows-') ? 'unzip' : 'tar', target.startsWith('windows-') ? ['-Z1', path.join(output, name)] : ['-tzf', path.join(output, name)], { encoding: 'utf8' });
+      assert.ok(archiveFiles.split('\n').includes(binaryName(target)));
+    }
     assert.equal(readFileSync(`${tarball}.sha256`, 'utf8'), `${digest(tarball)}  tiana-cli-${version}.tgz\n`);
+    assert.ok(readFileSync(tarball).length < 100000, 'npm package only contains downloader and metadata');
   });
   for (const kind of ['missing-platform', 'wrong-version', 'tampered-cli', 'wrong-architecture']) {
     await t.test(`detects ${kind}`, () => {
       const altered = path.join(root, kind);
       cpSync(assets, altered, { recursive: true });
-      const directory = path.join(altered, 'darwin-arm64');
+      const directory = path.join(altered, 'windows-arm64');
       const manifestPath = path.join(directory, 'manifest.json');
       const manifest = JSON.parse(readFileSync(manifestPath));
       if (kind === 'missing-platform') rmSync(directory, { recursive: true });
@@ -65,13 +63,13 @@ test('two-platform packaging with explicitly synthetic native fixtures', { timeo
         manifest.version = '0.1.0';
         writeFileSync(manifestPath, JSON.stringify(manifest));
       }
-      if (kind === 'tampered-cli') writeFileSync(path.join(directory, 'tiana'), 'incomplete');
+      if (kind === 'tampered-cli') writeFileSync(path.join(directory, 'tiana.exe'), 'incomplete');
       if (kind === 'wrong-architecture') {
-        copyFileSync(path.join(altered, 'linux-amd64/tiana'), path.join(directory, 'tiana'));
-        manifest.files.tiana = digest(path.join(directory, 'tiana'));
+        copyFileSync(path.join(altered, 'linux-amd64/tiana'), path.join(directory, 'tiana.exe'));
+        manifest.files['tiana.exe'] = digest(path.join(directory, 'tiana.exe'));
         writeFileSync(manifestPath, JSON.stringify(manifest));
       }
-      const output = spawnSync(process.execPath, [packager, altered, path.join(root, `${kind}-output`)], { encoding: 'utf8' });
+      const output = spawnSync(process.execPath, [packager, altered, path.join(root, `${kind}-output`), version], { encoding: 'utf8' });
       assert.notEqual(output.status, 0);
       assert.match(output.stderr, {
         'missing-platform': /ENOENT/,

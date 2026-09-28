@@ -152,7 +152,7 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 	}
 	var outputFile *os.File
 	if o.output != "" {
-		outputFile, err = os.OpenFile(o.output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		outputFile, err = sqlitecli.CreateOutput(o.output)
 		if err != nil {
 			fmt.Fprintln(diagnostics, "tiana: cannot exclusively create output file")
 			return 6
