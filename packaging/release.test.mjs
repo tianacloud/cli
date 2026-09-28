@@ -34,9 +34,9 @@ test('Gitee upload resumes and verifies anonymous bytes before completion', asyn
   const attachments = [];
   const server = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    if (req.url === '/binary' || req.url === '/SHA256SUMS') {
+    if (req.url === '/binary' || req.url === '/SHA256SUMS' || req.url.startsWith('/tiana-cli-')) {
       assert.equal(req.headers.authorization, undefined, 'downloads must work without publisher token');
-      res.writeHead(publicStatus); res.end(req.url === '/binary' ? existingBytes : readFileSync(path.join(directory, 'SHA256SUMS'))); return;
+      res.writeHead(publicStatus); res.end(req.url === '/binary' ? existingBytes : readFileSync(path.join(directory, req.url.slice(1)))); return;
     }
     assert.equal(req.headers.authorization, 'Bearer fixture-token');
     if (req.url === '/repos/tianacloud/cli-releases') { res.end(JSON.stringify({ public: true, default_branch: 'master' })); return; }
@@ -59,14 +59,16 @@ test('Gitee upload resumes and verifies anonymous bytes before completion', asyn
   writeFileSync(path.join(directory, filename), existingBytes);
   writeFileSync(path.join(directory, 'SHA256SUMS'), `${checksum(existingBytes)}  ${filename}\n`);
   writeFileSync(path.join(directory, 'package/release.json'), JSON.stringify({ version: '1.2.3', assets: { 'linux-amd64': { filename, url: base + '/binary', sha256: checksum(existingBytes) } } }));
+  writeFileSync(path.join(directory, 'tiana-cli-1.2.3.tgz'), 'npm tarball');
+  writeFileSync(path.join(directory, 'tiana-cli-1.2.3.tgz.sha256'), checksum('npm tarball') + '  tiana-cli-1.2.3.tgz\n');
   const options = { directory, version: '1.2.3', token: 'fixture-token', apiBase: base };
   await uploadRelease(options);
-  assert.equal(uploads, 2);
+  assert.equal(uploads, 4);
   await uploadRelease(options);
-  assert.equal(uploads, 2, 'a rerun must not upload duplicate attachments');
+  assert.equal(uploads, 4, 'a rerun must not upload duplicate attachments');
   existingBytes = Buffer.from('different');
   await assert.rejects(uploadRelease(options), /checksum/);
-  assert.equal(uploads, 2);
+  assert.equal(uploads, 4);
   publicStatus = 403;
   await assert.rejects(uploadRelease(options), /403/);
 });
