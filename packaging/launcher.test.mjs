@@ -61,7 +61,9 @@ test('passes argv, stdin, cwd, stdout, stderr and exit code without a shell', as
   const output = await result(launch(directory, args), input);
   assert.equal(output.code, 4);
   assert.equal(output.signal, null);
-  assert.deepEqual(JSON.parse(output.stdout), { args, input, cwd: await realpath(directory) });
+  const actual = JSON.parse(output.stdout);
+  actual.cwd = await realpath(actual.cwd);
+  assert.deepEqual(actual, { args, input, cwd: await realpath(directory) });
   assert.equal(output.stderr, 'fixture diagnostic\n');
 });
 

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { cp } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -34,7 +35,7 @@ test('download, checksum, install and invoke a native CLI', { timeout: 60000 }, 
   for (const kind of ['success', 'bad-checksum', 'not-found']) {
     await t.test(kind, async () => {
       const destination = path.join(root, kind);
-      cpSync(path.join(repo, 'packaging/npm'), destination, { recursive: true });
+      await cp(path.join(repo, 'packaging/npm'), destination, { recursive: true });
       writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: '0.2.1-beta.0', assets: { [target]: { filename: 'native.tar.gz', url, sha256: kind === 'bad-checksum' ? '0'.repeat(64) : sha256 } } }));
       status = kind === 'not-found' ? 404 : 200;
       const install = run(process.execPath, [path.join(destination, 'bin/install.mjs')]);
