@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -13,17 +12,16 @@ async function main() {
     'dry-run': { type: 'boolean', default: false },
     'upload-only': { type: 'boolean', default: false },
     tag: { type: 'string', default: 'latest' },
-    'gitee-token-file': { type: 'string', default: path.join(homedir(), 'tmp/gitee_token.txt') },
     help: { type: 'boolean', default: false },
   } });
-  if (values.help) { console.log('Usage: ./scripts/release.mjs [VERSION] [--dry-run] [--upload-only] [--tag latest|next] [--gitee-token-file PATH]\nVERSION defaults to packaging/npm/package.json.'); return; }
+  if (values.help) { console.log('Usage: ./scripts/release.mjs [VERSION] [--dry-run] [--upload-only] [--tag latest|next]\nVERSION defaults to packaging/npm/package.json. Set GITEE_TOKEN to upload.'); return; }
   const repo = fileURLToPath(new URL('..', import.meta.url));
   const version = positionals[0] ?? JSON.parse(readFileSync(path.join(repo, 'packaging/npm/package.json'), 'utf8')).version;
   if (positionals.length > 1 || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) throw new Error('Provide a semantic version, e.g. 0.2.2-beta.0.');
   let token;
   if (!values['dry-run']) {
-    token = readFileSync(values['gitee-token-file'], 'utf8').trim();
-    if (!token) throw new Error('The Gitee token file is empty.');
+    token = process.env.GITEE_TOKEN?.trim();
+    if (!token) throw new Error('Set GITEE_TOKEN before uploading a release.');
     if (!values['upload-only'] && !usesTrustedPublishing()) {
       try { execFileSync('npm', ['whoami', '--registry=https://registry.npmjs.org/'], { env: npmEnvironment(), stdio: 'pipe' }); }
       catch { throw new Error('npm authentication is unavailable. Set NPM_TOKEN or run npm login --registry=https://registry.npmjs.org/ before publishing.'); }

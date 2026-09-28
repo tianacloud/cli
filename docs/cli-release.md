@@ -6,6 +6,7 @@ Run from a CLI checkout on Linux or macOS. Log in once with an npm account that
 can publish `@tianacloud/cli`, then run the release script:
 
 ```sh
+export GITEE_TOKEN='your-gitee-token'
 npm login --registry=https://registry.npmjs.org/
 ./scripts/release.mjs 0.2.2-beta.0 --dry-run
 ./scripts/release.mjs 0.2.2-beta.0
@@ -33,9 +34,9 @@ The default npm tag is `latest`, including when the version contains `beta` or
 - An initialized public Gitee `tianacloud/cli-releases` repository, with a token
   that can create releases and upload attachments. The script does not create or
   change repository visibility.
-- The Gitee token in `~/tmp/gitee_token.txt`, or another file specified with
-  `--gitee-token-file /path/to/file`. Restrict access to this file. The token is
-  read at runtime and is not included in archives or npm packages.
+- Set the `GITEE_TOKEN` environment variable to a token for the Gitee release
+  repository. The script reads it at runtime; it is not included in archives or
+  npm packages. `--dry-run` does not require it.
 - For direct local npm publication (without `--upload-only`), an npm identity with publish access to `@tianacloud/cli`: set `NPM_TOKEN` or use
   `npm login --registry=https://registry.npmjs.org/`.
 
