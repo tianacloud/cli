@@ -9,12 +9,13 @@ import (
 )
 
 type App struct {
-	AppID       string `json:"app_id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	OwnerID     string `json:"owner_id"`
-	TenantID    string `json:"tenant_id"`
-	CreatedAt   int64  `json:"created_at"`
+	AppID            string `json:"app_id"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	OwnerID          string `json:"owner_id"`
+	TenantID         string `json:"tenant_id"`
+	CreatedAt        int64  `json:"created_at"`
+	CurrentVersionID string `json:"current_version_id,omitempty"`
 }
 type AppPage struct {
 	RequestID  string `json:"-"`
@@ -91,9 +92,9 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 
 		// A durable deletion receipt survives removal from the active list and makes
 		// retry by immutable ID possible after a lost DELETE response.
-		receipt, de := r.Deletion(ctx, reference, false)
+		receipt, de := r.Deletion(ctx, reference, nil)
 		if de == nil {
-			return App{AppID: receipt.AppID, OwnerID: r.PrincipalID, TenantID: r.TenantID}, nil
+			return App{AppID: receipt.AppID, OwnerID: r.PrincipalID, TenantID: r.TenantID, CurrentVersionID: receipt.ExpectedVersionID}, nil
 		}
 		if de.HTTPStatus != 404 {
 			return App{}, de
@@ -130,33 +131,44 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 }
 
 type AppDeletion struct {
-	RequestID   string `json:"-"`
-	AppID       string `json:"app_id"`
-	State       string `json:"state"`
-	RequestedAt int64  `json:"requested_at"`
-	DeletedAt   int64  `json:"deleted_at,omitempty"`
+	RequestID         string `json:"-"`
+	AppID             string `json:"app_id"`
+	State             string `json:"state"`
+	RequestedAt       int64  `json:"requested_at"`
+	DeletedAt         int64  `json:"deleted_at,omitempty"`
+	ExpectedVersionID string `json:"expected_version_id"`
+	GitInstanceID     string `json:"git_instance_id,omitempty"`
+	SQLiteInstanceID  string `json:"sqlite_instance_id,omitempty"`
 }
 
-func (r Runner) Deletion(ctx context.Context, id string, begin bool) (AppDeletion, *Error) {
+type AppDeleteRequest struct {
+	ExpectedVersionID string `json:"expected_version_id"`
+	DeleteGit         bool   `json:"delete_git"`
+	DeleteSQLite      bool   `json:"delete_sqlite"`
+}
+
+func (r Runner) Deletion(ctx context.Context, id string, confirmation *AppDeleteRequest) (AppDeletion, *Error) {
 	if !appID(id) {
 		return AppDeletion{}, inputError("Invalid App ID")
 	}
 	method, path := "GET", "/api/v1/apps/"+url.PathEscape(id)+"/deletion"
-	if begin {
+	var body any
+	if confirmation != nil {
 		method, path = "DELETE", "/api/v1/apps/"+url.PathEscape(id)
+		body = confirmation
 	}
-	res, e := r.boundRequest(ctx, method, path, nil)
+	res, e := r.boundRequest(ctx, method, path, body)
 	if e != nil {
 		e.NextAction = "Inspect or retry deletion using this exact App ID; do not resolve the name again"
-		if e.HTTPStatus == 409 && e.Code == "WEB_UPLOAD_IN_PROGRESS" {
-			e.NextAction = "Finish uploading and publishing before retrying deletion; this request did not start deletion"
+		if e.HTTPStatus == 409 && e.Code == "APP_DELETE_PREVIEW_CHANGED" {
+			e.NextAction = "Review the new published version and retry deletion; this request did not start deletion"
 		}
 		return AppDeletion{}, e
 	}
 	var d AppDeletion
 	if json.Unmarshal(res.Body, &d) != nil || d.AppID != id || (d.State != "deleting" && d.State != "deleted") || d.RequestedAt <= 0 || (d.State == "deleted" && d.DeletedAt <= 0) {
 		e := invalidWebResponse(res.RequestID)
-		if begin {
+		if confirmation != nil {
 			e.Code = "WEB_DELETE_OUTCOME_UNKNOWN"
 			e.ExitCode = 4
 		}

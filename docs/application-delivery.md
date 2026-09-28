@@ -130,19 +130,18 @@ SQLite and Git resources are kept. `--force` / `-f` skips confirmation and is
 required without a terminal. `--wait` / `-w` waits for origin cleanup; otherwise
 success means a durable deletion was accepted (`state: deleting`).
 
-Unfinished creation or any unfinished version upload rejects deletion immediately;
-`--force` and `--wait` do not override this check. Finish the original create/upload
-first. Web creation is an atomic insert, so there is no durable server-side
-`creating` state; a completed empty application is deletable. An uploading version
-returns HTTP 409 / `WEB_UPLOAD_IN_PROGRESS`, without hiding the application or
-queuing cleanup. CLI clears that rejected delete intent so other work can proceed.
+An empty application or an application with unfinished uploads can be deleted.
+The CLI confirms the current published version and retains both associated resources.
+If publication changes before acceptance, MGR returns `APP_DELETE_PREVIEW_CHANGED`;
+the CLI clears that rejected intent so the next attempt can confirm the new version.
+An unresolved local creation command still needs recovery before another operation.
 
 Accepted deletion hides the application and blocks uploads/hosting. Files and
 version metadata are cleaned in bounded batches, with retries for cleanup errors.
 There is no upload-signature grace or daily re-sweep of completed deletions.
 Public copies already downloaded/cached expire under their cache policy.
 
-The CLI persists origin/account/tenant and the resolved ID before DELETE. Unknown
+The CLI persists origin/account/tenant, the resolved ID and confirmed version before DELETE. Unknown
 responses, output failure and interrupted waiting preserve that intent. Repeat the
 same command or use the saved ID; do not re-resolve a name or delete the pending
 file to bypass it. Stopping the CLI does not cancel server deletion. A confirmed

@@ -20,6 +20,7 @@ type PendingCommand struct {
 	UserID              string    `json:"user_id,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 	InstanceID          string    `json:"instance_id,omitempty"`
+	WebDeleteVersionID  string    `json:"web_delete_version_id,omitempty"`
 	CreationJobID       uint64    `json:"creation_job_id,omitempty"`
 	CreationOperationID string    `json:"creation_operation_id,omitempty"`
 }

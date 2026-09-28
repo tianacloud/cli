@@ -834,12 +834,12 @@ User subsequently chose A; the approved deletion contract is recorded below.
 
 User approved deleting all Web versions/origin files while retaining SQLite/Git,
 and merging deletion state into mgr_apps. Retain request_id creation
-idempotency. Only add state (active/deleting/deleted), delete_requested_at and
+idempotency. The lifecycle is active/deleting/deleted with delete_requested_at and
 deleted_at, plus index(state,tenant_id,app_id). Do not add a separate deletion
 table or delete_storage_namespace/delete_error_code/delete_next_attempt_at fields.
 
-Mark under the App row lock shared with version creation. Reject any unfinished
-upload without side effects; incomplete CLI creation blocks deletion. Active-only
+Mark under the App row lock shared with version creation. Allow deletion of empty, published and uploading applications; incomplete local
+CLI creation remains protected by the pending-command lock. Active-only
 reads and publication prevent reusing deleted IDs. Owner-scoped receipts remain
 on App rows; previously accepted create requests cannot resurrect them.
 
@@ -939,3 +939,12 @@ The paired source association requires the matching client/server rollout and a
 new immutable application version. Existing deployment settings and schema 26
 remain unchanged. Verify remote commit identities, clean source image provenance,
 Gaia success/IN_SYNC and live readiness/auth boundaries after deployment.
+
+## Application deletion confirmation (2026-09-28)
+
+Web delete reads the current published version before confirmation and persists
+its identity with the pending command. DELETE submits expected_version_id and
+delete_git=false/delete_sqlite=false. Lost responses replay the same saved version;
+APP_DELETE_PREVIEW_CHANGED clears an unaccepted intent for fresh confirmation.
+Uploading applications can be deleted. CLI continues preserving associated
+instances; Console and Gaia independently offer selecting them for deletion.
