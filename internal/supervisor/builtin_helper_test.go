@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -220,7 +222,7 @@ func TestBuiltinOwnerExitStillAcknowledgesDrain(t *testing.T) {
 	child.Process.Kill()
 	child.Wait()
 	conn.SetReadDeadline(time.Now().Add(time.Second))
-	if _, err = conn.Read(make([]byte, 1)); err != io.EOF {
+	if _, err = conn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) && !errors.Is(err, syscall.ECONNRESET) {
 		t.Fatalf("owner exit did not close local connection: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
