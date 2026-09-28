@@ -28,7 +28,7 @@ both without a trailing slash. Existing App IDs retain their values.
 Install with Node.js 20 or later:
 
 ```sh
-npm install -g @tianadb/cli
+npm install -g @tianacloud/cli
 tiana --version
 ```
 

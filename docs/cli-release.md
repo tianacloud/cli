@@ -3,7 +3,7 @@
 ## Local release (recommended)
 
 Run from a CLI checkout on Linux or macOS. Log in once with an npm account that
-can publish `@tianadb/cli`, then run the release script:
+can publish `@tianacloud/cli`, then run the release script:
 
 ```sh
 npm login --registry=https://registry.npmjs.org/
@@ -36,12 +36,12 @@ The default npm tag is `latest`, including when the version contains `beta` or
 - The Gitee token in `~/tmp/gitee_token.txt`, or another file specified with
   `--gitee-token-file /path/to/file`. Restrict access to this file. The token is
   read at runtime and is not included in archives or npm packages.
-- For direct local npm publication (without `--upload-only`), an npm identity with publish access to `@tianadb/cli`: set `NPM_TOKEN` or use
+- For direct local npm publication (without `--upload-only`), an npm identity with publish access to `@tianacloud/cli`: set `NPM_TOKEN` or use
   `npm login --registry=https://registry.npmjs.org/`.
 
 ## npm token authentication
 
-Create an npm granular access token with read/write access to `@tianadb/cli`.
+Create an npm granular access token with read/write access to `@tianacloud/cli`.
 For unattended direct publication, enable Bypass 2FA if the package policy permits
 token publication. See [npm token documentation](https://docs.npmjs.com/creating-and-viewing-access-tokens/).
 As of September 2026 this supports direct publication; npm has announced a
@@ -80,7 +80,7 @@ The npm postinstall script downloads only the user's platform archive.
 
 The two npm commands remain `tiana` and `git-remote-tiana`. Installing requires
 access to both the npm registry and Gitee. If lifecycle scripts were disabled,
-run `npm rebuild -g @tianadb/cli --ignore-scripts=false` to install the binary.
+run `npm rebuild -g @tianacloud/cli --ignore-scripts=false` to install the binary.
 
 ## Interrupted publication
 
@@ -105,7 +105,7 @@ acceptance also requires running the CLI and its tests on that platform.
 
 ## Optional GitHub Actions publication
 
-In npm's `@tianadb/cli` package settings, add a GitHub Actions trusted publisher:
+In npm's `@tianacloud/cli` package settings, add a GitHub Actions trusted publisher:
 
 | Field | Value |
 | --- | --- |

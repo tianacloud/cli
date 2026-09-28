@@ -1,10 +1,10 @@
 # Tiana CLI
 
-使用 `npm install -g @tianadb/cli` 安装。需要 Node.js 20 或更高版本；安装时从 [Gitee 发布仓库](https://gitee.com/tianacloud/cli-releases/releases) 下载当前平台的原生程序并验证校验和，无需 Go 或 Rust。
+使用 `npm install -g @tianacloud/cli` 安装。需要 Node.js 20 或更高版本；安装时从 [Gitee 发布仓库](https://gitee.com/tianacloud/cli-releases/releases) 下载当前平台的原生程序并验证校验和，无需 Go 或 Rust。
 
 支持 macOS amd64/arm64、Linux amd64/arm64/riscv64、Windows amd64/arm64。Windows 安装需要系统 PowerShell；macOS/Linux 需要 tar。运行 `tiana --version` 核验安装。Git 功能需要另外安装 Git，`connect -- turso ...` 需要另外安装 Turso。
 
-本地审核 tarball 也可用 `npm install -g /path/to/tiana-cli-VERSION.tgz` 安装，仍需访问 Gitee 下载该版本二进制。如果安装时禁用了脚本，执行 `npm rebuild -g @tianadb/cli --ignore-scripts=false` 补装。
+本地审核 tarball 也可用 `npm install -g /path/to/tiana-cli-VERSION.tgz` 安装，仍需访问 Gitee 下载该版本二进制。如果安装时禁用了脚本，执行 `npm rebuild -g @tianacloud/cli --ignore-scripts=false` 补装。
 
 管理端地址由启动 Agent 或 Shell 时设置的 `TIANA_API_ORIGIN` 提供，技能继承环境，不按命令注入或覆盖；私有 CA 使用 `TIANA_CA_FILE` 或 `--ca-file`。包不内置部署地址或 CA，默认验证 TLS。
 

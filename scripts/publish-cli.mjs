@@ -37,7 +37,7 @@ export async function uploadRelease({ directory, version, token, apiBase = 'http
   let release = await api('GET', `${repository}/releases/tags/v${version}`, undefined, true);
   if (!release) release = await api('POST', `${repository}/releases`, {
     tag_name: `v${version}`, name: `Tiana CLI ${version}`, target_commitish: repo.default_branch,
-    body: `Install with npm install -g @tianadb/cli@${version}.\nSeven native platform archives and SHA-256 checksums.`, prerelease: version.includes('-'),
+    body: `Install with npm install -g @tianacloud/cli@${version}.\nSeven native platform archives and SHA-256 checksums.`, prerelease: version.includes('-'),
   });
   const endpoint = `${repository}/releases/${release.id}/attach_files`;
   const attachments = await api('GET', endpoint + '?per_page=100');
@@ -71,7 +71,7 @@ export function publishNpm(directory, version, tag) {
   const integrity = 'sha512-' + createHash('sha512').update(readFileSync(tarball)).digest('base64');
   function remoteIntegrity() {
     try {
-      return JSON.parse(execFileSync('npm', ['view', `@tianadb/cli@${version}`, 'dist.integrity', '--json', '--registry=https://registry.npmjs.org/'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+      return JSON.parse(execFileSync('npm', ['view', `@tianacloud/cli@${version}`, 'dist.integrity', '--json', '--registry=https://registry.npmjs.org/'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
     } catch (error) {
       let data; try { data = JSON.parse(error.stdout?.toString() || '{}'); } catch {}
       if (data?.error?.code === 'E404') return undefined;
@@ -88,9 +88,9 @@ export function publishNpm(directory, version, tag) {
     }
   }
   if (remoteIntegrity() !== integrity) throw new Error('npm publication verification failed');
-  const tags = JSON.parse(execFileSync('npm', ['view', '@tianadb/cli', 'dist-tags', '--json', '--registry=https://registry.npmjs.org/'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+  const tags = JSON.parse(execFileSync('npm', ['view', '@tianacloud/cli', 'dist-tags', '--json', '--registry=https://registry.npmjs.org/'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
   if (tags[tag] !== version) {
     if (usesTrustedPublishing(env)) throw new Error(`npm version is published, but ${tag} does not point to ${version}. OIDC cannot change existing dist-tags; update the tag using npm login.`);
-    execFileSync('npm', ['dist-tag', 'add', `@tianadb/cli@${version}`, tag, '--registry=https://registry.npmjs.org/'], { env, stdio: 'inherit' });
+    execFileSync('npm', ['dist-tag', 'add', `@tianacloud/cli@${version}`, tag, '--registry=https://registry.npmjs.org/'], { env, stdio: 'inherit' });
   }
 }
