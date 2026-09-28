@@ -25,15 +25,20 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 		switch r.Method {
 		case "GET":
 			gets++
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
 		case "DELETE":
 			deletes++
 			p, e := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load()
 			if e != nil || p.Command != "web.delete" || p.InstanceID != deletionTestID {
 				t.Error("delete sent before durable target", e)
 			}
-			if r.ContentLength != 0 {
-				t.Error("delete request has body")
+			var body struct {
+				ExpectedVersionID string `json:"expected_version_id"`
+				DeleteGit         bool   `json:"delete_git"`
+				DeleteSQLite      bool   `json:"delete_sqlite"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ExpectedVersionID != "v1" || body.DeleteGit || body.DeleteSQLite {
+				t.Errorf("delete confirmation=%+v err=%v", body, err)
 			}
 			if deletes == 1 {
 				w.WriteHeader(503)
@@ -150,7 +155,7 @@ func TestWebDeleteRejectsPendingCreationWithoutRequest(t *testing.T) {
 	}
 }
 
-func TestWebDeleteUploadConflictClearsIntentWithoutWaiting(t *testing.T) {
+func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 	deletes := 0
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
@@ -159,17 +164,85 @@ func TestWebDeleteUploadConflictClearsIntentWithoutWaiting(t *testing.T) {
 		}
 		deletes++
 		w.WriteHeader(http.StatusConflict)
-		io.WriteString(w, `{"error":{"code":"WEB_UPLOAD_IN_PROGRESS","message":"finish uploading first"}}`)
+		io.WriteString(w, `{"error":{"code":"APP_DELETE_PREVIEW_CHANGED","message":"published version changed"}}`)
 	})
 	store := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
 	for i := 0; i < 2; i++ {
 		var out, diagnostics bytes.Buffer
 		code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
-		if code != 1 || deletes != i+1 || !bytes.Contains(out.Bytes(), []byte("WEB_UPLOAD_IN_PROGRESS")) {
+		if code != 1 || deletes != i+1 || !bytes.Contains(out.Bytes(), []byte("APP_DELETE_PREVIEW_CHANGED")) {
 			t.Fatalf("code=%d deletes=%d out=%s", code, deletes, &out)
 		}
 		if _, err := store.Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
 			t.Fatal("rejected deletion retained intent", err)
 		}
+	}
+}
+
+func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
+	var version string
+	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/apps":
+			io.WriteString(w, `{"items":[{"app_id":"`+deletionTestID+`","name":"My App","owner_id":"owner","tenant_id":"tenant"}]}`)
+		case r.Method == "GET":
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"My App","owner_id":"owner","tenant_id":"tenant","current_version_id":"published-v2"}`)
+		case r.Method == "DELETE":
+			var body struct {
+				ExpectedVersionID string `json:"expected_version_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			version = body.ExpectedVersionID
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"published-v2"}`)
+		}
+	})
+	var out, diagnostics bytes.Buffer
+	if code := runCLI(t.Context(), []string{"web", "delete", "My App", "--force", "--json"}, nil, &out, &diagnostics); code != 0 || version != "published-v2" {
+		t.Fatalf("code=%d version=%q out=%s diagnostics=%s", code, version, &out, &diagnostics)
+	}
+}
+
+func TestWebDeleteEmptyApplication(t *testing.T) {
+	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"Empty","owner_id":"owner","tenant_id":"tenant","versions":[]}`)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["expected_version_id"] != "" || body["delete_git"] != false || body["delete_sqlite"] != false {
+			t.Errorf("confirmation=%v", body)
+		}
+		io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":""}`)
+	})
+	var out, diagnostics bytes.Buffer
+	if code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics); code != 0 {
+		t.Fatalf("code=%d out=%s diagnostics=%s", code, &out, &diagnostics)
+	}
+}
+
+func TestWebDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
+	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "DELETE":
+			w.WriteHeader(http.StatusConflict)
+			io.WriteString(w, `{"error":{"code":"APP_DELETE_SELECTION_CONFLICT","message":"read existing deletion"}}`)
+		case r.URL.Path == "/api/v1/apps/"+deletionTestID+"/deletion":
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"v1","git_instance_id":"git-1"}`)
+		default:
+			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
+		}
+	})
+	var out, diagnostics bytes.Buffer
+	code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics)
+	if code != 0 || !bytes.Contains(out.Bytes(), []byte(`"git_instance_id":"git-1"`)) {
+		t.Fatalf("code=%d output=%s diagnostics=%s", code, &out, &diagnostics)
+	}
+	if _, err := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
+		t.Fatalf("accepted receipt left pending: %v", err)
 	}
 }

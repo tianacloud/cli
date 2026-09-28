@@ -27,9 +27,9 @@ func TestWebSemanticFailuresRetainResponseRequestID(t *testing.T) {
 			case "resolve":
 				_, e = r.Resolve(t.Context(), "AAAAAAAAAAAA")
 			case "delete":
-				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", true)
+				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", &AppDeleteRequest{})
 			case "deletion":
-				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", false)
+				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", nil)
 			}
 			if e == nil || requestID == "" || e.RequestID != requestID {
 				t.Fatalf("mode=%s sent=%q error=%+v", mode, requestID, e)
