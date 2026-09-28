@@ -36,13 +36,18 @@ func builtinGateway(t *testing.T, handler http.HandlerFunc) (HelperConfig, *atom
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
+	type connectionKey struct{}
 	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state := r.Context().Value(connectionKey{}).(*tls.Conn).ConnectionState()
 		calls.Add(1)
-		if r.Method != "CONNECT" || r.Host != cfg.Endpoint+":443" || r.Header.Get("Proxy-Authorization") != "Bearer "+builtinTestToken || r.ProtoMajor != 2 || r.TLS.Version != tls.VersionTLS13 || r.TLS.ServerName != cfg.Endpoint {
+		if r.Method != "CONNECT" || r.Host != cfg.Endpoint+":443" || r.Header.Get("Proxy-Authorization") != "Bearer "+builtinTestToken || r.ProtoMajor != 2 || state.Version != tls.VersionTLS13 || state.ServerName != cfg.Endpoint {
 			t.Error("invalid CONNECT/auth/TLS authority")
 		}
 		handler(w, r)
 	}))
+	s.Config.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
+		return context.WithValue(ctx, connectionKey{}, conn)
+	}
 	s.EnableHTTP2 = true
 	s.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	s.StartTLS()

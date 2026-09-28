@@ -1,6 +1,7 @@
 package sqlitepeer
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -40,7 +42,9 @@ func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool) (tiana
 	roots := x509.NewCertPool()
 	roots.AddCert(cert)
 	count := &atomic.Int32{}
+	type connectionKey struct{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state := r.Context().Value(connectionKey{}).(*tls.Conn).ConnectionState()
 		count.Add(1)
 		if r.Method != "CONNECT" || r.Host != Endpoint+":443" || r.Header.Get("tiana-database-protocol") != "hrana-http" {
 			t.Error("invalid native CONNECT")
@@ -48,7 +52,7 @@ func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool) (tiana
 		if r.Header.Get("Proxy-Authorization") != "Bearer "+Token {
 			t.Error("InstanceToken missing from outer CONNECT")
 		}
-		if r.TLS == nil || r.TLS.Version != tls.VersionTLS13 || r.ProtoMajor != 2 {
+		if state.Version != tls.VersionTLS13 || r.ProtoMajor != 2 {
 			t.Error("TLS/H2 contract not met")
 		}
 		w.Header()["Date"] = nil
@@ -68,6 +72,9 @@ func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool) (tiana
 		// unread request DATA lets net/http reset the stream and discard its tail.
 		_, _ = io.Copy(io.Discard, r.Body)
 	}))
+	server.Config.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
+		return context.WithValue(ctx, connectionKey{}, conn)
+	}
 	server.EnableHTTP2 = true
 	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS13}
 	server.StartTLS()
