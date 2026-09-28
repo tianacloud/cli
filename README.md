@@ -8,6 +8,10 @@ for application listing, deletion, preview, creation, upload and publication sta
 selection uses `TIANA_API_ORIGIN`, configured before starting the CLI or agent.
 The former command and origin-variable names are not compatibility aliases.
 
+The `web` commands use the App `app_id` returned by `/api/v1/apps`. Hosted App
+URLs are `/apps/<app_id>` and Console details are `/console/apps/<app_id>`,
+both without a trailing slash. Existing App IDs retain their values.
+
 - [Build and install](#build-and-install)
 - [Configure and sign in](#configure-and-sign-in)
 - [Application delivery and npm packaging](docs/application-delivery.md)

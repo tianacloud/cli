@@ -4,7 +4,7 @@ import argparse,hashlib,http.server,json,os,re,signal,socket,ssl,subprocess,temp
 from pathlib import Path
 from urllib.parse import urlsplit
 p=argparse.ArgumentParser();p.add_argument('binary',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--timer-only',action='store_true');a=p.parse_args();binary=a.binary.resolve();state={};rows=[]
-ID='web-AAAAAAAAAAAAAAAAAAAAAAAA'
+ID='AAAAAAAAAAAA'
 class Peer(http.server.BaseHTTPRequestHandler):
     def log_message(self,*_):pass
     def do_GET(self):self.respond()
@@ -12,11 +12,11 @@ class Peer(http.server.BaseHTTPRequestHandler):
     def respond(self):
         self.rfile.read(int(self.headers.get('Content-Length',0)));path=urlsplit(self.path).path;rid=self.headers.get('X-Request-ID');assert rid
         assert self.headers.get('Authorization')=='Bearer fixture-access'
-        web={'id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
-        if path=='/api/v1/web-projects':
-            stage='page2' if '?' in self.path else 'page1';item=dict(web,id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['id'] if stage=='page1' else ''}
-        elif self.command=='DELETE':stage='delete';body={'id':ID,'state':'deleting','requested_at':1}
-        elif path.endswith('/deletion'):stage='observe';body={'id':ID,'state':'deleted','requested_at':1,'deleted_at':2}
+        web={'app_id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
+        if path=='/api/v1/apps':
+            stage='page2' if '?' in self.path else 'page1';item=dict(web,app_id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['app_id'] if stage=='page1' else ''}
+        elif self.command=='DELETE':stage='delete';body={'app_id':ID,'state':'deleting','requested_at':1}
+        elif path.endswith('/deletion'):stage='observe';body={'app_id':ID,'state':'deleted','requested_at':1,'deleted_at':2}
         else:stage='resolve';body=web
         state['requests'].append({'stage':stage,'request_id':rid,'method':self.command})
         fault=state['fault'] if stage==state['stage'] else ''

@@ -42,7 +42,7 @@ func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
 		}
 		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 		origin := "http://" + address
-		base := "/web/" + build.Manifest.AppID + "/"
+		base := "/apps/" + build.Manifest.AppID
 		handler, err := appbootstrap.NewServer(appbootstrap.Config{Origin: origin, BasePath: base, Build: build, StartLogin: appbootstrap.NewConsoleLogin(config, build.Manifest.DatabaseInstanceID)})
 		if err != nil {
 			fmt.Fprintln(diagnostics, "tiana: cannot initialize preview")

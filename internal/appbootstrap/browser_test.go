@@ -41,7 +41,7 @@ func TestBootstrapBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := "http://" + listener.Addr().String()
-	handler, err := NewServer(Config{Origin: origin, BasePath: "/web/billing/", Build: build, StartLogin: func(context.Context) (LoginFlow, error) {
+	handler, err := NewServer(Config{Origin: origin, BasePath: "/apps/billing", Build: build, StartLogin: func(context.Context) (LoginFlow, error) {
 		return LoginFlow{VerificationURL: "https://console.example/authorize", ExpiresAt: time.Now().Add(time.Minute), Complete: func(ctx context.Context) (Identity, error) {
 			select {
 			case <-approved:

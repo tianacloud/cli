@@ -59,7 +59,7 @@ def check(fault,diag,root,origin,ca):
         c=http.client.HTTPConnection('127.0.0.1',port,timeout=15)
         headers={'Origin':f'http://127.0.0.1:{port}','X-Tiana-Bootstrap':'1','X-Request-ID':'req-preview-login'}
         if cookie:headers['Cookie']=cookie
-        c.request(method,'/web/fixture/'+path,headers=headers);r=c.getresponse();body=r.read();info={'path':path,'status':r.status,'request_id':r.getheader('X-Request-ID')};responses.append(info);cookies=r.getheader('Set-Cookie');c.close();return r.status,body,cookies
+        c.request(method,'/apps/fixture'+('/'+path if path else ''),headers=headers);r=c.getresponse();body=r.read();info={'path':path,'status':r.status,'request_id':r.getheader('X-Request-ID')};responses.append(info);cookies=r.getheader('Set-Cookie');c.close();return r.status,body,cookies
     try:
         if fault in ['json','input','manifest','bind','pipe','saved-pipe']:
             out,err=child.communicate(timeout=10)

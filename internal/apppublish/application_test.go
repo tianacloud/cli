@@ -72,11 +72,11 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					json.NewDecoder(r.Body).Decode(&manifest)
 					raw, _ := json.Marshal(manifest)
 					hash := sha256.Sum256(raw)
-					json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant", ID: "billing", VersionID: "v1", State: "published", Fingerprint: hex.EncodeToString(hash[:])})
+					json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant", AppID: "billing", VersionID: "v1", State: "published", Fingerprint: hex.EncodeToString(hash[:])})
 				case "GET":
 					requested = true
 					descriptorRequestID = r.Header.Get("X-Request-ID")
-					if r.URL.Path != "/api/v1/web-projects/billing/versions/v1/bootstrap" {
+					if r.URL.Path != "/api/v1/apps/billing/versions/v1/bootstrap" {
 						t.Errorf("wrong route %s", r.URL.Path)
 					}
 					app := *manifest.Application
@@ -93,14 +93,14 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					json.Unmarshal(data, &view)
 					view["version_id"] = "v1"
 					view["asset_base"] = "https://cdn.example/tenant/billing/v1/"
-					view["application_url"] = "https://console.example/web/billing/"
-					view["version_url"] = "https://console.example/web/billing/?version=v1"
+					view["application_url"] = "https://console.example/apps/billing"
+					view["version_url"] = "https://console.example/apps/billing?version=v1"
 					json.NewEncoder(w).Encode(view)
 				default:
 					t.Errorf("unexpected %s", r.Method)
 				}
 			})
-			result := r.Run(t.Context(), Options{Command: "upload", ID: "billing", Dir: dir, Version: "v1"})
+			result := r.Run(t.Context(), Options{Command: "upload", AppID: "billing", Dir: dir, Version: "v1"})
 			if !requested {
 				t.Fatal("did not confirm published Bootstrap metadata")
 			}
@@ -117,7 +117,7 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 				t.Fatal(result.Error)
 			}
 			data := result.Data.(map[string]any)
-			if data["application_url"] != "https://console.example/web/billing/" || data["version_url"] != "https://console.example/web/billing/?version=v1" {
+			if data["application_url"] != "https://console.example/apps/billing" || data["version_url"] != "https://console.example/apps/billing?version=v1" {
 				t.Fatal("missing confirmed app links")
 			}
 		})

@@ -51,9 +51,9 @@ class Peer(http.server.BaseHTTPRequestHandler):
         path, query = parsed.path, parse_qs(parsed.query)
         mode = state["mode"]
         engine = mode.get("engine", "sqlite")
-        if path.startswith("/api/v1/web-projects/"):
+        if path.startswith("/api/v1/apps/"):
             stage = "app-status"
-            body = {"project_id": "fixture-project", "version_id": "fixture-version", "status": "published"}
+            body = {"app_id": "fixture-app", "version_id": "fixture-version", "status": "published"}
         elif path == "/api/v1/instances":
             stage = "lookup" if "display_name" in query else "list" + query["page"][0]
             if stage == "lookup":
@@ -292,7 +292,7 @@ for filtered in [False, True]:
 modes.append({"name": "sqlite-branch-list-json-rejected", "argv": ["sqlite", "branch", "list", "--json", "fixture-id"], "stages": [], "exit": 2})
 for json_mode in [False, True]:
     modes.append({"name": "apps-status-" + ("json" if json_mode else "text"), "json": json_mode,
-                  "argv": ["web", "status", "fixture-project", "--version", "fixture-version", *(["--json"] if json_mode else [])],
+                  "argv": ["web", "status", "fixture-app", "--version", "fixture-version", *(["--json"] if json_mode else [])],
                   "stages": ["app-status"], "output": ["fixture-version", "published"]})
 
 with tempfile.TemporaryDirectory(prefix="tiana-read-diag-") as temporary:

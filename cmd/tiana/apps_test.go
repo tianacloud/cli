@@ -21,10 +21,10 @@ func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		called = true
-		if req.Method != "POST" || req.URL.Path != "/api/v1/web-projects" || req.Header.Get("Authorization") != "Bearer account-access" {
-			t.Errorf("wrong authenticated project request")
+		if req.Method != "POST" || req.URL.Path != "/api/v1/apps" || req.Header.Get("Authorization") != "Bearer account-access" {
+			t.Errorf("wrong authenticated App request")
 		}
-		io.WriteString(w, `{"id":"web-AAAAAAAAAAAAAAAAAAAAAAAA","name":"Billing","owner_id":"user-a","tenant_id":"ten-test"}`)
+		io.WriteString(w, `{"app_id":"AAAAAAAAAAAA","name":"Billing","owner_id":"user-a","tenant_id":"ten-test"}`)
 	}))
 	defer server.Close()
 	t.Setenv("TIANA_API_ORIGIN", server.URL)
@@ -41,10 +41,10 @@ func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
 	var body struct {
 		Status string `json:"status"`
 		Data   struct {
-			ID string `json:"id"`
+			AppID string `json:"app_id"`
 		} `json:"data"`
 	}
-	if json.Unmarshal(out.Bytes(), &body) != nil || body.Status != "succeeded" || body.Data.ID != "web-AAAAAAAAAAAAAAAAAAAAAAAA" {
+	if json.Unmarshal(out.Bytes(), &body) != nil || body.Status != "succeeded" || body.Data.AppID != "AAAAAAAAAAAA" {
 		t.Fatalf("unexpected JSON: %s", &out)
 	}
 }
@@ -57,8 +57,8 @@ func TestWebHelpAndValidation(t *testing.T) {
 		}
 	}
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(context.Background(), []string{"web", "upload", "bad/project", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
-		t.Fatalf("invalid project code=%d", code)
+	if code := runCLI(context.Background(), []string{"web", "upload", "bad/app", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
+		t.Fatalf("invalid App code=%d", code)
 	}
 }
 

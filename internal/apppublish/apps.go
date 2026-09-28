@@ -43,7 +43,7 @@ type artifactManifest struct {
 }
 type artifactVersion struct {
 	TenantID    string           `json:"tenant_id"`
-	ID          string           `json:"id"`
+	AppID       string           `json:"app_id"`
 	VersionID   string           `json:"version_id"`
 	Manifest    artifactManifest `json:"manifest"`
 	Fingerprint string           `json:"fingerprint"`
@@ -80,7 +80,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 	if err := o.Validate(); err != nil {
 		return Failure(err)
 	}
-	project, name, dir, version, entry, caFile := &o.ID, &o.Name, &o.Dir, &o.Version, &o.Entry, &o.UploadCAFile
+	applicationID, name, dir, version, entry, caFile := &o.AppID, &o.Name, &o.Dir, &o.Version, &o.Entry, &o.UploadCAFile
 	id, e := r.currentIdentity(ctx)
 	if e != nil {
 		return Failure(e)
@@ -89,25 +89,25 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 	if r.PrincipalID != "" && (id.PrincipalID != r.PrincipalID || id.TenantID != r.TenantID) {
 		return Failure(authError(authclient.ErrAuthenticationRequired))
 	}
-	base := "/api/v1/web-projects/" + url.PathEscape(*project)
+	base := "/api/v1/apps/" + url.PathEscape(*applicationID)
 	if o.Command == "create" {
 		if o.RequestID == "" {
-			return Failure(inputError("Web creation requires a persisted request ID"))
+			return Failure(inputError("App creation requires a persisted request ID"))
 		}
-		res, e := r.request(ctx, id, "POST", "/api/v1/web-projects", map[string]string{"name": *name, "request_id": o.RequestID, "description": o.Description})
+		res, e := r.request(ctx, id, "POST", "/api/v1/apps", map[string]string{"name": *name, "request_id": o.RequestID, "description": o.Description})
 		if e != nil {
 			e.NextAction = "Repeat the same tiana web create command to recover this request"
 			return Failure(e)
 		}
 		var created struct {
-			ID          string `json:"id"`
+			AppID       string `json:"app_id"`
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			OwnerID     string `json:"owner_id"`
 			TenantID    string `json:"tenant_id"`
 		}
-		if json.Unmarshal(res.Body, &created) != nil || !validWebID(created.ID) || created.Name != o.Name || created.Description != o.Description || created.OwnerID != id.PrincipalID || (id.TenantID != "" && created.TenantID != id.TenantID) {
-			return Failure(&Error{RequestID: res.RequestID, Code: "CREATE_OUTCOME_UNKNOWN", Message: "MGR returned an inconsistent Web creation receipt", NextAction: "Repeat the same tiana web create command to recover the original request", ExitCode: 4})
+		if json.Unmarshal(res.Body, &created) != nil || !appID(created.AppID) || created.Name != o.Name || created.Description != o.Description || created.OwnerID != id.PrincipalID || (id.TenantID != "" && created.TenantID != id.TenantID) {
+			return Failure(&Error{RequestID: res.RequestID, Code: "CREATE_OUTCOME_UNKNOWN", Message: "MGR returned an inconsistent App creation receipt", NextAction: "Repeat the same tiana web create command to recover the original request", ExitCode: 4})
 		}
 		return Success(res.Body)
 	}
@@ -150,8 +150,8 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 	if e != nil {
 		return Failure(e)
 	}
-	if manifest.Application != nil && manifest.Application.AppID != *project {
-		return Failure(inputError("tiana.app.json app_id must match the Web ID"))
+	if manifest.Application != nil && manifest.Application.AppID != *applicationID {
+		return Failure(inputError("tiana.app.json app_id must match the App ID"))
 	}
 	raw, _ := json.Marshal(manifest)
 	hash := sha256.Sum256(raw)
@@ -166,7 +166,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			e.RequestID = lastResponseRequestID
 		}
 		v := Failure(e)
-		v.Data = map[string]string{"id": *project, "version_id": *version}
+		v.Data = map[string]string{"app_id": *applicationID, "version_id": *version}
 		return v
 	}
 	res, e := r.request(ctx, id, "PUT", base, manifest)
@@ -175,7 +175,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		return fail(e)
 	}
 	var prepared artifactVersion
-	if json.Unmarshal(res.Body, &prepared) != nil || (prepared.TenantID == "" || (id.TenantID != "" && prepared.TenantID != id.TenantID)) || prepared.ID != *project || prepared.VersionID != *version || prepared.Fingerprint != fingerprint || (prepared.State != "uploading" && prepared.State != "published") {
+	if json.Unmarshal(res.Body, &prepared) != nil || (prepared.TenantID == "" || (id.TenantID != "" && prepared.TenantID != id.TenantID)) || prepared.AppID != *applicationID || prepared.VersionID != *version || prepared.Fingerprint != fingerprint || (prepared.State != "uploading" && prepared.State != "published") {
 		return fail(appError("INVALID_UPLOAD_PLAN", "MGR returned an inconsistent version plan"))
 	}
 	// Published versions are immutable. A repeated command needs no file transfer.
@@ -200,13 +200,13 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			return fail(e)
 		}
 		var next artifactVersion
-		if json.Unmarshal(res.Body, &next) != nil || res.Status != http.StatusOK || next.TenantID != tenant || next.ID != *project || next.VersionID != *version || next.Fingerprint != fingerprint || next.State != "published" {
+		if json.Unmarshal(res.Body, &next) != nil || res.Status != http.StatusOK || next.TenantID != tenant || next.AppID != *applicationID || next.VersionID != *version || next.Fingerprint != fingerprint || next.State != "published" {
 			return fail(appError("PUBLISH_OUTCOME_UNKNOWN", "MGR has not confirmed publication of the same version"))
 		}
 		prepared = next
 
 	}
-	result := map[string]any{"id": *project, "version_id": *version, "state": prepared.State, "file_count": len(manifest.Files), "processed_files": uploaded, "entry_path": manifest.EntryPath}
+	result := map[string]any{"app_id": *applicationID, "version_id": *version, "state": prepared.State, "file_count": len(manifest.Files), "processed_files": uploaded, "entry_path": manifest.EntryPath}
 	if manifest.Application != nil {
 		res, e := r.request(ctx, id, "GET", base+"/bootstrap", nil)
 		lastResponseRequestID = res.RequestID
@@ -219,19 +219,19 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			ApplicationURL string `json:"application_url"`
 			VersionURL     string `json:"version_url"`
 		}
-		if json.Unmarshal(res.Body, &view) != nil || view.VersionID != *version || !reflect.DeepEqual(view.Manifest, *manifest.Application) || !validApplicationLinks(view.ApplicationURL, view.VersionURL, *project, *version) {
+		if json.Unmarshal(res.Body, &view) != nil || view.VersionID != *version || !reflect.DeepEqual(view.Manifest, *manifest.Application) || !validApplicationLinks(view.ApplicationURL, view.VersionURL, *applicationID, *version) {
 			return fail(appError("APP_HOSTING_UNCONFIRMED", "Artifacts are published but MGR has not confirmed matching Bootstrap metadata and HTTPS application links"))
 		}
 		result["application_url"], result["version_url"] = view.ApplicationURL, view.VersionURL
 	}
-	// Links confirm MGR's published binding. Live Web/CDN/Gateway acceptance is
+	// Links confirm MGR's published binding. Live App/CDN/Gateway acceptance is
 	// still required; neither generic uploads nor this response prove SQL works.
 	return Success(result)
 }
 
-func validApplicationLinks(app, pinned, project, version string) bool {
+func validApplicationLinks(app, pinned, applicationID, version string) bool {
 	u, err := url.Parse(app)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || u.Path != "/web/"+project+"/" {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || u.Path != "/apps/"+applicationID {
 		return false
 	}
 	return pinned == app+"?version="+version
@@ -449,12 +449,4 @@ func uploadClientWithCA(path string) (*http.Client, *Error) {
 		return nil, appError("UPLOAD_CA_INVALID", "Upload CA must be a regular PEM file containing 1..8 certificates, at most 64 KiB")
 	}
 	return newUploadHTTPClient(trust.Roots), nil
-}
-
-func validWebID(id string) bool {
-	if !strings.HasPrefix(id, "web-") {
-		return false
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(id, "web-"))
-	return err == nil && len(raw) == 18 && "web-"+base64.RawURLEncoding.EncodeToString(raw) == id
 }

@@ -28,13 +28,13 @@ func TestAppsCreateReusesCloudAuthentication(t *testing.T) {
 	called := false
 	r, _, out, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
 		called = true
-		if req.Method != "POST" || req.URL.Path != "/api/v1/web-projects" || req.Header.Get("Authorization") != "Bearer private-access" {
-			t.Errorf("unexpected project request")
+		if req.Method != "POST" || req.URL.Path != "/api/v1/apps" || req.Header.Get("Authorization") != "Bearer private-access" {
+			t.Errorf("unexpected App request")
 		}
-		io.WriteString(w, `{"id":"web-AAAAAAAAAAAAAAAAAAAAAAAA","name":"Billing","owner_id":"prn-test","tenant_id":"ten-test"}`)
+		io.WriteString(w, `{"app_id":"AAAAAAAAAAAA","name":"Billing","owner_id":"prn-test","tenant_id":"ten-test"}`)
 	})
 	if code := runTest(r, out, context.Background(), []string{"web", "create", "Billing", "--json"}); code != 0 || !called {
-		t.Fatalf("project create failed: %d %s", code, out)
+		t.Fatalf("App create failed: %d %s", code, out)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestUploadPreservesLayoutAndRefreshesExpiredAndUncertainPuts(t *testing.T) 
 			sum := sha256.Sum256(raw)
 			fingerprint = hex.EncodeToString(sum[:])
 			version = pathLast(req.URL.Path)
-			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ID: "billing", VersionID: version, Fingerprint: fingerprint, State: "uploading"})
+			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", AppID: "billing", VersionID: version, Fingerprint: fingerprint, State: "uploading"})
 			return
 		}
 		if strings.HasSuffix(req.URL.Path, "/uploads") {
@@ -106,7 +106,7 @@ func TestUploadPreservesLayoutAndRefreshesExpiredAndUncertainPuts(t *testing.T) 
 			if len(stored) != 2 {
 				t.Error("published before upload complete")
 			}
-			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", ID: "billing", VersionID: version, Fingerprint: fingerprint, State: "published"})
+			json.NewEncoder(w).Encode(artifactVersion{TenantID: "ten-test", AppID: "billing", VersionID: version, Fingerprint: fingerprint, State: "published"})
 			return
 		}
 		t.Errorf("unexpected request: %s", req.URL.Path)
@@ -230,7 +230,7 @@ func runTest(r Runner, out *bytes.Buffer, ctx context.Context, args []string) in
 		if o.Command == "create" {
 			o.Name = args[2]
 		} else {
-			o.ID = args[2]
+			o.AppID = args[2]
 		}
 	}
 	f.StringVar(&o.Dir, "dir", "", "")

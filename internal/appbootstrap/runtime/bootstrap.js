@@ -5,7 +5,7 @@ dataElement.remove();
 const localPreview = manifest.local_preview;
 const resolvedVersion = manifest.version_id;
 const app = document.querySelector('#app');
-const loaderScript = document.querySelector('script[src="./_tiana/bootstrap.js"]');
+const loaderScript = document.querySelector('#tiana-bootstrap-script');
 const loadingHost = document.createElement('div');
 loadingHost.id = 'tiana-loading';
 const loading = loadingHost.attachShadow({mode: 'open'});

@@ -11,7 +11,7 @@ import (
 )
 
 func newWebListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "list", Usage: "List Web applications", Description: "An interactive terminal pages the results; otherwise all pages are printed once.", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+	return &cli.Command{Name: "list", Usage: "List applications", Description: "An interactive terminal pages the results; otherwise all pages are printed once.", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 0 {
 			return argumentFailure(ctx, cmd, "web list does not accept positional arguments")
 		}
@@ -30,7 +30,7 @@ func newWebListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Comm
 func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive bool, input io.Reader, output, diagnostics io.Writer) int {
 	after := ""
 	lastRequestID := ""
-	all := []apppublish.Web{}
+	all := []apppublish.App{}
 	reader := bufio.NewReader(input)
 	fail := func(e *apppublish.Error) int {
 		return writeAppResult(apppublish.Failure(e), jsonMode, output, diagnostics)
@@ -50,7 +50,7 @@ func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive 
 		}
 		if result.NextCursor == "" {
 			if jsonMode {
-				return writeAppResult(apppublish.Success(apppublish.WebPage{Items: all}), true, output, diagnostics)
+				return writeAppResult(apppublish.Success(apppublish.AppPage{Items: all}), true, output, diagnostics)
 			}
 			if !interactive {
 				if err := writeWebTable(output, all); err != nil {
@@ -81,17 +81,17 @@ func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive 
 		}
 		after = result.NextCursor
 	}
-	return fail(&apppublish.Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many Web pages to list safely", NextAction: "Inspect the service pagination", ExitCode: 1})
+	return fail(&apppublish.Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many App pages to list safely", NextAction: "Inspect the service pagination", ExitCode: 1})
 }
-func writeWebTable(out io.Writer, items []apppublish.Web) error {
+func writeWebTable(out io.Writer, items []apppublish.App) error {
 	if len(items) == 0 {
-		_, err := fmt.Fprintln(out, "No Web applications found.")
+		_, err := fmt.Fprintln(out, "No applications found.")
 		return err
 	}
 	header := []string{"ID", "NAME"}
 	rows := [][]string{header}
 	for _, w := range items {
-		rows = append(rows, []string{w.ID, w.Name})
+		rows = append(rows, []string{w.AppID, w.Name})
 	}
 	widths := tableWidths(rows)
 	for _, row := range rows {

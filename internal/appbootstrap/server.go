@@ -74,7 +74,7 @@ func NewServer(c Config) (*Server, error) {
 	if e != nil || port < 1 || port > 65535 {
 		return nil, errors.New("preview requires an explicit valid port")
 	}
-	if c.Build == nil || c.BasePath != "/web/"+c.Build.Manifest.AppID+"/" {
+	if c.Build == nil || c.BasePath != "/apps/"+c.Build.Manifest.AppID {
 		return nil, errors.New("preview path must identify the configured app")
 	}
 	return &Server{config: c, host: u.Host, cookie: "tiana_preview_" + u.Port(), sessions: map[string]*session{}}, nil
@@ -99,7 +99,7 @@ func (s *Server) AuthorizeLocalAccount(identity Identity) (string, error) {
 	s.launchProof = base64.RawURLEncoding.EncodeToString(proof)
 	s.launchIdentity = identity
 	s.launchExpires = time.Now().Add(5 * time.Minute)
-	return s.config.Origin + s.config.BasePath + "_tiana/authorize#tiana_launch=" + s.launchProof, nil
+	return s.config.Origin + s.config.BasePath + "/_tiana/authorize#tiana_launch=" + s.launchProof, nil
 }
 func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
@@ -151,7 +151,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-	publicNavigation := (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (r.URL.Path == s.config.BasePath || r.URL.Path == strings.TrimSuffix(s.config.BasePath, "/") || r.URL.Path == "/")
+	publicNavigation := (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (r.URL.Path == s.config.BasePath || r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/")
 	if r.Host != s.host || (r.Header.Get("Sec-Fetch-Site") == "cross-site" && !publicNavigation) {
 		s.failure(w, 403, "ORIGIN_REJECTED")
 		return
@@ -169,18 +169,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
-	if r.URL.Path == strings.TrimSuffix(s.config.BasePath, "/") || r.URL.Path == "/" {
-		http.Redirect(w, r, s.config.BasePath, http.StatusTemporaryRedirect)
+	if r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/" {
+		destination := s.config.BasePath
+		if r.URL.RawQuery != "" {
+			destination += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, destination, http.StatusTemporaryRedirect)
 		return
 	}
-	if !strings.HasPrefix(r.URL.Path, s.config.BasePath) {
+	if r.URL.Path != s.config.BasePath && !strings.HasPrefix(r.URL.Path, s.config.BasePath+"/") {
 		http.NotFound(w, r)
 		return
 	}
-	p := strings.TrimPrefix(r.URL.Path, s.config.BasePath)
+	p := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, s.config.BasePath), "/")
 	if p == "" && (r.Method == "GET" || r.Method == "HEAD") {
 		if _, state := s.identity(r); state != "ready" {
-			http.Redirect(w, r, s.config.BasePath+"_tiana/authorize", http.StatusSeeOther)
+			destination := s.config.BasePath + "/_tiana/authorize"
+			if r.URL.RawQuery != "" {
+				destination += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, destination, http.StatusSeeOther)
 			return
 		}
 		s.applicationDocument(w, r)
@@ -415,7 +423,8 @@ func (s *Server) applicationDocument(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 500, "APP_UNAVAILABLE")
 		return
 	}
-	document := bytes.Replace(template, []byte("__TIANA_BOOTSTRAP_DATA__"), data, 1)
+	document := bytes.Replace(template, []byte("__TIANA_BOOTSTRAP_SCRIPT__"), []byte(s.config.BasePath+"/_tiana/bootstrap.js"), 1)
+	document = bytes.Replace(document, []byte("__TIANA_BOOTSTRAP_DATA__"), data, 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(document)))
 	if r.Method != http.MethodHead {

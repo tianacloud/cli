@@ -34,7 +34,7 @@ func TestUploadPlanPreservesPrivateACLPublicTagAndSignedURL(t *testing.T) {
 		t.Fatal(scanErr)
 	}
 	file := manifest.Files[0]
-	const target = "/ten-test/web/billing/v1/assets/app%20v1.js?OSSAccessKeyId=fixture&Expires=4102444800&Signature=fixture%2Bsignature%2F%3D"
+	const target = "/ten-test/app/billing/v1/assets/app%20v1.js?OSSAccessKeyId=fixture&Expires=4102444800&Signature=fixture%2Bsignature%2F%3D"
 	headers := map[string]string{
 		"Content-Type":            file.ContentType,
 		"Content-MD5":             file.MD5,
@@ -66,7 +66,7 @@ func TestUploadPlanPreservesPrivateACLPublicTagAndSignedURL(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer objects.Close()
-	base := "/api/v1/web-projects/billing/versions/v1"
+	base := "/api/v1/apps/billing/versions/v1"
 	runner, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost || req.URL.Path != base+"/uploads" {
 			t.Errorf("unexpected management request: %s %s", req.Method, req.URL.Path)
@@ -108,7 +108,7 @@ func TestUploadFailureRetainsManagementPlanRequestID(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"files": []artifactLink{{Path: file.Path, Method: "PUT", URL: objects.URL + "/object", ExpiresAt: time.Now().Add(time.Minute), Headers: map[string]string{"Content-Type": file.ContentType, "Content-MD5": file.MD5, "X-Oss-Forbid-Overwrite": "true"}}}})
 	})
 	runner.UploadHTTP = objects.Client()
-	failure = runner.uploadArtifactBatch(t.Context(), identity{PrincipalID: "prn-test"}, "/api/v1/web-projects/billing/versions/v1", root, manifest.Files)
+	failure = runner.uploadArtifactBatch(t.Context(), identity{PrincipalID: "prn-test"}, "/api/v1/apps/billing/versions/v1", root, manifest.Files)
 	if failure == nil || failure.Code != "UPLOAD_INCOMPLETE" {
 		t.Fatalf("failure: %+v", failure)
 	}

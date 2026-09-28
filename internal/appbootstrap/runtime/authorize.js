@@ -10,7 +10,7 @@ function showState(message, busy = false, error = false) {
   status.textContent = message;
   status.dataset.state = error ? 'error' : 'waiting';
 }
-const openApp = () => location.replace(base.href + location.hash);
+const openApp = () => location.replace(base.href.replace(/\/$/, '') + location.search + location.hash);
 async function request(path, method = 'GET', extraHeaders = {}) {
   const requestId = 'req-' + crypto.randomUUID();
   try {

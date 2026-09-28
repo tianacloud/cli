@@ -22,28 +22,28 @@ type Runner struct {
 	Client                *authclient.Client
 	UploadHTTP            *http.Client
 }
-type Options struct{ Command, ID, RequestID, Name, Description, Dir, Version, Entry, UploadCAFile string }
+type Options struct{ Command, AppID, RequestID, Name, Description, Dir, Version, Entry, UploadCAFile string }
 
 func (o Options) Validate() *Error {
-	if o.Command != "create" && !appID(o.ID) {
-		return inputError("Provide a valid Web ID")
+	if o.Command != "create" && !appID(o.AppID) {
+		return inputError("Provide a valid App ID")
 	}
 	switch o.Command {
 	case "create":
-		if o.ID != "" || strings.TrimSpace(o.Name) == "" || len(o.Name) > 128 || !utf8.ValidString(o.Name) || o.Dir != "" || o.Version != "" || o.Entry != "" || o.UploadCAFile != "" {
+		if o.AppID != "" || strings.TrimSpace(o.Name) == "" || len(o.Name) > 128 || !utf8.ValidString(o.Name) || o.Dir != "" || o.Version != "" || o.Entry != "" || o.UploadCAFile != "" {
 			return inputError("Use web create NAME [-m DESCRIPTION] [--json]; the server generates the ID")
 		}
 		for _, r := range o.Name {
 			if unicode.IsControl(r) {
-				return inputError("Web name cannot contain control characters")
+				return inputError("App name cannot contain control characters")
 			}
 		}
 		if len(o.Description) > 1024 || !utf8.ValidString(o.Description) {
-			return inputError("Web description must be valid UTF-8 and at most 1024 bytes")
+			return inputError("App description must be valid UTF-8 and at most 1024 bytes")
 		}
 		for _, r := range o.Description {
 			if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
-				return inputError("Web description contains unsupported control characters")
+				return inputError("App description contains unsupported control characters")
 			}
 		}
 	case "status":
@@ -132,7 +132,7 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 	requestID := "req-" + rand.Text()
 	ctx = auth.WithRequestID(ctx, requestID)
 	var raw json.RawMessage
-	status, err := r.Client.RequestProjectJSON(ctx, method, path, body, current, &raw)
+	status, err := r.Client.RequestAppJSON(ctx, method, path, body, current, &raw)
 	result = httpResult{Status: status, Body: raw, RequestID: requestID}
 	defer func() {
 		if failure != nil {
@@ -155,7 +155,7 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 			code = "MGR_REQUEST_FAILED"
 		}
 		if message == "" {
-			message = fmt.Sprintf("MGR rejected the project request (HTTP %d)", api.Status)
+			message = fmt.Sprintf("MGR rejected the App request (HTTP %d)", api.Status)
 		}
 		exit := 1
 		if method != "GET" && api.Status >= 500 {

@@ -39,24 +39,24 @@ func TestWebListAllPagesAndInteractiveQuit(t *testing.T) {
 	calls := 0
 	client := webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != "GET" || r.URL.Path != "/api/v1/web-projects" || r.Header.Get("Authorization") != "Bearer access" {
+		if r.Method != "GET" || r.URL.Path != "/api/v1/apps" || r.Header.Get("Authorization") != "Bearer access" {
 			t.Error("unexpected list request")
 		}
-		item := apppublish.Web{ID: "web-a", Name: "First", OwnerID: "owner", TenantID: "tenant"}
+		item := apppublish.App{AppID: "web-a", Name: "First", OwnerID: "owner", TenantID: "tenant"}
 		next := "web-a"
 		if r.URL.Query().Get("after") == "web-a" {
-			item.ID = "web-b"
+			item.AppID = "web-b"
 			item.Name = "Second"
 			next = ""
 		}
-		json.NewEncoder(w).Encode(apppublish.WebPage{Items: []apppublish.Web{item}, NextCursor: next})
+		json.NewEncoder(w).Encode(apppublish.AppPage{Items: []apppublish.App{item}, NextCursor: next})
 	})
 	var out, diagnostics bytes.Buffer
 	if code := runCLI(context.Background(), []string{"web", "list", "--json"}, nil, &out, &diagnostics); code != 0 {
 		t.Fatalf("code=%d %s %s", code, &out, &diagnostics)
 	}
 	var result struct {
-		Data apppublish.WebPage `json:"data"`
+		Data apppublish.AppPage `json:"data"`
 	}
 	if json.Unmarshal(out.Bytes(), &result) != nil || len(result.Data.Items) != 2 || calls != 2 {
 		t.Fatalf("list=%s calls=%d", &out, calls)
@@ -96,7 +96,7 @@ func (w *webPromptFailureWriter) Write(p []byte) (int, error) {
 }
 func TestWebListInteractiveNewlineOutputFailure(t *testing.T) {
 	client := webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"items":[{"id":"web-a","owner_id":"owner","tenant_id":"tenant"}],"next_cursor":"web-a"}`)
+		io.WriteString(w, `{"items":[{"app_id":"web-a","owner_id":"owner","tenant_id":"tenant"}],"next_cursor":"web-a"}`)
 	})
 	runner, e := (apppublish.Runner{Client: client}).Bind(t.Context())
 	if e != nil {

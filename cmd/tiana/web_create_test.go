@@ -29,7 +29,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	var mu sync.Mutex
 	var keys []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/v1/web-projects" {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/apps" {
 			t.Error("unexpected creation route")
 		}
 		var body map[string]string
@@ -52,7 +52,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 			io.WriteString(w, `{"error":{"code":"UNAVAILABLE","message":"response lost"}}`)
 			return
 		}
-		io.WriteString(w, `{"id":"web-AAAAAAAAAAAAAAAAAAAAAAAA","name":"App","description":"应用描述","owner_id":"owner","tenant_id":"tenant"}`)
+		io.WriteString(w, `{"app_id":"AAAAAAAAAAAA","name":"App","description":"应用描述","owner_id":"owner","tenant_id":"tenant"}`)
 	}))
 	defer server.Close()
 	t.Setenv("TIANA_API_ORIGIN", server.URL)
@@ -146,7 +146,7 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 				if body["description"] != tc.description {
 					t.Errorf("description=%q", body["description"])
 				}
-				json.NewEncoder(w).Encode(map[string]string{"id": deletionTestID, "name": "App", "description": body["description"], "owner_id": "owner", "tenant_id": "tenant"})
+				json.NewEncoder(w).Encode(map[string]string{"app_id": deletionTestID, "name": "App", "description": body["description"], "owner_id": "owner", "tenant_id": "tenant"})
 			})
 			args := append([]string{"web", "create", "App", "--json"}, tc.args...)
 			var out, diagnostics bytes.Buffer
@@ -160,7 +160,7 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 
 func TestWebCreateMismatchedDescriptionRetainsIntent(t *testing.T) {
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"id":"`+deletionTestID+`","name":"App","description":"wrong","owner_id":"owner","tenant_id":"tenant"}`)
+		io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","description":"wrong","owner_id":"owner","tenant_id":"tenant"}`)
 	})
 	var out, diagnostics bytes.Buffer
 	code := runCLI(t.Context(), []string{"web", "create", "App", "-m", "expected", "--json"}, nil, &out, &diagnostics)

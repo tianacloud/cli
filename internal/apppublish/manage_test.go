@@ -9,19 +9,19 @@ import (
 func TestWebListPaginationAndExactNameResolution(t *testing.T) {
 	var afters []string
 	r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/api/v1/web-projects" {
+		if req.URL.Path != "/api/v1/apps" {
 			w.WriteHeader(404)
 			return
 		}
 		after := req.URL.Query().Get("after")
 		afters = append(afters, after)
-		items := []Web{{ID: "web-a", Name: "相同名称", OwnerID: "prn-test", TenantID: "ten-test"}}
+		items := []App{{AppID: "web-a", Name: "相同名称", OwnerID: "prn-test", TenantID: "ten-test"}}
 		cursor := "web-a"
 		if after != "" {
-			items = []Web{{ID: "web-b", Name: "相同名称", OwnerID: "prn-test", TenantID: "ten-test"}}
+			items = []App{{AppID: "web-b", Name: "相同名称", OwnerID: "prn-test", TenantID: "ten-test"}}
 			cursor = ""
 		}
-		json.NewEncoder(w).Encode(WebPage{Items: items, NextCursor: cursor})
+		json.NewEncoder(w).Encode(AppPage{Items: items, NextCursor: cursor})
 	})
 	r, e := r.Bind(t.Context())
 	if e != nil {
@@ -32,7 +32,7 @@ func TestWebListPaginationAndExactNameResolution(t *testing.T) {
 		t.Fatalf("page=%+v %v", page, e)
 	}
 	page, e = r.ListPage(t.Context(), page.NextCursor)
-	if e != nil || page.Items[0].ID != "web-b" {
+	if e != nil || page.Items[0].AppID != "web-b" {
 		t.Fatalf("page2=%+v %v", page, e)
 	}
 	_, e = r.Resolve(t.Context(), "相同名称")
@@ -46,10 +46,10 @@ func TestWebListPaginationAndExactNameResolution(t *testing.T) {
 func TestWebListRejectsUntrustedPagination(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"no-items", `{}`}, {"null-items", `{"items":null}`},
-		{"foreign-owner", `{"items":[{"id":"web-a","owner_id":"other","tenant_id":"ten-test"}]}`},
+		{"foreign-owner", `{"items":[{"app_id":"web-a","owner_id":"other","tenant_id":"ten-test"}]}`},
 		{"empty-loop", `{"items":[],"next_cursor":"web-a"}`},
-		{"wrong-cursor", `{"items":[{"id":"web-b","owner_id":"prn-test","tenant_id":"ten-test"}],"next_cursor":"web-c"}`},
-		{"backward", `{"items":[{"id":"web-a","owner_id":"prn-test","tenant_id":"ten-test"}]}`},
+		{"wrong-cursor", `{"items":[{"app_id":"web-b","owner_id":"prn-test","tenant_id":"ten-test"}],"next_cursor":"web-c"}`},
+		{"backward", `{"items":[{"app_id":"web-a","owner_id":"prn-test","tenant_id":"ten-test"}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) { w.Write([]byte(tc.body)) })
@@ -74,5 +74,23 @@ func TestWebResolvePinsIDAndDoesNotFallBackAfterServerError(t *testing.T) {
 	_, e = r.Resolve(t.Context(), "web-a")
 	if e == nil || calls != 1 {
 		t.Fatalf("error=%v calls=%d", e, calls)
+	}
+}
+
+func TestWebResolveTwelveCharacterName(t *testing.T) {
+	r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/apps" {
+			w.WriteHeader(404)
+			return
+		}
+		json.NewEncoder(w).Encode(AppPage{Items: []App{{AppID: "AbCdEfGhIjKl", Name: "billing-prod", OwnerID: "prn-test", TenantID: "ten-test"}}})
+	})
+	r, e := r.Bind(t.Context())
+	if e != nil {
+		t.Fatal(e)
+	}
+	app, e := r.Resolve(t.Context(), "billing-prod")
+	if e != nil || app.AppID != "AbCdEfGhIjKl" {
+		t.Fatalf("app=%+v error=%v", app, e)
 	}
 }

@@ -28,7 +28,7 @@ func TestUploadKeepsFileInventoryLocallyAndCompletesOnce(t *testing.T) {
 			json.NewDecoder(req.Body).Decode(&m)
 			raw, _ := json.Marshal(m)
 			sum := sha256.Sum256(raw)
-			prepared = artifactVersion{TenantID: "ten-test", ID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "uploading"}
+			prepared = artifactVersion{TenantID: "ten-test", AppID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "uploading"}
 			json.NewEncoder(w).Encode(prepared)
 			return
 		}
@@ -71,7 +71,7 @@ func TestCompleteRejectsNoProgressAndChangedTenant(t *testing.T) {
 					json.NewDecoder(req.Body).Decode(&m)
 					raw, _ := json.Marshal(m)
 					sum := sha256.Sum256(raw)
-					prepared = artifactVersion{TenantID: "tenant-a", ID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "uploading"}
+					prepared = artifactVersion{TenantID: "tenant-a", AppID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "uploading"}
 					json.NewEncoder(w).Encode(prepared)
 					return
 				}
@@ -105,7 +105,7 @@ func TestPublishedPrepareDoesNotRequireStoredFileCount(t *testing.T) {
 		json.NewDecoder(req.Body).Decode(&m)
 		raw, _ := json.Marshal(m)
 		sum := sha256.Sum256(raw)
-		json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant-a", ID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "published"})
+		json.NewEncoder(w).Encode(artifactVersion{TenantID: "tenant-a", AppID: "billing", VersionID: pathLast(req.URL.Path), Fingerprint: hex.EncodeToString(sum[:]), State: "published"})
 	})
 	if code := runTest(r, out, t.Context(), []string{"web", "upload", "billing", "--dir", dir, "--json"}); code != 0 {
 		t.Fatalf("published version should not require a stored file count: %s", out)
