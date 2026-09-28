@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -111,11 +112,13 @@ func TestNativeGitOverConnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init: %s %v", out, err)
 	}
+	type connectionKey struct{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state := r.Context().Value(connectionKey{}).(*tls.Conn).ConnectionState()
 		calls.Add(1)
 		w.Header()["Date"] = nil
 		w.Header()["Content-Type"] = nil
-		if r.Method != "CONNECT" || r.URL.Path != "" || r.URL.Scheme != "" || r.ProtoMajor != 2 || r.Host != hostname+":443" || r.TLS.Version != tls.VersionTLS13 || r.Header.Get("Tiana-Database-Protocol") != "git" || r.Header.Get("Tiana-Tunnel-Version") != "1" || r.Header.Get("Tiana-Request-Id") == "" {
+		if r.Method != "CONNECT" || r.URL.Path != "" || r.URL.Scheme != "" || r.ProtoMajor != 2 || r.Host != hostname+":443" || state.Version != tls.VersionTLS13 || r.Header.Get("Tiana-Database-Protocol") != "git" || r.Header.Get("Tiana-Tunnel-Version") != "1" || r.Header.Get("Tiana-Request-Id") == "" {
 			t.Errorf("invalid CONNECT envelope")
 			w.WriteHeader(400)
 			return
@@ -164,6 +167,9 @@ func TestNativeGitOverConnect(t *testing.T) {
 			t.Logf("fixture daemon: %v %s", err, daemonLog.String())
 		}
 	}))
+	server.Config.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
+		return context.WithValue(ctx, connectionKey{}, conn)
+	}
 	server.EnableHTTP2 = true
 	server.TLS = &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	server.StartTLS()
