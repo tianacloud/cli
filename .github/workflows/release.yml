@@ -1,101 +1,42 @@
-name: Release CLI
-
+name: Release upload diagnostics
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: New npm version (for example 0.2.2-beta.0)
-        required: true
-        type: string
-      tag:
-        description: npm distribution tag
-        type: choice
-        options: [latest, next]
-        default: latest
-      dry_run:
-        description: Build and test without uploading or publishing
-        type: boolean
-        default: true
-
 permissions:
   contents: read
-
-concurrency:
-  group: cli-release
-  cancel-in-progress: false
-
 jobs:
-  test:
-    uses: ./.github/workflows/platforms.yml
-    secrets: inherit
-
-  publish:
-    needs: test
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GOPRIVATE: github.com/tianacloud/sdk-go,github.com/tianacloud/sdk-go-sqlite
-      GOWORK: 'off'
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-        with:
-          go-version: '1.26.5'
-          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24'
           package-manager-cache: false
-      - name: Install npm with trusted publishing support
-        run: npm install --global npm@11.20.0
-      - name: Download private SDK dependencies
+      - name: Compare Gitee multipart uploads
         env:
-          SDK_READ_TOKEN: ${{ secrets.SDK_READ_TOKEN }}
-          GIT_TERMINAL_PROMPT: '0'
-          GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: credential.helper
-          GIT_CONFIG_VALUE_0: ''
-        run: |
-          test -n "$SDK_READ_TOKEN"
-          export GIT_ASKPASS
-          GIT_ASKPASS="$(mktemp "$RUNNER_TEMP/tiana-sdk-askpass.XXXXXX")"
-          trap 'rm -f "$GIT_ASKPASS"' EXIT
-          cat > "$GIT_ASKPASS" <<'SH'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\n' 'x-access-token' ;;
-            *Password*) printf '%s\n' "$SDK_READ_TOKEN" ;;
-            *) exit 1 ;;
-          esac
-          SH
-          chmod 700 "$GIT_ASKPASS"
-          go mod download
-      - name: Build, upload to Gitee and publish npm
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          DRY_RUN: ${{ inputs.dry_run }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          if [ "$DRY_RUN" = true ]; then
-            ./scripts/release.mjs "$RELEASE_VERSION" --tag "$RELEASE_TAG" --dry-run
-          else
-            test -n "$GITEE_TOKEN"
-            token_file="$(mktemp "$RUNNER_TEMP/tiana-gitee-token.XXXXXX")"
-            trap 'rm -f "$token_file"' EXIT
-            printf '%s' "$GITEE_TOKEN" > "$token_file"
-            ./scripts/release.mjs "$RELEASE_VERSION" --tag "$RELEASE_TAG" --gitee-token-file "$token_file"
-          fi
-      - name: Verify clean npm installation
-        if: ${{ !inputs.dry_run }}
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          prefix="$(mktemp -d "$RUNNER_TEMP/tiana-npm-install.XXXXXX")"
-          npm install --global --ignore-scripts=false --prefix "$prefix" --cache "$prefix/cache" "@tianadb/cli@$RELEASE_VERSION"
-          "$prefix/bin/tiana" --version
+          node --input-type=module <<'JS'
+          import { randomBytes } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const base='https://gitee.com/api/v5/repos/tianacloud/cli-releases/releases/1172873/attach_files';
+          const headers={Authorization:`Bearer ${process.env.GITEE_TOKEN}`};
+          for (const size of [64, 5*1024*1024]) {
+            const form=new FormData();form.append('file',new Blob([randomBytes(size)]),'diagnostic-runner.bin');
+            const start=Date.now();
+            try {
+              const r=await fetch(base,{method:'POST',headers,body:form,signal:AbortSignal.timeout(45000)});
+              console.log(JSON.stringify({client:'fetch',size,status:r.status,seconds:(Date.now()-start)/1000}));
+              if(r.ok) { const d=await r.json(); const del=await fetch(`${base}/${d.id}`,{method:'DELETE',headers,signal:AbortSignal.timeout(15000)}); console.log(JSON.stringify({cleanup:del.status})); }
+            } catch(e) { console.log(JSON.stringify({client:'fetch',size,name:e.name,code:e.cause?.code,seconds:(Date.now()-start)/1000})); }
+          }
+          writeFileSync('/tmp/diagnostic-curl.bin',randomBytes(5*1024*1024));
+          const config=`header = "Authorization: Bearer ${process.env.GITEE_TOKEN}"`;
+          try {
+            const output=execFileSync('curl',['--config','-','--silent','--show-error','--max-time','45','--form','file=@/tmp/diagnostic-curl.bin','--write-out','\n%{http_code} %{size_upload} %{speed_upload} %{time_total}',base],{input:config,encoding:'utf8',stdio:['pipe','pipe','pipe']});
+            const index=output.lastIndexOf('\n');console.log(JSON.stringify({client:'curl',stats:output.slice(index+1)}));
+            const d=JSON.parse(output.slice(0,index));
+            if(d.id){ const del=await fetch(`${base}/${d.id}`,{method:'DELETE',headers,signal:AbortSignal.timeout(15000)}); console.log(JSON.stringify({cleanup:del.status})); }
+          } catch(e){ console.log(JSON.stringify({client:'curl',exit:e.status,stats:e.stdout?.toString().split('\n').at(-1)})); }
+          JS
