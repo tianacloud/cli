@@ -44,11 +44,16 @@ export async function uploadRelease({ directory, version, token, apiBase = 'http
   const assets = [...Object.values(manifest.assets)];
   const sums = readFileSync(path.join(directory, 'SHA256SUMS'));
   assets.push({ filename: 'SHA256SUMS', sha256: sha(sums), url: new URL('SHA256SUMS', assets[0].url).href });
+  const npmFilename = `tiana-cli-${version}.tgz`;
+  for (const filename of [npmFilename, `${npmFilename}.sha256`]) {
+    assets.push({ filename, sha256: sha(readFileSync(path.join(directory, filename))), url: new URL(filename, assets[0].url).href });
+  }
   // Check conflicts before uploading anything else on a rerun.
   for (const asset of assets) {
     if (attachments.some(a => a.name === asset.filename)) await verify(asset.url, asset.sha256);
   }
   for (const asset of assets) {
+    console.log(`Upload and verify ${asset.filename}`);
     const bytes = readFileSync(path.join(directory, asset.filename));
     if (sha(bytes) !== asset.sha256) throw new Error(`Local attachment checksum mismatch: ${asset.filename}`);
     if (!attachments.some(a => a.name === asset.filename)) {

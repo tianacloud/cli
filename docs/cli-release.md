@@ -12,17 +12,35 @@ In npm's `@tianadb/cli` package settings, add a GitHub Actions trusted publisher
 | Environment | Leave empty |
 | Allowed actions | Allow direct `npm publish` |
 
-The GitHub repository needs `SDK_READ_TOKEN` for the private Go SDKs and
-`GITEE_TOKEN` for `tianacloud/cli-releases`. npm publication uses OIDC and needs
-no npm secret. Workflow permissions and `repository.url` are already configured.
-The workflow must be present on the default branch to use **Run workflow**.
+The GitHub repository needs `SDK_READ_TOKEN` for native tests of the private Go
+SDKs. npm publication uses OIDC and needs no npm secret. Workflow permissions and
+`repository.url` are already configured. The workflow must be present on the
+default branch to use **Run workflow**.
 
-Open GitHub Actions → **Release CLI** → **Run workflow**. Select the source branch,
-enter a new version, and choose `latest` or `next`. Keep `dry_run` selected for the
-first run; after it passes, repeat with the same source/version and clear `dry_run`.
-Native Linux/macOS/Windows tests must pass before the release job runs. The release
-job uploads Gitee attachments, verifies anonymous downloads, publishes npm, and
-checks installation with a fresh npm cache. Node.js and Go run on GitHub's runner.
+Build and upload from a Linux/macOS machine with working Gitee access:
+
+```sh
+./scripts/release.mjs 0.2.2-beta.0 --upload-only
+```
+
+This builds all seven platforms, uploads their archives and the npm tarball to
+Gitee, verifies anonymous downloads, and prints `version`, `tag`, and
+`npm_sha256`. This step needs the Gitee token and does not need npm login.
+Keep the output directory under `dist/releases/` until publication completes.
+
+Open GitHub Actions → **Release CLI** → **Run workflow**. Select the source branch
+used for the build, enter the printed version and `npm_sha256`, and choose
+`latest` or `next`. Keep `dry_run` selected for the first run; after it passes,
+repeat with identical inputs and clear `dry_run`. Native Linux/macOS/Windows
+tests must pass before the release job runs. The job downloads the small npm
+package from Gitee and verifies its SHA-256, package name and version. A real
+run publishes those exact bytes using OIDC and checks installation with a fresh
+npm cache. GitHub runners do not rebuild or upload the large platform archives.
+
+Gitee upload and npm publication can run on separate machines. To move the
+upload step, use the same CLI checkout and prerequisites below, supply the Gitee
+token locally, and retain the printed checksum. An interrupted npm publication
+can be retried from Actions without rebuilding or uploading the platform files.
 
 OIDC authentication happens during `npm publish`, so it does not run `npm whoami`.
 The publish command sets the selected dist-tag. On a rerun, an identical version
@@ -58,7 +76,7 @@ The default npm tag is `latest`, including when the version contains `beta` or
 - The Gitee token in `~/tmp/gitee_token.txt`, or another file specified with
   `--gitee-token-file /path/to/file`. Restrict access to this file. The token is
   read at runtime and is not included in archives or npm packages.
-- An npm identity with publish access to `@tianadb/cli`: set `NPM_TOKEN` or use
+- For direct local npm publication (without `--upload-only`), an npm identity with publish access to `@tianadb/cli`: set `NPM_TOKEN` or use
   `npm login --registry=https://registry.npmjs.org/`.
 
 ## npm token authentication
@@ -94,8 +112,10 @@ npm uses its normal login configuration. Dry runs do not authenticate or publish
 
 The script builds all seven native Go executables, verifies architecture and
 manifest checksums, and packages one archive per platform plus `SHA256SUMS`.
-Gitee receives a `vVERSION` release. After all archives can be downloaded
-anonymously with matching hashes, the script publishes the small npm package.
+Gitee receives a `vVERSION` release containing the platform archives, checksums,
+and the small npm tarball. After all files can be downloaded anonymously with
+matching hashes, direct local publication sends the npm package to npm;
+`--upload-only` prints the inputs for GitHub Actions to complete publication.
 The npm postinstall script downloads only the user's platform archive.
 
 The two npm commands remain `tiana` and `git-remote-tiana`. Installing requires
