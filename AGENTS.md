@@ -769,19 +769,19 @@ account selection, native argument passthrough, removed-option rejection before
 requests, existing login/SQL/Git/preview flows, race/vet and native/Linux builds.
 
 
-## API origin and web command naming (2026-09-27)
+## API origin and app command naming (2026-09-27)
 
-User requires TIANA_API_ORIGIN, Products help grouping and web instead of apps,
-with matching agent-skills guidance and no old-name compatibility. This supersedes
+User requires TIANA_API_ORIGIN, Products help grouping and app instead of web,
+with matching agent-skills guidance and no web alias. This supersedes
 older naming notes. Only the new environment variable selects explicit routing;
 TIANA_MGR_ORIGIN and TIANA_AUTH_ORIGIN are ignored. Preserve unique saved-origin
 lookup when the new variable is absent, explicit-empty failure, TLS policy and
 per-origin account selection. Resolve in CLI and pass the origin explicitly to
 SDKs rather than adopting their older environment defaults.
 
-The web command retains serve/create/upload/status and argument semantics. The
-old apps spelling is rejected before resource execution; error recovery hints
-must use web. Products groups web/sqlite/git only. The App API collection is /api/v1/apps and its public identity is app_id.
+The app command retains serve/create/upload/status and argument semantics. The
+old web spelling is rejected before resource execution; error recovery hints
+must use app. Products groups app/sqlite/git only. The App API collection is /api/v1/apps and its public identity is app_id.
 Preserve idempotency keys, credential files and stored origin keys.
 No extra requests, retries, locks, token handling or hot-path work is introduced.
 
@@ -789,14 +789,16 @@ Launchers/scripts must use the new environment/command spelling. Previously save
 accounts for the same origin remain valid; no login/file rewrite is required just
 for the rename. Rollback needs the corresponding launcher/skill spelling change.
 Verify old-name rejection, API selection over legacy values, missing/empty/saved/
-ambiguous origins, status/web/native Git account selection, App HTTP routes,
+ambiguous origins, status/app/native Git account selection, App HTTP routes,
 help output, full race/vet, public-source scan, packaging and native builds.
 
 
 ## App identity and entry routes (2026-09-28)
 
-The web command hierarchy remains unchanged. MGR owns App identity creation:
-9 random bytes encoded as 12 unpadded base64url characters. Existing App IDs
+The app command hierarchy is canonical; apps remains a compatibility alias.
+Persisted apps.create/apps.delete keys remain unchanged across both spellings.
+MGR owns App identity creation:
+`app-` followed by 18 random bytes encoded as 24 unpadded base64url characters. Existing App IDs
 retain their values. App and release JSON use app_id, which is also the manifest
 application.app_id and the resource identity in /api/v1/apps. Creation receipts
 validate the same generic identity syntax as manifests and existing resources;
@@ -808,7 +810,7 @@ returned data.app_id and reuse it for publishing, lookup and deletion; display
 names never replace identity. MGR stores Apps in mgr_apps and releases in
 mgr_app_releases, both using app_id. App identity is globally unique.
 
-Hosted and preview entries use /apps/<app_id> without a trailing slash; Console
+Hosted and preview entries use /apps/<app_id>, accepting an optional trailing slash; Console
 details use /console/apps/<app_id>. Inject the absolute bootstrap script address
 /apps/<app_id>/_tiana/bootstrap.js into the fixed template, and locate its element
 by id=tiana-bootstrap-script. Preserve version queries and hash routes across

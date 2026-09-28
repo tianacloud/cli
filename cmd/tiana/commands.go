@@ -148,7 +148,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		}
 	}
 	root := &cli.Command{
-		Name: "tiana", Usage: "Tiana account, Web, SQLite and Git commands",
+		Name: "tiana", Usage: "Tiana account, App, SQLite and Git commands",
 		Reader: input, Writer: output, ErrWriter: diagnostics, HideVersion: true,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Print version", Local: true},
@@ -174,12 +174,12 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
 				}},
 			newGitCommand(input, output, diagnostics),
-			newWebCommand(input, output, diagnostics),
+			newAppCommand(input, output, diagnostics),
 		},
 	}
 	for _, command := range root.Commands {
 		switch command.Name {
-		case "web", "sqlite", "git":
+		case "app", "sqlite", "git":
 			command.Category = "Products"
 		}
 	}

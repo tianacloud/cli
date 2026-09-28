@@ -10,7 +10,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
+func newAppCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
 	action := func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 1 {
 			return argumentFailure(ctx, cmd, "Provide NAME for create, or ID for upload/status")
@@ -29,7 +29,7 @@ func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 			return statusError(1)
 		}
 		if o.Command == "create" {
-			return statusError(executeWebCreate(ctx, client, o, cmd.Bool("json"), output, diagnostics))
+			return statusError(executeAppCreate(ctx, client, o, cmd.Bool("json"), output, diagnostics))
 		}
 		result := (apppublish.Runner{Client: client}).Run(ctx, o)
 		code := writeAppResult(result, cmd.Bool("json"), output, diagnostics)
@@ -44,11 +44,11 @@ func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 	createFlags := append(common(), &cli.StringFlag{Name: "description", Aliases: []string{"m"}, Usage: "Application description (up to 1024 UTF-8 bytes)", Local: true})
 	uploadFlags := append(common(), stringOption("dir", "Already-built static output directory", ""), stringOption("version", "Immutable version ID (defaults to content-derived ID)", ""), stringOption("entry", "Optional entry file relative to the output directory", ""), stringOption("upload-ca-file", "Additional trusted object-storage CA PEM", ""))
 	statusFlags := append(common(), stringOption("version", "Version ID", ""))
-	return &cli.Command{Name: "web", Usage: "Web product commands", Action: groupAction, Commands: []*cli.Command{
-		newWebServeCommand(output, diagnostics),
-		newWebListCommand(input, output, diagnostics),
-		newWebDeleteCommand(input, output, diagnostics),
-		{Name: "create", Usage: "Create a Web application with a server-generated ID", ArgsUsage: "NAME", Flags: createFlags, Action: action},
+	return &cli.Command{Name: "app", Aliases: []string{"apps"}, Usage: "App product commands", Action: groupAction, Commands: []*cli.Command{
+		newAppServeCommand(output, diagnostics),
+		newAppListCommand(input, output, diagnostics),
+		newAppDeleteCommand(input, output, diagnostics),
+		{Name: "create", Usage: "Create an application with a server-generated ID", ArgsUsage: "NAME", Flags: createFlags, Action: action},
 		{Name: "upload", Usage: "Upload a build directory and publish a complete version", ArgsUsage: "ID", Description: "Preserves relative file paths within each App version. Repeating unchanged files resumes the same version; it does not build or host the app.", Flags: uploadFlags, Action: action},
 		{Name: "status", Usage: "Inspect a version's upload and publication status", ArgsUsage: "ID", Flags: statusFlags, Action: action},
 	}}

@@ -19,7 +19,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
+func newAppServeCommand(output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "serve", Usage: "Preview a CSR/hash application through the fixed Tiana Bootstrap", Flags: []cli.Flag{stringOption("dir", "Built output containing tiana.app.json", ""), &cli.IntFlag{Name: "port", Usage: "Loopback preview port", Value: 4174, Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		port := cmd.Int("port")
 		if cmd.NArg() != 0 || cmd.String("dir") == "" || port < 1 || port > 65535 {

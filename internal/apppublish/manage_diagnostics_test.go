@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestWebSemanticFailuresRetainResponseRequestID(t *testing.T) {
+func TestAppSemanticFailuresRetainResponseRequestID(t *testing.T) {
 	for _, mode := range []string{"create", "list", "resolve", "delete", "deletion"} {
 		t.Run(mode, func(t *testing.T) {
 			var requestID string
@@ -38,14 +38,14 @@ func TestWebSemanticFailuresRetainResponseRequestID(t *testing.T) {
 	}
 }
 
-func TestWebNameOutcomesRetainLastPageRequestID(t *testing.T) {
+func TestAppNameOutcomesRetainLastPageRequestID(t *testing.T) {
 	for _, ambiguous := range []bool{false, true} {
 		t.Run(fmt.Sprint(ambiguous), func(t *testing.T) {
 			var requestID string
 			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
 				requestID = req.Header.Get("X-Request-ID")
 				if ambiguous {
-					w.Write([]byte(`{"items":[{"app_id":"web-a","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"},{"app_id":"web-b","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"}]}`))
+					w.Write([]byte(`{"items":[{"app_id":"apps-a","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"},{"app_id":"apps-b","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"}]}`))
 				} else {
 					w.Write([]byte(`{"items":[]}`))
 				}

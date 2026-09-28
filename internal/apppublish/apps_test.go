@@ -33,7 +33,7 @@ func TestAppsCreateReusesCloudAuthentication(t *testing.T) {
 		}
 		io.WriteString(w, `{"app_id":"AAAAAAAAAAAA","name":"Billing","owner_id":"prn-test","tenant_id":"ten-test"}`)
 	})
-	if code := runTest(r, out, context.Background(), []string{"web", "create", "Billing", "--json"}); code != 0 || !called {
+	if code := runTest(r, out, context.Background(), []string{"app", "create", "Billing", "--json"}); code != 0 || !called {
 		t.Fatalf("App create failed: %d %s", code, out)
 	}
 }
@@ -113,7 +113,7 @@ func TestUploadPreservesLayoutAndRefreshesExpiredAndUncertainPuts(t *testing.T) 
 	})
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: objects.Certificate().Raw}), 0600)
-	if code := runTest(r, out, context.Background(), []string{"web", "upload", "billing", "--dir", dir, "--entry", "entry.htm", "--upload-ca-file", caFile, "--json"}); code != 0 {
+	if code := runTest(r, out, context.Background(), []string{"app", "upload", "billing", "--dir", dir, "--entry", "entry.htm", "--upload-ca-file", caFile, "--json"}); code != 0 {
 		t.Fatalf("upload failed: %s", out)
 	}
 	if plans != 3 || puts.Load() != 2 || !stored["任意目录/页面 #1.js"] || manifest.EntryPath != "entry.htm" {

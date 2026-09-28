@@ -1,6 +1,6 @@
 {
-  "name": "@tianadb/cli",
-  "version": "0.2.1-beta.0",
+  "name": "@tianacloud/cli",
+  "version": "0.2.2-beta.1",
   "description": "Tiana CLI for account login, SQLite, Git and application publication",
   "repository": {
     "type": "git",
@@ -13,7 +13,7 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/",
-    "tag": "latest"
+    "tag": "next"
   },
   "bin": {
     "tiana": "bin/tiana.mjs",

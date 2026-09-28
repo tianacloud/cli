@@ -3,12 +3,13 @@
 Use `tiana` to sign in, manage SQLite and Git instances, run SQL, and connect
 native clients to Tiana Endpoints.
 
-Root help groups `web`, `sqlite` and `git` under `Products`. Use `tiana web`
+Root help groups `app`, `sqlite` and `git` under `Products`. Use `tiana app`
 for application listing, deletion, preview, creation, upload and publication status. Deployment
 selection uses `TIANA_API_ORIGIN`, configured before starting the CLI or agent.
-The former command and origin-variable names are not compatibility aliases.
+`apps` remains an alias for `app`; the former `web` command and origin-variable
+names are not aliases.
 
-The `web` commands use the App `app_id` returned by `/api/v1/apps`. Hosted App
+The `apps` commands use the App `app_id` returned by `/api/v1/apps`. Hosted App
 URLs are `/apps/<app_id>` and Console details are `/console/apps/<app_id>`,
 both without a trailing slash. Existing App IDs retain their values.
 
@@ -28,7 +29,7 @@ both without a trailing slash. Existing App IDs retain their values.
 Install with Node.js 20 or later:
 
 ```sh
-npm install -g @tianadb/cli
+npm install -g @tianacloud/cli
 tiana --version
 ```
 

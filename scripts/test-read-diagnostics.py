@@ -292,7 +292,7 @@ for filtered in [False, True]:
 modes.append({"name": "sqlite-branch-list-json-rejected", "argv": ["sqlite", "branch", "list", "--json", "fixture-id"], "stages": [], "exit": 2})
 for json_mode in [False, True]:
     modes.append({"name": "apps-status-" + ("json" if json_mode else "text"), "json": json_mode,
-                  "argv": ["web", "status", "fixture-app", "--version", "fixture-version", *(["--json"] if json_mode else [])],
+                  "argv": ["app", "status", "fixture-app", "--version", "fixture-version", *(["--json"] if json_mode else [])],
                   "stages": ["app-status"], "output": ["fixture-version", "published"]})
 
 with tempfile.TemporaryDirectory(prefix="tiana-read-diag-") as temporary:

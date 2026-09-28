@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestWebPreviewSavedAccountOutputFailureRetainsRequestIDs(t *testing.T) {
+func TestAppPreviewSavedAccountOutputFailureRetainsRequestIDs(t *testing.T) {
 	for _, mode := range []string{"default", "specified"} {
 		t.Run(mode, func(t *testing.T) {
 			var ids []string
@@ -51,7 +51,7 @@ func TestWebPreviewSavedAccountOutputFailureRetainsRequestIDs(t *testing.T) {
 			port := l.Addr().(*net.TCPAddr).Port
 			l.Close()
 			var diagnostics bytes.Buffer
-			code := runCLI(context.Background(), []string{"web", "serve", "--dir", dir, "--port", fmt.Sprint(port)}, nil, failedReceiptWriter{}, &diagnostics)
+			code := runCLI(context.Background(), []string{"app", "serve", "--dir", dir, "--port", fmt.Sprint(port)}, nil, failedReceiptWriter{}, &diagnostics)
 			if code != 1 || len(ids) < 3 {
 				t.Fatalf("code=%d requests=%d", code, len(ids))
 			}

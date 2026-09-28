@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual Web list/delete command modes and request diagnostics over isolated TLS."""
+"""Actual App list/delete command modes and request diagnostics over isolated TLS."""
 import argparse,hashlib,http.server,json,os,re,signal,socket,ssl,subprocess,tempfile,threading,time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -12,12 +12,12 @@ class Peer(http.server.BaseHTTPRequestHandler):
     def respond(self):
         self.rfile.read(int(self.headers.get('Content-Length',0)));path=urlsplit(self.path).path;rid=self.headers.get('X-Request-ID');assert rid
         assert self.headers.get('Authorization')=='Bearer fixture-access'
-        web={'app_id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
+        apps={'app_id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
         if path=='/api/v1/apps':
-            stage='page2' if '?' in self.path else 'page1';item=dict(web,app_id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['app_id'] if stage=='page1' else ''}
+            stage='page2' if '?' in self.path else 'page1';item=dict(apps,app_id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['app_id'] if stage=='page1' else ''}
         elif self.command=='DELETE':stage='delete';body={'app_id':ID,'state':'deleting','requested_at':1}
         elif path.endswith('/deletion'):stage='observe';body={'app_id':ID,'state':'deleted','requested_at':1,'deleted_at':2}
-        else:stage='resolve';body=web
+        else:stage='resolve';body=apps
         state['requests'].append({'stage':stage,'request_id':rid,'method':self.command})
         fault=state['fault'] if stage==state['stage'] else ''
         if fault.startswith('http'):
@@ -35,7 +35,7 @@ def check(command,fmt,diag,stage,fault,root,origin,ca):
     creds=root/'credentials.json';creds.write_text(json.dumps({'credentials':{origin:{'access_token':'fixture-access','refresh_token':'fixture-refresh','expires_at':'2099-01-01T00:00:00Z','user':{'user_id':'owner','tenant_id':'tenant'}}}}));creds.chmod(0o600)
     env={k:v for k,v in os.environ.items() if not k.startswith('TIANA_') and 'proxy' not in k.lower()};env.update(TIANA_API_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(creds),TIANA_PENDING_COMMAND_FILE=str(root/'pending.json'))
     if diag:env['TIANA_DIAGNOSTICS']='1'
-    argv=['web',command]+([ID,'-f','--wait'] if command=='delete' else [])+(['--json'] if fmt=='json' else [])
+    argv=['app',command]+([ID,'-f','--wait'] if command=='delete' else [])+(['--json'] if fmt=='json' else [])
     if fault=='input':argv.append('unexpected')
     writer=None
     if fault=='pipe':reader,writer=os.pipe();os.close(reader)

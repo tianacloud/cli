@@ -14,7 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func newWebDeleteCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
+func newAppDeleteCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "delete", Usage: "Delete an application and all its versions and hosted files", ArgsUsage: "ID_OR_NAME", Description: "Keeps associated SQLite and Git resources. Requires terminal confirmation unless --force is set. Default success means deletion accepted; --wait waits for origin cleanup, unfinished uploads can also be deleted.", Flags: []cli.Flag{&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}, deleteWaitOption(), boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 			return argumentFailure(ctx, cmd, "one App ID or exact name is required")
@@ -22,10 +22,10 @@ func newWebDeleteCommand(input io.Reader, output, diagnostics io.Writer) *cli.Co
 		if positionalWasTrimmed(cmd, cmd.Args().First()) {
 			return argumentFailure(ctx, cmd, "use -- before the App name to preserve surrounding whitespace")
 		}
-		return statusError(executeWebDelete(ctx, cmd.Args().First(), cmd.Bool("force"), cmd.Bool("wait"), cmd.Bool("json"), input, output, diagnostics))
+		return statusError(executeAppDelete(ctx, cmd.Args().First(), cmd.Bool("force"), cmd.Bool("wait"), cmd.Bool("json"), input, output, diagnostics))
 	}}
 }
-func executeWebDelete(ctx context.Context, reference string, force, wait, jsonMode bool, input io.Reader, output, diagnostics io.Writer) int {
+func executeAppDelete(ctx context.Context, reference string, force, wait, jsonMode bool, input io.Reader, output, diagnostics io.Writer) int {
 	fail := func(code, message, next string, exit int) int {
 		return writeAppResult(apppublish.Failure(&apppublish.Error{Code: code, Message: message, NextAction: next, ExitCode: exit}), jsonMode, output, diagnostics)
 	}
@@ -50,10 +50,10 @@ func executeWebDelete(ctx context.Context, reference string, force, wait, jsonMo
 	if err != nil && !errors.Is(err, authclient.ErrPendingNotFound) {
 		return fail("PENDING_UNAVAILABLE", "Cannot read pending operations", "Inspect the pending command store", 1)
 	}
-	if existing && (pending.Command != "web.delete" || pending.Origin != client.Origin() || (reference != pending.InstanceID && !sameStrings(pending.Args, []string{"delete", reference}))) {
+	if existing && ((pending.Command != "apps.delete" && pending.Command != "web.delete") || pending.Origin != client.Origin() || (reference != pending.InstanceID && !sameStrings(pending.Args, []string{"delete", reference}))) {
 		reportUnfinishedOperation(diagnostics, store.Path, pending)
-		if pending.Command == "web.create" {
-			return fail("WEB_CREATE_IN_PROGRESS", "App creation is unfinished; deletion is not allowed", "Recover the original web create command first", 1)
+		if pending.Command == "apps.create" || pending.Command == "web.create" {
+			return fail("APP_CREATE_IN_PROGRESS", "App creation is unfinished; deletion is not allowed", "Recover the original app create command first", 1)
 		}
 		return fail("PENDING_OPERATION", "An unfinished operation must be completed first", "Recover the original operation before deletion", 1)
 	}
@@ -103,7 +103,7 @@ func executeWebDelete(ctx context.Context, reference string, force, wait, jsonMo
 		if err != nil {
 			return fail("PENDING_UNAVAILABLE", "Cannot generate deletion intent", "Retry the same command", 1)
 		}
-		pending = authclient.PendingCommand{Command: "web.delete", Args: []string{"delete", reference}, InstanceID: target.AppID, WebDeleteVersionID: target.CurrentVersionID, Origin: client.Origin(), UserID: r.PrincipalID, TenantID: r.TenantID, IdempotencyKey: key, CreatedAt: time.Now().UTC()}
+		pending = authclient.PendingCommand{Command: "apps.delete", Args: []string{"delete", reference}, InstanceID: target.AppID, WebDeleteVersionID: target.CurrentVersionID, Origin: client.Origin(), UserID: r.PrincipalID, TenantID: r.TenantID, IdempotencyKey: key, CreatedAt: time.Now().UTC()}
 	}
 	if err = store.Save(pending); err != nil {
 		return fail("PENDING_UNAVAILABLE", "Cannot persist deletion intent; no request sent", "Inspect the pending command store", 1)
@@ -137,7 +137,7 @@ func executeWebDelete(ctx context.Context, reference string, force, wait, jsonMo
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return writeAppResult(apppublish.Result{Status: "pending", Data: d, Error: &apppublish.Error{RequestID: d.RequestID, Code: "WAIT_INTERRUPTED", Message: "Stopped waiting; server deletion continues", NextAction: "Retry web delete with the same ID and --wait", ExitCode: 130}}, jsonMode, output, diagnostics)
+				return writeAppResult(apppublish.Result{Status: "pending", Data: d, Error: &apppublish.Error{RequestID: d.RequestID, Code: "WAIT_INTERRUPTED", Message: "Stopped waiting; server deletion continues", NextAction: "Retry app delete with the same ID and --wait", ExitCode: 130}}, jsonMode, output, diagnostics)
 			case <-timer.C:
 			}
 			next, e := r.Deletion(ctx, target.AppID, nil)

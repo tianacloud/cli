@@ -16,9 +16,9 @@ import (
 
 const deletionTestID = "AAAAAAAAAAAA"
 
-func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
+func TestAppDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 	gets, deletes := 0, 0
-	client := webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+	client := appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/apps/"+deletionTestID {
 			t.Error("unexpected request path")
 		}
@@ -29,7 +29,7 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 		case "DELETE":
 			deletes++
 			p, e := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load()
-			if e != nil || p.Command != "web.delete" || p.InstanceID != deletionTestID {
+			if e != nil || (p.Command != "apps.delete" && p.Command != "web.delete") || p.InstanceID != deletionTestID {
 				t.Error("delete sent before durable target", e)
 			}
 			var body struct {
@@ -53,13 +53,22 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 	run := func(args []string, output io.Writer) int {
 		return runCLI(context.Background(), args, nil, output, &diagnostics)
 	}
-	if code := run([]string{"web", "delete", deletionTestID, "--json"}, &out); code != 2 || gets != 0 || deletes != 0 {
+	if code := run([]string{"app", "delete", deletionTestID, "--json"}, &out); code != 2 || gets != 0 || deletes != 0 {
 		t.Fatalf("unconfirmed delete code=%d gets=%d writes=%d", code, gets, deletes)
 	}
 	out.Reset()
-	args := []string{"web", "delete", deletionTestID, "--force", "--json"}
+	args := []string{"app", "delete", deletionTestID, "--force", "--json"}
 	if code := run(args, &out); code != 4 || deletes != 1 {
 		t.Fatalf("unknown delete=%d %s", code, &out)
+	}
+	pendingStore := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
+	pending, e := pendingStore.Load()
+	if e != nil {
+		t.Fatal(e)
+	}
+	pending.Command = "web.delete"
+	if e = pendingStore.Save(pending); e != nil {
+		t.Fatal(e)
 	}
 	original, e := client.LoadCredential()
 	if e != nil {
@@ -77,10 +86,10 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 	if e = credentialStore.Save(original); e != nil {
 		t.Fatal(e)
 	}
-	if code := run([]string{"web", "delete", "another", "--force"}, io.Discard); code == 0 || deletes != 1 {
+	if code := run([]string{"app", "delete", "another", "--force"}, io.Discard); code == 0 || deletes != 1 {
 		t.Fatal("replaced pending deletion target")
 	}
-	if code := run(args, rejectedWebOutput{}); code != 1 {
+	if code := run(args, rejectedAppOutput{}); code != 1 {
 		t.Fatalf("output error=%d", code)
 	}
 	if _, e := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load(); e != nil {
@@ -94,10 +103,10 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 		t.Fatal("successful receipt did not clear pending intent", e)
 	}
 }
-func TestWebDeleteWaitCancelLeavesRecoverableIntent(t *testing.T) {
+func TestAppDeleteWaitCancelLeavesRecoverableIntent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
 			return
@@ -106,7 +115,7 @@ func TestWebDeleteWaitCancelLeavesRecoverableIntent(t *testing.T) {
 		time.AfterFunc(20*time.Millisecond, cancel)
 	})
 	var out, diagnostics bytes.Buffer
-	code := runCLI(ctx, []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
+	code := runCLI(ctx, []string{"app", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
 	if code != 130 {
 		t.Fatalf("wait cancellation=%d %s %s", code, &out, &diagnostics)
 	}
@@ -115,9 +124,9 @@ func TestWebDeleteWaitCancelLeavesRecoverableIntent(t *testing.T) {
 		t.Fatal("cancelled waiting lost server deletion target", e)
 	}
 }
-func TestWebDeleteWaitPollsOnlyOriginalID(t *testing.T) {
+func TestAppDeleteWaitPollsOnlyOriginalID(t *testing.T) {
 	polls, writes := 0, 0
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "DELETE" {
 			writes++
 			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1}`)
@@ -131,22 +140,22 @@ func TestWebDeleteWaitPollsOnlyOriginalID(t *testing.T) {
 		io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
 	})
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics); code != 0 || polls != 1 || writes != 1 {
+	if code := runCLI(t.Context(), []string{"app", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics); code != 0 || polls != 1 || writes != 1 {
 		t.Fatalf("wait=%d polls=%d writes=%d %s", code, polls, writes, &out)
 	}
 }
 
-func TestWebDeleteRejectsPendingCreationWithoutRequest(t *testing.T) {
+func TestAppDeleteRejectsPendingCreationWithoutRequest(t *testing.T) {
 	calls := 0
-	client := webManagementFixture(t, func(http.ResponseWriter, *http.Request) { calls++ })
+	client := appManagementFixture(t, func(http.ResponseWriter, *http.Request) { calls++ })
 	store := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
-	pending := authclient.PendingCommand{Command: "web.create", Args: []string{"create", "App"}, Origin: client.Origin(), UserID: "owner", TenantID: "tenant", IdempotencyKey: "create-request", CreatedAt: time.Now()}
+	pending := authclient.PendingCommand{Command: "apps.create", Args: []string{"create", "App"}, Origin: client.Origin(), UserID: "owner", TenantID: "tenant", IdempotencyKey: "create-request", CreatedAt: time.Now()}
 	if err := store.Save(pending); err != nil {
 		t.Fatal(err)
 	}
 	var out, diagnostics bytes.Buffer
-	code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "--json"}, nil, &out, &diagnostics)
-	if code != 1 || calls != 0 || !bytes.Contains(out.Bytes(), []byte("WEB_CREATE_IN_PROGRESS")) {
+	code := runCLI(t.Context(), []string{"app", "delete", deletionTestID, "-f", "--json"}, nil, &out, &diagnostics)
+	if code != 1 || calls != 0 || !bytes.Contains(out.Bytes(), []byte("APP_CREATE_IN_PROGRESS")) {
 		t.Fatalf("code=%d calls=%d out=%s", code, calls, &out)
 	}
 	after, err := store.Load()
@@ -155,9 +164,9 @@ func TestWebDeleteRejectsPendingCreationWithoutRequest(t *testing.T) {
 	}
 }
 
-func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
+func TestAppDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 	deletes := 0
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
 			return
@@ -169,7 +178,7 @@ func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 	store := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
 	for i := 0; i < 2; i++ {
 		var out, diagnostics bytes.Buffer
-		code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
+		code := runCLI(t.Context(), []string{"app", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
 		if code != 1 || deletes != i+1 || !bytes.Contains(out.Bytes(), []byte("APP_DELETE_PREVIEW_CHANGED")) {
 			t.Fatalf("code=%d deletes=%d out=%s", code, deletes, &out)
 		}
@@ -179,9 +188,9 @@ func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 	}
 }
 
-func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
+func TestAppDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
 	var version string
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/apps":
 			io.WriteString(w, `{"items":[{"app_id":"`+deletionTestID+`","name":"My App","owner_id":"owner","tenant_id":"tenant"}]}`)
@@ -199,13 +208,13 @@ func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
 		}
 	})
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(t.Context(), []string{"web", "delete", "My App", "--force", "--json"}, nil, &out, &diagnostics); code != 0 || version != "published-v2" {
+	if code := runCLI(t.Context(), []string{"app", "delete", "My App", "--force", "--json"}, nil, &out, &diagnostics); code != 0 || version != "published-v2" {
 		t.Fatalf("code=%d version=%q out=%s diagnostics=%s", code, version, &out, &diagnostics)
 	}
 }
 
-func TestWebDeleteEmptyApplication(t *testing.T) {
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+func TestAppDeleteEmptyApplication(t *testing.T) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"Empty","owner_id":"owner","tenant_id":"tenant","versions":[]}`)
 			return
@@ -220,13 +229,13 @@ func TestWebDeleteEmptyApplication(t *testing.T) {
 		io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":""}`)
 	})
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics); code != 0 {
+	if code := runCLI(t.Context(), []string{"app", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics); code != 0 {
 		t.Fatalf("code=%d out=%s diagnostics=%s", code, &out, &diagnostics)
 	}
 }
 
-func TestWebDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+func TestAppDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "DELETE":
 			w.WriteHeader(http.StatusConflict)
@@ -238,7 +247,7 @@ func TestWebDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
 		}
 	})
 	var out, diagnostics bytes.Buffer
-	code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics)
+	code := runCLI(t.Context(), []string{"app", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics)
 	if code != 0 || !bytes.Contains(out.Bytes(), []byte(`"git_instance_id":"git-1"`)) {
 		t.Fatalf("code=%d output=%s diagnostics=%s", code, &out, &diagnostics)
 	}

@@ -1,6 +1,6 @@
 # Preview account authentication (2026-09-26)
 
-User requested migrating CLI web to access/refresh authentication. This decision
+User requested migrating CLI apps to access/refresh authentication. This decision
 supersedes older root guidance requiring instance-scoped preview token issuance.
 
 - Each browser login owns a separate in-memory SDK account store; do not read or
@@ -11,7 +11,7 @@ supersedes older root guidance requiring instance-scoped preview token issuance.
   trusted application code should run under this authorization.
 - `window.tiana.auth.getAccessToken({signal})` is the dynamic provider for the new
   serverless SDK. Old snapshot consumers must switch to the provider for refresh.
-  `web create/upload/status` remain account-authenticated. MGR published bootstrap
+  `app create/upload/status` remain account-authenticated. MGR published bootstrap
   and its issuance lifecycle are outside this local preview change.
 - Broker calls serialize/share credential rotation. Browser cancellation only
   cancels its wait; independent work has a ten-second ceiling. Sync readiness must
@@ -36,7 +36,7 @@ returning consumers to static token snapshots before removing the provider API.
 ## Saved CLI login reuse (2026-09-27)
 
 User explicitly requested removing repeated preview login and adding hosted auth.
-This supersedes the browser-only isolation rule above: web serve defaults to the
+This supersedes the browser-only isolation rule above: app serve defaults to the
 saved CLI account when it authorizes the manifest database. SDK handles disk and
 cross-process rotation locks; never copy a refresh token into an independent store.
 Pin user+tenant, stop on account switch, never replay uncertain refresh or SQL.

@@ -93,8 +93,8 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 					json.Unmarshal(data, &view)
 					view["version_id"] = "v1"
 					view["asset_base"] = "https://cdn.example/tenant/billing/v1/"
-					view["application_url"] = "https://console.example/apps/billing"
-					view["version_url"] = "https://console.example/apps/billing?version=v1"
+					view["application_url"] = "https://console.example/apps/billing/"
+					view["version_url"] = "https://console.example/apps/billing/?version=v1"
 					json.NewEncoder(w).Encode(view)
 				default:
 					t.Errorf("unexpected %s", r.Method)
@@ -117,9 +117,24 @@ func TestCSRUploadReturnsOnlyConfirmedApplicationLinks(t *testing.T) {
 				t.Fatal(result.Error)
 			}
 			data := result.Data.(map[string]any)
-			if data["application_url"] != "https://console.example/apps/billing" || data["version_url"] != "https://console.example/apps/billing?version=v1" {
+			if data["application_url"] != "https://console.example/apps/billing/" || data["version_url"] != "https://console.example/apps/billing/?version=v1" {
 				t.Fatal("missing confirmed app links")
 			}
 		})
+	}
+}
+
+func TestHostedLinkIdentityAndTrailingSlash(t *testing.T) {
+	for _, path := range []string{"/apps/billing", "/apps/billing/"} {
+		app := "https://console.example" + path
+		if !validApplicationLinks(app, app+"?version=v1", "billing", "v1") {
+			t.Fatalf("rejected %s", app)
+		}
+	}
+	for _, path := range []string{"/apps/other/", "/web/billing/", "/apps/billing//", "/apps/billing/_tiana/bootstrap.js", "/apps/billing/?x=1"} {
+		app := "https://console.example" + path
+		if validApplicationLinks(app, app+"?version=v1", "billing", "v1") {
+			t.Fatalf("accepted %s", app)
+		}
 	}
 }

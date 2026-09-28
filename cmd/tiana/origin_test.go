@@ -20,7 +20,7 @@ import (
 func TestInheritedOriginReachesCommandsWithoutChangingEnvironmentOrNativeArguments(t *testing.T) {
 	const origin = "https://configured.example.test"
 	t.Setenv("TIANA_API_ORIGIN", origin)
-	for _, command := range [][]string{{"login"}, {"status"}, {"sqlite", "shell"}, {"web", "serve"}, {"web", "upload"}, {"connect"}, {"git", "remote-helper"}} {
+	for _, command := range [][]string{{"login"}, {"status"}, {"sqlite", "shell"}, {"app", "serve"}, {"app", "upload"}, {"connect"}, {"git", "remote-helper"}} {
 		root := newCLICommand(nil, io.Discard, io.Discard, nil)
 		leaf := root
 		for _, name := range command {

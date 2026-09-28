@@ -55,23 +55,23 @@ func (r Runner) ListPage(ctx context.Context, after string) (AppPage, *Error) {
 	}
 	var page AppPage
 	if json.Unmarshal(res.Body, &page) != nil || page.Items == nil {
-		return page, invalidWebResponse(res.RequestID)
+		return page, invalidAppResponse(res.RequestID)
 	}
 	last := after
 	for _, w := range page.Items {
 		if !appID(w.AppID) || w.AppID <= last || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
-			return AppPage{}, invalidWebResponse(res.RequestID)
+			return AppPage{}, invalidAppResponse(res.RequestID)
 		}
 		last = w.AppID
 	}
 	if page.NextCursor != "" && (len(page.Items) == 0 || page.NextCursor != last) {
-		return AppPage{}, invalidWebResponse(res.RequestID)
+		return AppPage{}, invalidAppResponse(res.RequestID)
 	}
 	page.RequestID = res.RequestID
 	return page, nil
 }
-func invalidWebResponse(requestID string) *Error {
-	return &Error{RequestID: requestID, Code: "INVALID_WEB_RESPONSE", Message: "MGR returned inconsistent App metadata", NextAction: "Inspect the service response before retrying", ExitCode: 1}
+func invalidAppResponse(requestID string) *Error {
+	return &Error{RequestID: requestID, Code: "INVALID_APP_RESPONSE", Message: "MGR returned inconsistent App metadata", NextAction: "Inspect the service response before retrying", ExitCode: 1}
 }
 
 // Resolve uses the immutable ID first, then a complete exact-name search. Duplicate
@@ -82,7 +82,7 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 		if e == nil {
 			var w App
 			if json.Unmarshal(res.Body, &w) != nil || w.AppID != reference || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
-				return w, invalidWebResponse(res.RequestID)
+				return w, invalidAppResponse(res.RequestID)
 			}
 			return w, nil
 		}
@@ -113,7 +113,7 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 		for _, w := range result.Items {
 			if w.Name == reference {
 				if match != nil {
-					return App{}, &Error{RequestID: result.RequestID, Code: "AMBIGUOUS_WEB_NAME", Message: "Multiple applications have this name", NextAction: "Use tiana web list and delete by exact ID", ExitCode: 2}
+					return App{}, &Error{RequestID: result.RequestID, Code: "AMBIGUOUS_APP_NAME", Message: "Multiple applications have this name", NextAction: "Use tiana app list and delete by exact ID", ExitCode: 2}
 				}
 				v := w
 				match = &v
@@ -123,11 +123,11 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 			if match != nil {
 				return *match, nil
 			}
-			return App{}, &Error{RequestID: result.RequestID, Code: "WEB_NOT_FOUND", Message: "application not found", NextAction: "Use tiana web list to find its ID", ExitCode: 1}
+			return App{}, &Error{RequestID: result.RequestID, Code: "APP_NOT_FOUND", Message: "application not found", NextAction: "Use tiana app list to find its ID", ExitCode: 1}
 		}
 		after = result.NextCursor
 	}
-	return App{}, &Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many App pages to resolve safely", NextAction: "Use the exact App ID", ExitCode: 1}
+	return App{}, &Error{RequestID: lastRequestID, Code: "APP_LIST_LIMIT", Message: "Too many App pages to resolve safely", NextAction: "Use the exact App ID", ExitCode: 1}
 }
 
 type AppDeletion struct {
@@ -167,9 +167,9 @@ func (r Runner) Deletion(ctx context.Context, id string, confirmation *AppDelete
 	}
 	var d AppDeletion
 	if json.Unmarshal(res.Body, &d) != nil || d.AppID != id || (d.State != "deleting" && d.State != "deleted") || d.RequestedAt <= 0 || (d.State == "deleted" && d.DeletedAt <= 0) {
-		e := invalidWebResponse(res.RequestID)
+		e := invalidAppResponse(res.RequestID)
 		if confirmation != nil {
-			e.Code = "WEB_DELETE_OUTCOME_UNKNOWN"
+			e.Code = "APP_DELETE_OUTCOME_UNKNOWN"
 			e.ExitCode = 4
 		}
 		return AppDeletion{}, e

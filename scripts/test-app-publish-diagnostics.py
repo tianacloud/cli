@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual web create/upload processes with isolated verified management/object TLS."""
+"""Actual app create/upload processes with isolated verified management/object TLS."""
 import argparse, hashlib, http.server, json, os, re, signal, socket, ssl, subprocess, tempfile, threading, time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -94,7 +94,7 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     env={k:v for k,v in os.environ.items() if not k.startswith('TIANA_') and 'proxy' not in k.lower()}
     env.update(TIANA_API_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(creds),TIANA_PENDING_COMMAND_FILE=str(root/'pending.json'))
     if diag: env['TIANA_DIAGNOSTICS']='1'
-    argv=['web',command,state['name'] if command=='create' else 'fixture']
+    argv=['app',command,state['name'] if command=='create' else 'fixture']
     if command=='upload': argv+=['--dir',str(build),'--entry','index.html','--upload-ca-file',str(ca)]
     if csr:
         offset=argv.index('--entry');del argv[offset:offset+2]

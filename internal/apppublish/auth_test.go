@@ -99,7 +99,7 @@ func TestAppRequestRefreshesExpiredCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Client = client
-	if code := runTest(r, out, context.Background(), []string{"web", "create", "Billing", "--json"}); code != 0 || requests != 2 {
+	if code := runTest(r, out, context.Background(), []string{"app", "create", "Billing", "--json"}); code != 0 || requests != 2 {
 		t.Fatalf("refresh failed code=%d requests=%d output=%s", code, requests, out)
 	}
 }

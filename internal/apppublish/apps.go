@@ -74,7 +74,7 @@ func appError(code, message string) *Error {
 	if code == "PUBLISH_OUTCOME_UNKNOWN" {
 		exit = 4
 	}
-	return &Error{Code: code, Message: message, NextAction: "Retry the same web upload command to resume the same version", ExitCode: exit}
+	return &Error{Code: code, Message: message, NextAction: "Retry the same app upload command to resume the same version", ExitCode: exit}
 }
 func (r Runner) Run(ctx context.Context, o Options) Result {
 	if err := o.Validate(); err != nil {
@@ -96,7 +96,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		}
 		res, e := r.request(ctx, id, "POST", "/api/v1/apps", map[string]string{"name": *name, "request_id": o.RequestID, "description": o.Description})
 		if e != nil {
-			e.NextAction = "Repeat the same tiana web create command to recover this request"
+			e.NextAction = "Repeat the same tiana app create command to recover this request"
 			return Failure(e)
 		}
 		var created struct {
@@ -107,16 +107,16 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			TenantID    string `json:"tenant_id"`
 		}
 		if json.Unmarshal(res.Body, &created) != nil || !appID(created.AppID) || created.Name != o.Name || created.Description != o.Description || created.OwnerID != id.PrincipalID || (id.TenantID != "" && created.TenantID != id.TenantID) {
-			return Failure(&Error{RequestID: res.RequestID, Code: "CREATE_OUTCOME_UNKNOWN", Message: "MGR returned an inconsistent App creation receipt", NextAction: "Repeat the same tiana web create command to recover the original request", ExitCode: 4})
+			return Failure(&Error{RequestID: res.RequestID, Code: "CREATE_OUTCOME_UNKNOWN", Message: "MGR returned an inconsistent App creation receipt", NextAction: "Repeat the same tiana app create command to recover the original request", ExitCode: 4})
 		}
 		return Success(res.Body)
 	}
 	if *name != "" {
-		return Failure(inputError("NAME is only valid for web create"))
+		return Failure(inputError("NAME is only valid for app create"))
 	}
 	if o.Command == "status" {
 		if !appID(*version) || *dir != "" || *entry != "" || *caFile != "" {
-			return Failure(inputError("Use web status ID --version ID"))
+			return Failure(inputError("Use app status ID --version ID"))
 		}
 		res, e := r.request(ctx, id, "GET", base+"/versions/"+url.PathEscape(*version), nil)
 		if e != nil {
@@ -125,7 +125,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 		return Success(res.Body)
 	}
 	if *dir == "" || (*version != "" && !appID(*version)) {
-		return Failure(inputError("Use web upload ID --dir DIR [--version ID] [--entry PATH]"))
+		return Failure(inputError("Use app upload ID --dir DIR [--version ID] [--entry PATH]"))
 	}
 	if *caFile == "" && r.UploadHTTP == nil {
 		var roots *x509.CertPool
@@ -231,7 +231,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 
 func validApplicationLinks(app, pinned, applicationID, version string) bool {
 	u, err := url.Parse(app)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || u.Path != "/apps/"+applicationID {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || (u.Path != "/apps/"+applicationID && u.Path != "/apps/"+applicationID+"/") {
 		return false
 	}
 	return pinned == app+"?version="+version

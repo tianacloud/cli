@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { binaryName, platformDirectory } from './npm/bin/platforms.mjs';
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('..', import.meta.url));
+const version = JSON.parse(readFileSync(path.join(repo, 'packaging/npm/package.json'), 'utf8')).version;
 
 test('download, checksum, install and invoke a native CLI', { timeout: 60000 }, async t => {
   const root = mkdtempSync(path.join(tmpdir(), 'tiana install 中文-'));
@@ -36,7 +37,7 @@ test('download, checksum, install and invoke a native CLI', { timeout: 60000 }, 
     await t.test(kind, async () => {
       const destination = path.join(root, kind);
       await cp(path.join(repo, 'packaging/npm'), destination, { recursive: true });
-      writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version: '0.2.1-beta.0', assets: { [target]: { filename: 'native.tar.gz', url, sha256: kind === 'bad-checksum' ? '0'.repeat(64) : sha256 } } }));
+      writeFileSync(path.join(destination, 'release.json'), JSON.stringify({ version, assets: { [target]: { filename: 'native.tar.gz', url, sha256: kind === 'bad-checksum' ? '0'.repeat(64) : sha256 } } }));
       status = kind === 'not-found' ? 404 : 200;
       const install = run(process.execPath, [path.join(destination, 'bin/install.mjs')]);
       if (kind === 'success') {

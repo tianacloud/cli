@@ -18,11 +18,11 @@ or business framework requirement is added.
 tiana status
 tiana sqlite create billing --wait
 tiana git create billing-source --wait
-tiana web create Billing -m "Team billing dashboard" --json
+tiana app create Billing -m "Team billing dashboard" --json
 # Save data.app_id as APP_ID; set manifest app_id to APP_ID before building dist.
-tiana web serve --dir dist --port 4174
-tiana web upload APP_ID --version release-1 --dir dist --json
-tiana web status APP_ID --version release-1 --json
+tiana app serve --dir dist --port 4174
+tiana app upload APP_ID --version release-1 --dir dist --json
+tiana app status APP_ID --version release-1 --json
 ```
 
 Record the real instance IDs and Git remote URL. Push the matching source commit
@@ -35,7 +35,7 @@ published descriptor is reported as a hosted application URL under `/apps/ID`.
 
 ## Preview authentication boundary
 
-`web serve` first reuses the saved CLI account through the SDK's locked store.
+`app serve` first reuses the saved CLI account through the SDK's locked store.
 It prints a one-use, five-minute local authorization URL. Open that exact URL to
 establish a path-bound HttpOnly preview cookie without another Console login.
 The launch proof travels in a fragment, is removed before app code loads, and is
@@ -74,10 +74,10 @@ failed read from a consumed refresh, the broker conservatively requires a new
 login; it never replays an uncertain refresh. A pending-sync polling timeout can
 be retried using the saved replacement. No data/SQL operation is replayed here.
 
-`web create/upload/status` use account authentication. The matching hosted Web
+`app create/upload/status` use account authentication. The matching hosted App
 Bootstrap now exposes the identical provider; MGR renews short-lived tenant data
 grants using the existing HttpOnly Console session. The hosted connection POST
-body is `{}`. Deploy matching Web/MGR before publishing provider-dependent apps.
+body is `{}`. Deploy matching App/MGR before publishing provider-dependent apps.
 
 Account login start/resume uses private, bounded, per-origin pending files and an
 exclusive lock. The one-use exchange is marked before transmission; restart cannot
@@ -98,10 +98,10 @@ native binary help checks, and the Bootstrap browser harness. A fixture run is n
 a deployed Gateway/OSS acceptance. Real deployment and WorkBuddy runtime checks
 must be recorded separately.
 
-### Web identity and creation retries
+### App identity and creation retries
 
-`web create NAME [-m DESCRIPTION] --json` asks MGR to generate `app_id` (12 unpadded base64url characters from 9 random bytes). Capture `data.app_id` and use that exact ID for
-`web upload ID`, `web status ID` and the manifest's `app_id`. NAME is a display
+`app create NAME [-m DESCRIPTION] --json` asks MGR to generate `app_id` (`app-` followed by 24 unpadded base64url characters from 18 random bytes). Capture `data.app_id` and use that exact ID for
+`app upload ID`, `app status ID` and the manifest's `app_id`. NAME is a display
 name; it neither chooses the ID nor implies name uniqueness. No `--project`,
 `--name` or caller-supplied creation ID is accepted.
 
@@ -109,19 +109,19 @@ The CLI locks its existing pending-command store, persists a request ID before
 POST, and clears it only after writing a confirmed receipt. Repeat the identical
 create command after interruption; do not delete the pending record or create a
 new request while the outcome is unknown. A completed command can be run again
-to create a separate Web resource with the same display name. Reuse an already
+to create a separate App resource with the same display name. Reuse an already
 recorded ID instead when continuing the same application.
 
-`web list` displays ID and name. Terminals page through results; redirected output
-and `web list --json` collect all pages. Listing stays bound to the same account
+`app list` displays ID and name. Terminals page through results; redirected output
+and `app list --json` collect all pages. Listing stays bound to the same account
 and tenant; invalid/nonadvancing cursors fail instead of looping.
 
-## Delete a Web application
+## Delete a App application
 
 ```sh
-tiana web list --json
-tiana web delete APP_ID                 # terminal confirmation
-tiana web delete APP_ID --force --wait --json
+tiana app list --json
+tiana app delete APP_ID                 # terminal confirmation
+tiana app delete APP_ID --force --wait --json
 ```
 
 Deletion accepts an immutable ID or exact name; duplicate names require an ID.
@@ -148,12 +148,12 @@ file to bypass it. Stopping the CLI does not cancel server deletion. A confirmed
 receipt clears the local intent. If deletion stays pending, inspect the server cleanup logs. Cleanup failures stay
 queued; --wait polls until completion or cancellation, without a stored error code.
 
-### Web application description
+### App application description
 
-`web create NAME -m "Description"` also accepts `--description`. It is optional
+`app create NAME -m "Description"` also accepts `--description`. It is optional
 (default empty) and limited to 1024 UTF-8 bytes. Unicode, line breaks and tabs are
 preserved; other control characters are rejected. This is application metadata,
-not a version identifier or manifest field. Creation, `web list --json` and the
+not a version identifier or manifest field. Creation, `app list --json` and the
 MGR App detail response include `description`. Repeat the same name and
 description to recover an interrupted creation; changing either cannot replace
 an existing pending request. The matching MGR App API is required.
@@ -169,6 +169,6 @@ do not embed a commit's hash into its own tracked manifest. Verify the remote
 release ref points to that commit before uploading. The CLI validates format;
 MGR validates tenant/product availability, not the Git object or build provenance.
 
-The fields travel with each immutable Web version and appear in Console details.
+The fields travel with each immutable App version and appear in Console details.
 Adding/changing either requires a new version. Both omitted means unlinked; a
 partial binding is invalid. Requires the matching CLI/MGR/Console rollout.

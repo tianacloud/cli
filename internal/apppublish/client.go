@@ -31,7 +31,7 @@ func (o Options) Validate() *Error {
 	switch o.Command {
 	case "create":
 		if o.AppID != "" || strings.TrimSpace(o.Name) == "" || len(o.Name) > 128 || !utf8.ValidString(o.Name) || o.Dir != "" || o.Version != "" || o.Entry != "" || o.UploadCAFile != "" {
-			return inputError("Use web create NAME [-m DESCRIPTION] [--json]; the server generates the ID")
+			return inputError("Use app create NAME [-m DESCRIPTION] [--json]; the server generates the ID")
 		}
 		for _, r := range o.Name {
 			if unicode.IsControl(r) {
@@ -48,14 +48,14 @@ func (o Options) Validate() *Error {
 		}
 	case "status":
 		if !appID(o.Version) || o.Dir != "" || o.Entry != "" || o.UploadCAFile != "" || o.Name != "" || o.Description != "" {
-			return inputError("Use web status ID --version ID")
+			return inputError("Use app status ID --version ID")
 		}
 	case "upload":
 		if o.Dir == "" || (o.Version != "" && !appID(o.Version)) || o.Name != "" || o.Description != "" {
-			return inputError("Use web upload ID --dir DIR [--version ID] [--entry PATH]")
+			return inputError("Use app upload ID --dir DIR [--version ID] [--entry PATH]")
 		}
 	default:
-		return inputError("Choose web create, upload or status")
+		return inputError("Choose app create, upload or status")
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func Failure(err *Error) Result {
 	return Result{Status: status, Error: err}
 }
 func inputError(message string) *Error {
-	return &Error{Code: "INVALID_INPUT", Message: message, NextAction: "Use tiana web --help", ExitCode: 2}
+	return &Error{Code: "INVALID_INPUT", Message: message, NextAction: "Use tiana app --help", ExitCode: 2}
 }
 func authError(err error) *Error {
 	if errors.Is(err, authclient.ErrAuthenticationRequired) || errors.Is(err, authclient.ErrCredentialNotFound) {
@@ -161,13 +161,13 @@ func (r Runner) request(ctx context.Context, id identity, method, path string, b
 		if method != "GET" && api.Status >= 500 {
 			exit = 4
 		}
-		return result, &Error{HTTPStatus: api.Status, Code: code, Message: message, NextAction: "Retry the same command or inspect web status for this version", ExitCode: exit}
+		return result, &Error{HTTPStatus: api.Status, Code: code, Message: message, NextAction: "Retry the same command or inspect app status for this version", ExitCode: exit}
 	}
 	if ctx.Err() != nil {
 		return result, appError("UPLOAD_INTERRUPTED", "Publishing was interrupted; retry the same version")
 	}
 	if method != "GET" {
-		return result, &Error{Code: "MGR_OUTCOME_UNKNOWN", Message: "The management write may have completed; its response was not received", NextAction: "Retry the same version or inspect web status", ExitCode: 4}
+		return result, &Error{Code: "MGR_OUTCOME_UNKNOWN", Message: "The management write may have completed; its response was not received", NextAction: "Retry the same version or inspect app status", ExitCode: 4}
 	}
 	return result, appError("MGR_UNAVAILABLE", "Could not reach MGR")
 }

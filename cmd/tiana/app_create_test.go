@@ -18,11 +18,11 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
-type rejectedWebOutput struct{}
+type rejectedAppOutput struct{}
 
-func (rejectedWebOutput) Write([]byte) (int, error) { return 0, errors.New("output interrupted") }
+func (rejectedAppOutput) Write([]byte) (int, error) { return 0, errors.New("output interrupted") }
 
-func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing.T) {
+func TestAppCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing.T) {
 	dir := t.TempDir()
 	pendingPath := filepath.Join(dir, "pending.json")
 	t.Setenv("TIANA_PENDING_COMMAND_FILE", pendingPath)
@@ -61,26 +61,42 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	if err := authclient.NewFileStore(creds, server.URL).Save(authclient.Credential{AccessToken: "access", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour), User: authclient.User{ID: "owner", TenantID: "tenant"}}); err != nil {
 		t.Fatal(err)
 	}
+	command := "apps"
 	run := func(name string, out io.Writer) int {
 		var diagnostics bytes.Buffer
-		return runCLI(context.Background(), []string{"web", "create", name, "-m", "应用描述", "--json"}, nil, out, &diagnostics)
+		return runCLI(context.Background(), []string{command, "create", name, "-m", "应用描述", "--json"}, nil, out, &diagnostics)
 	}
 	var out bytes.Buffer
 	if code := run("App", &out); code != 4 {
 		t.Fatalf("unknown status=%d %s", code, &out)
 	}
+	command = "app"
 	store := authclient.NewFilePendingCommandStore(pendingPath)
 	original, err := store.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code := runCLI(t.Context(), []string{"web", "create", "App", "-m", "changed", "--json"}, nil, io.Discard, io.Discard); code == 0 {
+	if original.Command != "apps.create" {
+		t.Fatalf("changed persisted command: %q", original.Command)
+	}
+	if code := run("App", rejectedAppOutput{}); code != 1 {
+		t.Fatalf("alias recovery status=%d", code)
+	}
+	original.Command = "web.create"
+	if err := store.Save(original); err != nil {
+		t.Fatal(err)
+	}
+	var recovery bytes.Buffer
+	if code := runCLI(t.Context(), []string{"app", "create", "App", "-m", "changed", "--json"}, nil, io.Discard, &recovery); code == 0 {
 		t.Fatal("overwrote pending description")
+	}
+	if !strings.Contains(recovery.String(), "tiana app ") || strings.Contains(recovery.String(), "not supported") {
+		t.Fatalf("missing recovery command for saved creation: %s", &recovery)
 	}
 	if code := run("Different", io.Discard); code == 0 {
 		t.Fatal("overwrote pending name")
 	}
-	if code := run("App", rejectedWebOutput{}); code != 1 {
+	if code := run("App", rejectedAppOutput{}); code != 1 {
 		t.Fatalf("output error status=%d", code)
 	}
 	saved, err := store.Load()
@@ -96,7 +112,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(keys) != 3 {
+	if len(keys) != 4 {
 		t.Fatalf("requests=%d", len(keys))
 	}
 	for _, key := range keys {
@@ -106,12 +122,12 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	}
 }
 
-func TestWebCreateRejectsCallerSelectedIdentity(t *testing.T) {
+func TestAppCreateRejectsCallerSelectedIdentity(t *testing.T) {
 	t.Setenv("TIANA_PENDING_COMMAND_FILE", filepath.Join(t.TempDir(), "pending.json"))
 	for _, args := range [][]string{
-		{"web", "create"}, {"web", "create", "App", "Extra"},
-		{"web", "create", "--project", "chosen", "--name", "App"},
-		{"web", "create", "App", "--id", "chosen"}, {"web", "create", "App", "--name", "Other"},
+		{"app", "create"}, {"app", "create", "App", "Extra"},
+		{"app", "create", "--project", "chosen", "--name", "App"},
+		{"app", "create", "App", "--id", "chosen"}, {"app", "create", "App", "--name", "Other"},
 	} {
 		var out, diagnostics bytes.Buffer
 		if code := runCLI(t.Context(), args, nil, &out, &diagnostics); code != 2 {
@@ -120,7 +136,7 @@ func TestWebCreateRejectsCallerSelectedIdentity(t *testing.T) {
 	}
 }
 
-func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
+func TestAppCreateDescriptionFlagsAndValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		args        []string
@@ -137,7 +153,7 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+			appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				var body map[string]string
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -148,7 +164,7 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 				}
 				json.NewEncoder(w).Encode(map[string]string{"app_id": deletionTestID, "name": "App", "description": body["description"], "owner_id": "owner", "tenant_id": "tenant"})
 			})
-			args := append([]string{"web", "create", "App", "--json"}, tc.args...)
+			args := append([]string{"app", "create", "App", "--json"}, tc.args...)
 			var out, diagnostics bytes.Buffer
 			code := runCLI(t.Context(), args, nil, &out, &diagnostics)
 			if tc.valid && (code != 0 || calls != 1) || !tc.valid && (code != 2 || calls != 0) {
@@ -158,12 +174,12 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 	}
 }
 
-func TestWebCreateMismatchedDescriptionRetainsIntent(t *testing.T) {
-	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+func TestAppCreateMismatchedDescriptionRetainsIntent(t *testing.T) {
+	appManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","description":"wrong","owner_id":"owner","tenant_id":"tenant"}`)
 	})
 	var out, diagnostics bytes.Buffer
-	code := runCLI(t.Context(), []string{"web", "create", "App", "-m", "expected", "--json"}, nil, &out, &diagnostics)
+	code := runCLI(t.Context(), []string{"app", "create", "App", "-m", "expected", "--json"}, nil, &out, &diagnostics)
 	if code != 4 || !bytes.Contains(out.Bytes(), []byte("CREATE_OUTCOME_UNKNOWN")) {
 		t.Fatalf("code=%d out=%s", code, &out)
 	}

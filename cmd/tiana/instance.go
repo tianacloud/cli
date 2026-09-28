@@ -24,10 +24,10 @@ func isHelp(args []string) bool {
 func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authclient.PendingCommand) {
 	fmt.Fprintln(errorOutput, "tiana: an unfinished product operation must be completed first")
 	switch pending.Command {
-	case "web.delete":
-		fmt.Fprintf(errorOutput, "Recover the Web deletion with:\n  tiana web delete %s --force --wait\n", safeDisplay(quoteCommandArgs([]string{pending.InstanceID})))
-	case "web.create":
-		fmt.Fprintf(errorOutput, "Finish the Web operation with:\n  tiana web %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
+	case "apps.delete", "web.delete":
+		fmt.Fprintf(errorOutput, "Recover the App deletion with:\n  tiana app delete %s --force --wait\n", safeDisplay(quoteCommandArgs([]string{pending.InstanceID})))
+	case "apps.create", "web.create":
+		fmt.Fprintf(errorOutput, "Finish the App operation with:\n  tiana app %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "git.create":
 		fmt.Fprintf(errorOutput, "Finish the Git operation with:\n  tiana git %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "db.create":

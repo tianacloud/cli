@@ -10,10 +10,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func newWebListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
+func newAppListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "list", Usage: "List applications", Description: "An interactive terminal pages the results; otherwise all pages are printed once.", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 0 {
-			return argumentFailure(ctx, cmd, "web list does not accept positional arguments")
+			return argumentFailure(ctx, cmd, "app list does not accept positional arguments")
 		}
 		client, err := newAuthClient(ctx, diagnostics, !isTerminal(input))
 		if err != nil {
@@ -24,10 +24,10 @@ func newWebListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Comm
 		if e != nil {
 			return statusError(writeAppResult(apppublish.Failure(e), cmd.Bool("json"), output, diagnostics))
 		}
-		return statusError(runWebList(ctx, r, cmd.Bool("json"), interactiveListRequested(input, output, false), input, output, diagnostics))
+		return statusError(runAppList(ctx, r, cmd.Bool("json"), interactiveListRequested(input, output, false), input, output, diagnostics))
 	}}
 }
-func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive bool, input io.Reader, output, diagnostics io.Writer) int {
+func runAppList(ctx context.Context, r apppublish.Runner, jsonMode, interactive bool, input io.Reader, output, diagnostics io.Writer) int {
 	after := ""
 	lastRequestID := ""
 	all := []apppublish.App{}
@@ -42,7 +42,7 @@ func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive 
 		}
 		lastRequestID = result.RequestID
 		if interactive && !jsonMode {
-			if err := writeWebTable(output, result.Items); err != nil {
+			if err := writeAppTable(output, result.Items); err != nil {
 				return 1
 			}
 		} else {
@@ -53,7 +53,7 @@ func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive 
 				return writeAppResult(apppublish.Success(apppublish.AppPage{Items: all}), true, output, diagnostics)
 			}
 			if !interactive {
-				if err := writeWebTable(output, all); err != nil {
+				if err := writeAppTable(output, all); err != nil {
 					return 1
 				}
 			}
@@ -81,9 +81,9 @@ func runWebList(ctx context.Context, r apppublish.Runner, jsonMode, interactive 
 		}
 		after = result.NextCursor
 	}
-	return fail(&apppublish.Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many App pages to list safely", NextAction: "Inspect the service pagination", ExitCode: 1})
+	return fail(&apppublish.Error{RequestID: lastRequestID, Code: "APP_LIST_LIMIT", Message: "Too many App pages to list safely", NextAction: "Inspect the service pagination", ExitCode: 1})
 }
-func writeWebTable(out io.Writer, items []apppublish.App) error {
+func writeAppTable(out io.Writer, items []apppublish.App) error {
 	if len(items) == 0 {
 		_, err := fmt.Fprintln(out, "No applications found.")
 		return err

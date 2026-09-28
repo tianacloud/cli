@@ -46,7 +46,7 @@ def check(fault,diag,root,origin,ca):
     reserved=socket.socket();reserved.bind(('127.0.0.1',0));port=reserved.getsockname()[1]
     if fault!='bind':reserved.close()
     else:reserved.listen()
-    argv=['web','serve','--dir',str(build),'--port',str(port)]
+    argv=['app','serve','--dir',str(build),'--port',str(port)]
     if fault=='json':argv+=['--json']
     if fault=='input':argv[-1]='0'
     if fault=='manifest':manifest['routing']='history';(build/'tiana.app.json').write_text(json.dumps(manifest))

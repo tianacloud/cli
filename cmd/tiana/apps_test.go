@@ -16,7 +16,7 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
-func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
+func TestAppCreateUsesExistingLoginCredential(t *testing.T) {
 	t.Setenv("TIANA_PENDING_COMMAND_FILE", filepath.Join(t.TempDir(), "pending.json"))
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -34,9 +34,9 @@ func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, diagnostics bytes.Buffer
-	code := runCLI(context.Background(), []string{"web", "create", "Billing", "--json"}, nil, &out, &diagnostics)
+	code := runCLI(context.Background(), []string{"app", "create", "Billing", "--json"}, nil, &out, &diagnostics)
 	if code != 0 || !called {
-		t.Fatalf("web unavailable: code=%d stderr=%s stdout=%s", code, &diagnostics, &out)
+		t.Fatalf("app unavailable: code=%d stderr=%s stdout=%s", code, &diagnostics, &out)
 	}
 	var body struct {
 		Status string `json:"status"`
@@ -49,20 +49,20 @@ func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
 	}
 }
 
-func TestWebHelpAndValidation(t *testing.T) {
-	for _, args := range [][]string{{"web", "--help"}, {"web", "upload", "--help"}} {
+func TestAppHelpAndValidation(t *testing.T) {
+	for _, args := range [][]string{{"app", "--help"}, {"app", "upload", "--help"}, {"apps", "--help"}, {"apps", "upload", "--help"}} {
 		var out, diagnostics bytes.Buffer
 		if code := runCLI(context.Background(), args, nil, &out, &diagnostics); code != 0 {
 			t.Fatalf("help: %d %s", code, &diagnostics)
 		}
 	}
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(context.Background(), []string{"web", "upload", "bad/app", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
+	if code := runCLI(context.Background(), []string{"app", "upload", "bad/app", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
 		t.Fatalf("invalid App code=%d", code)
 	}
 }
 
-func TestWebFailureRetainsRequestID(t *testing.T) {
+func TestAppFailureRetainsRequestID(t *testing.T) {
 	for _, jsonMode := range []bool{false, true} {
 		t.Run(fmt.Sprint(jsonMode), func(t *testing.T) {
 			requestID := ""
@@ -80,7 +80,7 @@ func TestWebFailureRetainsRequestID(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("TIANA_PENDING_COMMAND_FILE", filepath.Join(t.TempDir(), "pending.json"))
-			args := []string{"web", "create", "billing"}
+			args := []string{"app", "create", "billing"}
 			if jsonMode {
 				args = append(args, "--json")
 			}
