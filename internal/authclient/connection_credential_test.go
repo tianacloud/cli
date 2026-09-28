@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestConnectionCredentialSources(t *testing.T) {
 			t.Setenv("TIANA_API_ORIGIN", "https://mgr.example.test")
 			t.Setenv("TIANA_CREDENTIALS_FILE", path)
 			legacy := filepath.Join(dir, "instance-tokens.json")
-			os.WriteFile(legacy, []byte("broken legacy cache"), 0600)
+			writeFixtureFile(legacy, []byte("broken legacy cache"), 0600)
 			t.Setenv("TIANA_INSTANCE_TOKENS_FILE", legacy)
 			if mode != "missing" {
 				if err := NewFileStore(path, DefaultOrigin()).Save(Credential{AccessToken: "account-secret", RefreshToken: "refresh-secret", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
@@ -33,10 +34,10 @@ func TestConnectionCredentialSources(t *testing.T) {
 			case "explicit":
 				t.Setenv("TIANA_TOKEN", "explicit-secret")
 				want = "explicit-secret"
-				os.WriteFile(path, []byte("broken"), 0600)
+				writeFixtureFile(path, []byte("broken"), 0600)
 			case "file":
 				p := filepath.Join(dir, "token.txt")
-				os.WriteFile(p, []byte("file-secret\r\n"), 0600)
+				writeFixtureFile(p, []byte("file-secret\r\n"), 0600)
 				t.Setenv("TIANA_TOKEN_FILE", p)
 				want = "file-secret"
 				os.Remove(path)
@@ -48,7 +49,7 @@ func TestConnectionCredentialSources(t *testing.T) {
 			case "bad-file":
 				t.Setenv("TIANA_TOKEN_FILE", filepath.Join(dir, "missing"))
 			case "corrupt":
-				os.WriteFile(path, []byte("broken"), 0600)
+				writeFixtureFile(path, []byte("broken"), 0600)
 			case "expired":
 				NewFileStore(path, DefaultOrigin()).Save(Credential{AccessToken: "account-secret", RefreshToken: "refresh-secret", ExpiresAt: time.Now().Add(-time.Hour)})
 			}
@@ -92,20 +93,23 @@ func TestConnectionCredentialFileSafety(t *testing.T) {
 			case "header-injection":
 				value = "private-secret\r\nInjected: true"
 			}
-			if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			if err := writeFixtureFile(path, []byte(value), 0600); err != nil {
 				t.Fatal(err)
 			}
 			switch mode {
 			case "symlink":
 				link := filepath.Join(dir, "link")
 				if err := os.Symlink(path, link); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("symlinks need developer mode or privilege: %v", err)
+					}
 					t.Fatal(err)
 				}
 				path = link
 			case "directory":
 				path = dir
 			case "public":
-				if err := os.Chmod(path, 0644); err != nil {
+				if err := chmodFixtureFile(path, 0644); err != nil {
 					t.Fatal(err)
 				}
 			}

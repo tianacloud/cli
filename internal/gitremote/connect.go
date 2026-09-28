@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/tianacloud/cli/internal/diagnostics"
@@ -77,7 +76,7 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (result tunnel, err 
 		if errors.As(err, &dnsError) {
 			return nil, errors.New("Gateway DNS resolution failed")
 		}
-		if errors.Is(err, syscall.ECONNREFUSED) {
+		if errors.Is(err, connectionRefused) {
 			return nil, errors.New("Gateway TCP connection refused")
 		}
 		return nil, errors.New("Gateway TCP connection failed")

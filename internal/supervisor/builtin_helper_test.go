@@ -200,7 +200,7 @@ func TestBuiltinOwnerExitStillAcknowledgesDrain(t *testing.T) {
 	if _, err = p.WaitReady(ctx); err != nil {
 		t.Fatal(err)
 	}
-	child := exec.Command("sleep", "10")
+	child := ownerExitTestCommand(t)
 	if err = child.Start(); err != nil {
 		t.Fatal(err)
 	}

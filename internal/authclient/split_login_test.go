@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -76,19 +77,22 @@ func TestSplitLoginRejectsUnsafeStateBeforeNetwork(t *testing.T) {
 			path, _ := client.pendingLoginPath()
 			switch kind {
 			case "permissions":
-				if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
+				if err := writeFixtureFile(path, []byte("{}"), 0644); err != nil {
 					t.Fatal(err)
 				}
 			case "symlink":
 				target := filepath.Join(t.TempDir(), "target")
-				if err := os.WriteFile(target, []byte("{}"), 0600); err != nil {
+				if err := writeFixtureFile(target, []byte("{}"), 0600); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Symlink(target, path); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("symlinks need developer mode or privilege: %v", err)
+					}
 					t.Fatal(err)
 				}
 			case "oversized":
-				if err := os.WriteFile(path, make([]byte, maxPendingBytes+1), 0600); err != nil {
+				if err := writeFixtureFile(path, make([]byte, maxPendingBytes+1), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}

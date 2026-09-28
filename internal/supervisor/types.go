@@ -283,8 +283,8 @@ func validSessionFailureCode(code string) bool {
 }
 
 // ChildIdentity is the trusted handoff produced from the supervisor's spawn
-// result. StartTime is the Linux /proc/<pid>/stat starttime tick value; a
-// random nonce is not an owner identity and is never used here.
+// result. StartTime is the Linux /proc/<pid>/stat starttime tick value, or
+// Windows process creation FILETIME. macOS uses zero with kqueue exit watching.
 type ChildIdentity struct {
 	PID       int
 	StartTime uint64

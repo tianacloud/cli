@@ -22,7 +22,7 @@ func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "credentials.json")
 			t.Setenv("TIANA_CREDENTIALS_FILE", path)
 			legacy := filepath.Join(t.TempDir(), "instance-tokens.json")
-			os.WriteFile(legacy, []byte("broken"), 0600)
+			writeFixtureFile(legacy, []byte("broken"), 0600)
 			t.Setenv("TIANA_INSTANCE_TOKENS_FILE", legacy)
 			want := "account-secret"
 			if mode != "missing" {
@@ -37,7 +37,7 @@ func TestGitUsesAccountInsteadOfLocalInstanceToken(t *testing.T) {
 			if mode == "file" {
 				want = "file-secret"
 				p := filepath.Join(t.TempDir(), "token")
-				os.WriteFile(p, []byte(want+"\n"), 0600)
+				writeFixtureFile(p, []byte(want+"\n"), 0600)
 				t.Setenv("TIANA_TOKEN_FILE", p)
 			}
 			if mode == "invalid-explicit" {

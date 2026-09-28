@@ -105,14 +105,21 @@ func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 func openLoginBrowser(ctx context.Context, uri string) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.CommandContext(ctx, "open", uri)
-	case "linux":
-		command = exec.CommandContext(ctx, "xdg-open", uri)
-	default:
-		return
+	command := loginBrowserCommand(ctx, runtime.GOOS, uri)
+	if command != nil {
+		_ = command.Run()
 	}
-	_ = command.Run()
+}
+
+func loginBrowserCommand(ctx context.Context, platform, uri string) *exec.Cmd {
+	switch platform {
+	case "darwin":
+		return exec.CommandContext(ctx, "open", uri)
+	case "linux":
+		return exec.CommandContext(ctx, "xdg-open", uri)
+	case "windows":
+		return exec.CommandContext(ctx, "rundll32.exe", "url.dll,FileProtocolHandler", uri)
+	default:
+		return nil
+	}
 }

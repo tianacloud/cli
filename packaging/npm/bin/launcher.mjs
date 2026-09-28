@@ -1,13 +1,8 @@
 import { spawn } from 'node:child_process';
 import { constants } from 'node:os';
 import { fileURLToPath } from 'node:url';
-
-export function platformDirectory(platform, arch) {
-  return {
-    'darwin:arm64': 'darwin-arm64',
-    'linux:x64': 'linux-amd64',
-  }[`${platform}:${arch}`];
-}
+import { platformDirectory, binaryName } from './platforms.mjs';
+export { platformDirectory } from './platforms.mjs';
 
 export function run(args = process.argv.slice(2)) {
   const platform = platformDirectory(process.platform, process.arch);
@@ -16,9 +11,10 @@ export function run(args = process.argv.slice(2)) {
     process.exitCode = 1;
     return;
   }
-  const executable = fileURLToPath(new URL(`../platforms/${platform}/tiana`, import.meta.url));
+  const executable = fileURLToPath(new URL(`../native/${binaryName(platform)}`, import.meta.url));
   const child = spawn(executable, args, { stdio: 'inherit' });
-  const onInterrupt = () => child.kill('SIGINT');
+  // Windows delivers Ctrl+C to both processes attached to this console.
+  const onInterrupt = () => { if (process.platform !== 'win32') child.kill('SIGINT'); };
   const onTerminate = () => child.kill('SIGTERM');
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onTerminate);

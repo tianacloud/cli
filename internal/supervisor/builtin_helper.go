@@ -22,7 +22,7 @@ const BuiltinHelperArgument = "__tiana_builtin_helper"
 type BuiltinHelperLauncher struct{}
 
 func (BuiltinHelperLauncher) Launch(ctx context.Context, source CredentialSource) (HelperClient, error) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		return nil, ErrHelperNotTrusted
 	}
 	executable, err := os.Executable()
