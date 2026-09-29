@@ -7,3 +7,5 @@
 *.test
 *.out
 coverage.*
+
+/packaging/npm/node_modules/

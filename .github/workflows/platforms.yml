@@ -56,6 +56,8 @@ jobs:
         run: |
           go test -mod=readonly -timeout 3m ./...
           go vet -mod=readonly ./...
+      - name: Install npm packaging dependencies
+        run: npm ci --prefix packaging/npm --ignore-scripts
       - name: npm launcher and installation tests
         run: node --test packaging/launcher.test.mjs packaging/install.test.mjs
       - name: Seven-platform packaging

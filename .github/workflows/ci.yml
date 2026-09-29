@@ -63,6 +63,8 @@ jobs:
           python3 scripts/test_uninstall_safety.py
           python3 scripts/check-public-source.py
           CGO_ENABLED=0 go build -mod=readonly -trimpath -o /tmp/tiana ./cmd/tiana
+      - name: Install npm packaging dependencies
+        run: npm ci --prefix packaging/npm --ignore-scripts
       - name: npm launchers and package fixtures
         run: node --test packaging/*.test.mjs
       - name: Module metadata

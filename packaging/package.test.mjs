@@ -37,6 +37,8 @@ test('seven-platform archives and a small npm downloader package', { timeout: 18
     assert.ok(contents.includes('package/release.json'));
     const pkg = JSON.parse(execFileSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' }));
     assert.equal(pkg.scripts.postinstall, 'node bin/install.mjs');
+    assert.equal(pkg.dependencies.fflate, '0.8.3');
+    assert.ok(contents.includes('package/bin/extract-zip.mjs'));
     assert.equal(pkg.name, '@tianacloud/cli');
     assert.equal(pkg.version, version);
     assert.equal(pkg.bin['git-remote-tiana'], 'bin/git-remote-tiana.mjs');

@@ -1,6 +1,6 @@
 {
   "name": "@tianacloud/cli",
-  "version": "0.2.2-beta.0",
+  "version": "0.2.2-beta.4",
   "description": "Tiana CLI for account login, SQLite, Git and application publication",
   "repository": {
     "type": "git",
@@ -36,5 +36,8 @@
     "x64",
     "arm64",
     "riscv64"
-  ]
+  ],
+  "dependencies": {
+    "fflate": "0.8.3"
+  }
 }

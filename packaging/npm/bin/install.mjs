@@ -5,6 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, wr
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { binaryName, platformDirectory } from './platforms.mjs';
+import { extractWindowsBinary } from './extract-zip.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 async function install() {
@@ -22,14 +23,12 @@ async function install() {
     const contents = Buffer.from(await response.arrayBuffer());
     if (createHash('sha256').update(contents).digest('hex') !== asset.sha256) throw new Error('Binary archive checksum mismatch.');
     const archive = path.join(temporary, target.startsWith('windows-') ? 'cli.zip' : 'cli.tar.gz');
-    writeFileSync(archive, contents);
     const extracted = path.join(temporary, 'unpacked');
     mkdirSync(extracted);
     if (process.platform === 'win32') {
-      execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:TIANA_ARCHIVE,$env:TIANA_DEST)"], {
-        env: { ...process.env, TIANA_ARCHIVE: archive, TIANA_DEST: extracted }, stdio: 'pipe',
-      });
+      extractWindowsBinary(contents, extracted);
     } else {
+      writeFileSync(archive, contents);
       execFileSync('tar', ['-xzf', archive, '-C', extracted], { stdio: 'pipe' });
     }
     const name = binaryName(target);

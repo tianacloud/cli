@@ -172,3 +172,7 @@ MGR validates tenant/product availability, not the Git object or build provenanc
 The fields travel with each immutable Web version and appear in Console details.
 Adding/changing either requires a new version. Both omitted means unlinked; a
 partial binding is invalid. Requires the matching CLI/MGR/Console rollout.
+
+Installer and packaging tests require `npm ci --prefix packaging/npm --ignore-scripts`
+before running `node --test packaging/*.test.mjs`. This installs the ZIP dependency
+without running the source template’s release downloader.

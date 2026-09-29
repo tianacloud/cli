@@ -36,7 +36,8 @@ tiana --version
 The installer downloads the matching archive from the public
 [Gitee release repository](https://gitee.com/tianacloud/cli-releases/releases).
 Targets are macOS amd64/arm64, Linux amd64/arm64/riscv64 and Windows amd64/arm64.
-Windows uses PowerShell to extract the archive; macOS/Linux use tar.
+Starting with 0.2.2-beta.4, the Windows installer extracts ZIP files inside Node.js;
+macOS/Linux use tar. Earlier npm packages retain their original installer.
 
 For source builds, use Go 1.25 or later, Git, and access to the repository's Go
 dependencies. A Go build includes the SQLite shell, Git transport and connect
