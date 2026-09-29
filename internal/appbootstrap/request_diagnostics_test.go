@@ -51,7 +51,7 @@ func TestPreviewCarriesBrowserIdentityToManagementRequests(t *testing.T) {
 		}}, nil
 	})
 	request := func(path, id string, cookie *http.Cookie) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", "http://127.0.0.1:4174/apps/billing/_tiana/"+path, nil)
+		req := httptest.NewRequest("POST", "http://127.0.0.1:4174/web/billing/_tiana/"+path, nil)
 		req.Header.Set("Origin", s.config.Origin)
 		req.Header.Set("X-Tiana-Bootstrap", "1")
 		req.Header.Set("X-Request-ID", id)
@@ -71,7 +71,7 @@ func TestPreviewCarriesBrowserIdentityToManagementRequests(t *testing.T) {
 	}
 	cookie := login.Result().Cookies()[0]
 	for i := 0; i < 100; i++ {
-		if previewRequest(s, "GET", "/apps/billing/_tiana/session", cookie).Code == 200 {
+		if previewRequest(s, "GET", "/web/billing/_tiana/session", cookie).Code == 200 {
 			break
 		}
 		time.Sleep(time.Millisecond * 5)

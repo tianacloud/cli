@@ -19,7 +19,7 @@ tiana status
 tiana sqlite create billing --wait
 tiana git create billing-source --wait
 tiana web create Billing -m "Team billing dashboard" --json
-# Save data.app_id as APP_ID; set manifest app_id to APP_ID before building dist.
+# Save data.id as APP_ID; set manifest web_id to APP_ID before building dist.
 tiana web serve --dir dist --port 4174
 tiana web upload APP_ID --version release-1 --dir dist --json
 tiana web status APP_ID --version release-1 --json
@@ -31,7 +31,7 @@ only with identical artifacts. Publication pins the account identity and does no
 replay a management write after a rejected credential or uncertain response.
 Upload links carry object scope and required private ACL/public-resource tags;
 management credentials are never forwarded to object storage. Only a confirmed
-published descriptor is reported as a hosted application URL under `/apps/ID`.
+published descriptor is reported as a hosted application URL under `/web/ID/`.
 
 ## Preview authentication boundary
 
@@ -100,8 +100,8 @@ must be recorded separately.
 
 ### Web identity and creation retries
 
-`web create NAME [-m DESCRIPTION] --json` asks MGR to generate `app_id` (12 unpadded base64url characters from 9 random bytes). Capture `data.app_id` and use that exact ID for
-`web upload ID`, `web status ID` and the manifest's `app_id`. NAME is a display
+`web create NAME [-m DESCRIPTION] --json` asks MGR to generate `id` (12 unpadded base64url characters from 9 random bytes). Capture `data.id` and use that exact ID for
+`web upload ID`, `web status ID` and the manifest's `web_id`. NAME is a display
 name; it neither chooses the ID nor implies name uniqueness. No `--project`,
 `--name` or caller-supplied creation ID is accepted.
 

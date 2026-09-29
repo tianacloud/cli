@@ -9,9 +9,9 @@ selection uses `TIANA_API_ORIGIN`, a single saved account origin, or the built-i
 deployment default, in that order.
 The former command and origin-variable names are not compatibility aliases.
 
-The `web` commands use the App `app_id` returned by `/api/v1/apps`. Hosted App
-URLs are `/apps/<app_id>` and Console details are `/console/apps/<app_id>`,
-both without a trailing slash. Existing App IDs retain their values.
+The `web` commands use the Web project `id` returned by `/api/v1/web-projects`. Hosted Web
+URLs are `/web/<id>/` and Console details are `/console/web/<id>`.
+Hosted URLs have a trailing slash. Existing Web IDs retain their values.
 
 - [Build and install](#build-and-install)
 - [Configure and sign in](#configure-and-sign-in)

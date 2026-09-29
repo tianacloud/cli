@@ -9,8 +9,8 @@ try {
  await context.route('https://console.example/authorize', route=>route.fulfill({contentType:'text/html',body:'<h1>Explicit Console test fixture</h1>'}));
  const page=await context.newPage();
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
- const denied=await context.request.get(origin+'/apps/billing/_tiana/files/assets/app.js');assert.equal(denied.status(),401);
- await page.goto(origin+'/apps/billing?version=fixture-v1#/transactions');
+ const denied=await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js');assert.equal(denied.status(),401);
+ await page.goto(origin+'/web/billing?version=fixture-v1#/transactions');
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
  const popupPromise=context.waitForEvent('page');
  await page.locator('#tiana-sign-in').click();
@@ -22,7 +22,7 @@ try {
  await page.waitForFunction(()=>document.querySelector('#app').dataset.instance==='ins_billing');
  assert.equal(await page.locator('#app').textContent(),'Browser ledger');
  assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
- assert.equal(new URL(page.url()).pathname,'/apps/billing');
+ assert.equal(new URL(page.url()).pathname,'/web/billing/');
  assert.equal(new URL(page.url()).search,'?version=fixture-v1');
  assert.equal(await page.locator('#tiana-bar,#tiana-login,#tiana-loading').count(),0);
  await page.reload();
@@ -84,10 +84,10 @@ try {
  }
  await page.reload();
  await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
- await page.evaluate(()=>fetch(new URL('/apps/billing/_tiana/logout',location.origin),{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}}));
+ await page.evaluate(()=>fetch(new URL('/web/billing/_tiana/logout',location.origin),{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}}));
  await page.reload();
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
- assert.equal((await context.request.get(origin+'/apps/billing/_tiana/files/assets/app.js')).status(),401);
+ assert.equal((await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js')).status(),401);
  for (const mode of ['http','json','network']) {
   let requestID;
   await context.route('**/_tiana/login',route=>{
@@ -120,7 +120,7 @@ try {
  const stranger=await browser.newContext();
  const replay=await stranger.newPage();await replay.goto(launch.url);
  await replay.getByText('本地授权链接已失效，请重新启动预览或使用 Console 登录。',{exact:false}).waitFor();
- assert.equal((await stranger.request.get(origin+'/apps/billing/_tiana/app')).status(),401);
+ assert.equal((await stranger.request.get(origin+'/web/billing/_tiana/app')).status(),401);
  await stranger.close();
  assert.deepEqual(errors,[]);
  console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout.');

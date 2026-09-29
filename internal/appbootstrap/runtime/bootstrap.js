@@ -64,7 +64,7 @@ async function loadApplication() {
       if (signal.aborted) abort();
     });
   }});
-  const context = Object.freeze({appId: manifest.app_id, localPreview, auth, async connection() {
+  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, async connection() {
     if (credential && credentialExpiresAt > Date.now() + 30000) return credential;
     if (!pendingConnection) {
       pendingConnection = (async () => {

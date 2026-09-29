@@ -43,7 +43,7 @@ func TestWebPreviewSavedAccountOutputFailureRetainsRequestIDs(t *testing.T) {
 			}
 			dir := t.TempDir()
 			os.WriteFile(filepath.Join(dir, "app.js"), []byte(`export function mount(){}`), 0600)
-			os.WriteFile(filepath.Join(dir, "tiana.app.json"), []byte(`{"schema_version":1,"app_id":"fixture","name":"Fixture","rendering":"csr","routing":"hash","entry":"app.js","database_instance_id":"ins_fixture"}`), 0600)
+			os.WriteFile(filepath.Join(dir, "tiana.app.json"), []byte(`{"schema_version":1,"web_id":"fixture","name":"Fixture","rendering":"csr","routing":"hash","entry":"app.js","database_instance_id":"ins_fixture"}`), 0600)
 			l, err := net.Listen("tcp4", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)

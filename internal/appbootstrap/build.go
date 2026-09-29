@@ -21,7 +21,7 @@ var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
 type Manifest struct {
 	SchemaVersion      int      `json:"schema_version"`
-	AppID              string   `json:"app_id"`
+	WebID              string   `json:"web_id"`
 	Name               string   `json:"name"`
 	Rendering          string   `json:"rendering"`
 	Routing            string   `json:"routing"`
@@ -67,7 +67,7 @@ func LoadBuild(dir string) (_ *Build, err error) {
 	if dec.Decode(&m) != nil || dec.Decode(new(any)) != io.EOF {
 		return nil, errors.New("invalid application manifest")
 	}
-	if m.SchemaVersion != 1 || !identifier.MatchString(m.AppID) || len(m.Name) > 160 || strings.TrimSpace(m.Name) == "" || m.Rendering != "csr" || m.Routing != "hash" || !identifier.MatchString(m.DatabaseInstanceID) {
+	if m.SchemaVersion != 1 || !identifier.MatchString(m.WebID) || len(m.Name) > 160 || strings.TrimSpace(m.Name) == "" || m.Rendering != "csr" || m.Routing != "hash" || !identifier.MatchString(m.DatabaseInstanceID) {
 		return nil, errors.New("application requires schema 1, CSR, hash routing, app and database IDs")
 	}
 	if (m.GitInstanceID != "" || m.SourceCommit != "") && (!strings.HasPrefix(m.GitInstanceID, "git-") || len(m.GitInstanceID) <= 4 || !identifier.MatchString(m.GitInstanceID) || !sourceCommit.MatchString(m.SourceCommit)) {

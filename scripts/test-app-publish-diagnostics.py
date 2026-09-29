@@ -32,7 +32,7 @@ class Peer(http.server.BaseHTTPRequestHandler):
             assert rid and self.headers.get('Authorization') == 'Bearer app-fixture-access'
             data = json.loads(raw or b'null')
             if '/versions/' not in path:
-                stage, body = 'create', {'app_id': 'AAAAAAAAAAAA', 'name': data['name'], 'description':data['description'], 'owner_id':'fixture-user','tenant_id':'fixture-tenant'}
+                stage, body = 'create', {'id': 'AAAAAAAAAAAA', 'name': data['name'], 'description':data['description'], 'owner_id':'fixture-user','tenant_id':'fixture-tenant'}
                 assert self.command=='POST' and data['request_id']
                 state['business_request_id']=data['request_id']
                 assert data['name'] == state['name']
@@ -43,13 +43,13 @@ class Peer(http.server.BaseHTTPRequestHandler):
                     'headers': {'Content-MD5':f['md5'], 'Content-Type':f['content_type'], 'X-Oss-Forbid-Overwrite':'true'},
                     'expires_at':'2099-01-01T00:00:00Z', 'uploaded': state.get('stored',False)}]}
             elif path.endswith('/bootstrap'):
-                stage, body = 'bootstrap', dict(state['manifest'],version_id=state['version']['version_id'],application_url='https://apps.example.test/apps/fixture',version_url='https://apps.example.test/apps/fixture?version='+state['version']['version_id'])
+                stage, body = 'bootstrap', dict(state['manifest'],version_id=state['version']['version_id'],application_url='https://apps.example.test/web/fixture/',version_url='https://apps.example.test/web/fixture/?version='+state['version']['version_id'])
             elif path.endswith('/complete'):
                 stage, body = 'complete', dict(state['version'], state='published')
             else:
                 stage = 'prepare'
                 state['manifest'] = data.get('application',{})
-                state['version'] = {'tenant_id':'fixture-tenant','app_id':'fixture','version_id':path.split('/')[-1],
+                state['version'] = {'tenant_id':'fixture-tenant','id':'fixture','version_id':path.split('/')[-1],
                     'fingerprint':hashlib.sha256(raw.strip()).hexdigest(),'state':'published' if state['fault']=='published' else 'uploading'}
                 body = dict(state['version'])
         state['requests'].append({'stage':stage,'method':self.command,'request_id':rid,'path':path})
@@ -87,7 +87,7 @@ def check(command, fmt, diag, stage, fault, root, origin, ca):
     csr = stage=='bootstrap' or fault=='csr'
     if csr:
         entry.rename(build/'app.js'); entry=build/'app.js'
-        (build/'tiana.app.json').write_text(json.dumps({'schema_version':1,'app_id':'fixture','name':'Fixture','rendering':'csr','routing':'hash','entry':'app.js','database_instance_id':'ins_fixture'}))
+        (build/'tiana.app.json').write_text(json.dumps({'schema_version':1,'web_id':'fixture','name':'Fixture','rendering':'csr','routing':'hash','entry':'app.js','database_instance_id':'ins_fixture'}))
     state.clear();state.update(origin=origin,content=content,entry=entry,requests=[],name='Fixture App',stage=stage,fault=fault,reached=threading.Event(),release=threading.Event())
     creds = root/'credential.json'
     creds.write_text(json.dumps({'credentials':{origin:{'access_token':'app-fixture-access','refresh_token':'app-fixture-refresh','expires_at':'2099-01-01T00:00:00Z','user':{'user_id':'fixture-user','tenant_id':'fixture-tenant'}}}}));creds.chmod(0o600)

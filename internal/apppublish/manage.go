@@ -8,8 +8,8 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
-type App struct {
-	AppID            string `json:"app_id"`
+type WebProject struct {
+	ID               string `json:"id"`
 	Name             string `json:"name"`
 	Description      string `json:"description"`
 	OwnerID          string `json:"owner_id"`
@@ -17,10 +17,10 @@ type App struct {
 	CreatedAt        int64  `json:"created_at"`
 	CurrentVersionID string `json:"current_version_id,omitempty"`
 }
-type AppPage struct {
-	RequestID  string `json:"-"`
-	Items      []App  `json:"items"`
-	NextCursor string `json:"next_cursor,omitempty"`
+type WebProjectPage struct {
+	RequestID  string       `json:"-"`
+	Items      []WebProject `json:"items"`
+	NextCursor string       `json:"next_cursor,omitempty"`
 }
 
 // Bind freezes account/tenant identity across pages, target resolution and confirmation.
@@ -41,79 +41,79 @@ func (r Runner) boundRequest(ctx context.Context, method, path string, body any)
 	}
 	return r.request(ctx, identity{r.PrincipalID, r.TenantID}, method, path, body)
 }
-func (r Runner) ListPage(ctx context.Context, after string) (AppPage, *Error) {
+func (r Runner) ListPage(ctx context.Context, after string) (WebProjectPage, *Error) {
 	if after != "" && !appID(after) {
-		return AppPage{}, inputError("Invalid App list cursor")
+		return WebProjectPage{}, inputError("Invalid Web list cursor")
 	}
-	path := "/api/v1/apps"
+	path := "/api/v1/web-projects"
 	if after != "" {
 		path += "?after=" + url.QueryEscape(after)
 	}
 	res, e := r.boundRequest(ctx, "GET", path, nil)
 	if e != nil {
-		return AppPage{}, e
+		return WebProjectPage{}, e
 	}
-	var page AppPage
+	var page WebProjectPage
 	if json.Unmarshal(res.Body, &page) != nil || page.Items == nil {
 		return page, invalidWebResponse(res.RequestID)
 	}
 	last := after
 	for _, w := range page.Items {
-		if !appID(w.AppID) || w.AppID <= last || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
-			return AppPage{}, invalidWebResponse(res.RequestID)
+		if !appID(w.ID) || w.ID <= last || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
+			return WebProjectPage{}, invalidWebResponse(res.RequestID)
 		}
-		last = w.AppID
+		last = w.ID
 	}
 	if page.NextCursor != "" && (len(page.Items) == 0 || page.NextCursor != last) {
-		return AppPage{}, invalidWebResponse(res.RequestID)
+		return WebProjectPage{}, invalidWebResponse(res.RequestID)
 	}
 	page.RequestID = res.RequestID
 	return page, nil
 }
 func invalidWebResponse(requestID string) *Error {
-	return &Error{RequestID: requestID, Code: "INVALID_WEB_RESPONSE", Message: "MGR returned inconsistent App metadata", NextAction: "Inspect the service response before retrying", ExitCode: 1}
+	return &Error{RequestID: requestID, Code: "INVALID_WEB_RESPONSE", Message: "MGR returned inconsistent Web metadata", NextAction: "Inspect the service response before retrying", ExitCode: 1}
 }
 
 // Resolve uses the immutable ID first, then a complete exact-name search. Duplicate
 // names never select a target, including when matches span multiple pages.
-func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
+func (r Runner) Resolve(ctx context.Context, reference string) (WebProject, *Error) {
 	if appID(reference) {
-		res, e := r.boundRequest(ctx, "GET", "/api/v1/apps/"+url.PathEscape(reference), nil)
+		res, e := r.boundRequest(ctx, "GET", "/api/v1/web-projects/"+url.PathEscape(reference), nil)
 		if e == nil {
-			var w App
-			if json.Unmarshal(res.Body, &w) != nil || w.AppID != reference || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
+			var w WebProject
+			if json.Unmarshal(res.Body, &w) != nil || w.ID != reference || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
 				return w, invalidWebResponse(res.RequestID)
 			}
 			return w, nil
 		}
 		if e.HTTPStatus != 404 {
-			return App{}, e
+			return WebProject{}, e
 		}
 
 		// A durable deletion receipt survives removal from the active list and makes
 		// retry by immutable ID possible after a lost DELETE response.
 		receipt, de := r.Deletion(ctx, reference, nil)
 		if de == nil {
-			return App{AppID: receipt.AppID, OwnerID: r.PrincipalID, TenantID: r.TenantID, CurrentVersionID: receipt.ExpectedVersionID}, nil
+			return WebProject{ID: receipt.ID, OwnerID: r.PrincipalID, TenantID: r.TenantID, CurrentVersionID: receipt.ExpectedVersionID}, nil
 		}
 		if de.HTTPStatus != 404 {
-			return App{}, de
+			return WebProject{}, de
 		}
 
 	}
-	var match *App
+	var match *WebProject
 	after := ""
 	lastRequestID := ""
 	for page := 0; page < 10000; page++ {
 		result, e := r.ListPage(ctx, after)
 		if e != nil {
-			return App{}, e
+			return WebProject{}, e
 		}
 		lastRequestID = result.RequestID
 		for _, w := range result.Items {
 			if w.Name == reference {
 				if match != nil {
-					return App{}, &Error{RequestID: result.RequestID, Code: "AMBIGUOUS_WEB_NAME", Message: "Multiple applications have this name", NextAction: "Use tiana web list and delete by exact ID", ExitCode: 2}
+					return WebProject{}, &Error{RequestID: result.RequestID, Code: "AMBIGUOUS_WEB_NAME", Message: "Multiple applications have this name", NextAction: "Use tiana web list and delete by exact ID", ExitCode: 2}
 				}
 				v := w
 				match = &v
@@ -123,16 +123,16 @@ func (r Runner) Resolve(ctx context.Context, reference string) (App, *Error) {
 			if match != nil {
 				return *match, nil
 			}
-			return App{}, &Error{RequestID: result.RequestID, Code: "WEB_NOT_FOUND", Message: "application not found", NextAction: "Use tiana web list to find its ID", ExitCode: 1}
+			return WebProject{}, &Error{RequestID: result.RequestID, Code: "WEB_NOT_FOUND", Message: "application not found", NextAction: "Use tiana web list to find its ID", ExitCode: 1}
 		}
 		after = result.NextCursor
 	}
-	return App{}, &Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many App pages to resolve safely", NextAction: "Use the exact App ID", ExitCode: 1}
+	return WebProject{}, &Error{RequestID: lastRequestID, Code: "WEB_LIST_LIMIT", Message: "Too many Web pages to resolve safely", NextAction: "Use the exact Web ID", ExitCode: 1}
 }
 
-type AppDeletion struct {
+type WebProjectDeletion struct {
 	RequestID         string `json:"-"`
-	AppID             string `json:"app_id"`
+	ID                string `json:"id"`
 	State             string `json:"state"`
 	RequestedAt       int64  `json:"requested_at"`
 	DeletedAt         int64  `json:"deleted_at,omitempty"`
@@ -141,38 +141,38 @@ type AppDeletion struct {
 	SQLiteInstanceID  string `json:"sqlite_instance_id,omitempty"`
 }
 
-type AppDeleteRequest struct {
+type WebProjectDeleteRequest struct {
 	ExpectedVersionID string `json:"expected_version_id"`
 	DeleteGit         bool   `json:"delete_git"`
 	DeleteSQLite      bool   `json:"delete_sqlite"`
 }
 
-func (r Runner) Deletion(ctx context.Context, id string, confirmation *AppDeleteRequest) (AppDeletion, *Error) {
+func (r Runner) Deletion(ctx context.Context, id string, confirmation *WebProjectDeleteRequest) (WebProjectDeletion, *Error) {
 	if !appID(id) {
-		return AppDeletion{}, inputError("Invalid App ID")
+		return WebProjectDeletion{}, inputError("Invalid Web ID")
 	}
-	method, path := "GET", "/api/v1/apps/"+url.PathEscape(id)+"/deletion"
+	method, path := "GET", "/api/v1/web-projects/"+url.PathEscape(id)+"/deletion"
 	var body any
 	if confirmation != nil {
-		method, path = "DELETE", "/api/v1/apps/"+url.PathEscape(id)
+		method, path = "DELETE", "/api/v1/web-projects/"+url.PathEscape(id)
 		body = confirmation
 	}
 	res, e := r.boundRequest(ctx, method, path, body)
 	if e != nil {
-		e.NextAction = "Inspect or retry deletion using this exact App ID; do not resolve the name again"
+		e.NextAction = "Inspect or retry deletion using this exact Web ID; do not resolve the name again"
 		if e.HTTPStatus == 409 && e.Code == "APP_DELETE_PREVIEW_CHANGED" {
 			e.NextAction = "Review the new published version and retry deletion; this request did not start deletion"
 		}
-		return AppDeletion{}, e
+		return WebProjectDeletion{}, e
 	}
-	var d AppDeletion
-	if json.Unmarshal(res.Body, &d) != nil || d.AppID != id || (d.State != "deleting" && d.State != "deleted") || d.RequestedAt <= 0 || (d.State == "deleted" && d.DeletedAt <= 0) {
+	var d WebProjectDeletion
+	if json.Unmarshal(res.Body, &d) != nil || d.ID != id || (d.State != "deleting" && d.State != "deleted") || d.RequestedAt <= 0 || (d.State == "deleted" && d.DeletedAt <= 0) {
 		e := invalidWebResponse(res.RequestID)
 		if confirmation != nil {
 			e.Code = "WEB_DELETE_OUTCOME_UNKNOWN"
 			e.ExitCode = 4
 		}
-		return AppDeletion{}, e
+		return WebProjectDeletion{}, e
 	}
 	d.RequestID = res.RequestID
 	return d, nil

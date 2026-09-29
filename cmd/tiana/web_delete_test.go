@@ -19,13 +19,13 @@ const deletionTestID = "AAAAAAAAAAAA"
 func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 	gets, deletes := 0, 0
 	client := webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/apps/"+deletionTestID {
+		if r.URL.Path != "/api/v1/web-projects/"+deletionTestID {
 			t.Error("unexpected request path")
 		}
 		switch r.Method {
 		case "GET":
 			gets++
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
 		case "DELETE":
 			deletes++
 			p, e := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load()
@@ -44,7 +44,7 @@ func TestWebDeleteRequiresForceAndPreservesUnknownTarget(t *testing.T) {
 				w.WriteHeader(503)
 				return
 			}
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleted","requested_at":1,"deleted_at":2}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleted","requested_at":1,"deleted_at":2}`)
 		default:
 			t.Error("unexpected method")
 		}
@@ -99,10 +99,10 @@ func TestWebDeleteWaitCancelLeavesRecoverableIntent(t *testing.T) {
 	defer cancel()
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","owner_id":"owner","tenant_id":"tenant"}`)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"app_id": deletionTestID, "state": "deleting", "requested_at": 1})
+		json.NewEncoder(w).Encode(map[string]any{"id": deletionTestID, "state": "deleting", "requested_at": 1})
 		time.AfterFunc(20*time.Millisecond, cancel)
 	})
 	var out, diagnostics bytes.Buffer
@@ -120,15 +120,15 @@ func TestWebDeleteWaitPollsOnlyOriginalID(t *testing.T) {
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "DELETE" {
 			writes++
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleting","requested_at":1}`)
 			return
 		}
-		if r.URL.Path == "/api/v1/apps/"+deletionTestID+"/deletion" {
+		if r.URL.Path == "/api/v1/web-projects/"+deletionTestID+"/deletion" {
 			polls++
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleted","requested_at":1,"deleted_at":2}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleted","requested_at":1,"deleted_at":2}`)
 			return
 		}
-		io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
+		io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","owner_id":"owner","tenant_id":"tenant"}`)
 	})
 	var out, diagnostics bytes.Buffer
 	if code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics); code != 0 || polls != 1 || writes != 1 {
@@ -140,7 +140,7 @@ func TestWebDeleteRejectsPendingCreationWithoutRequest(t *testing.T) {
 	calls := 0
 	client := webManagementFixture(t, func(http.ResponseWriter, *http.Request) { calls++ })
 	store := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
-	pending := authclient.PendingCommand{Command: "web.create", Args: []string{"create", "App"}, Origin: client.Origin(), UserID: "owner", TenantID: "tenant", IdempotencyKey: "create-request", CreatedAt: time.Now()}
+	pending := authclient.PendingCommand{Command: "web.create", Args: []string{"create", "Web"}, Origin: client.Origin(), UserID: "owner", TenantID: "tenant", IdempotencyKey: "create-request", CreatedAt: time.Now()}
 	if err := store.Save(pending); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 	deletes := 0
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","owner_id":"owner","tenant_id":"tenant"}`)
 			return
 		}
 		deletes++
@@ -183,10 +183,10 @@ func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
 	var version string
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/v1/apps":
-			io.WriteString(w, `{"items":[{"app_id":"`+deletionTestID+`","name":"My App","owner_id":"owner","tenant_id":"tenant"}]}`)
+		case r.URL.Path == "/api/v1/web-projects":
+			io.WriteString(w, `{"items":[{"id":"`+deletionTestID+`","name":"My Web","owner_id":"owner","tenant_id":"tenant"}]}`)
 		case r.Method == "GET":
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"My App","owner_id":"owner","tenant_id":"tenant","current_version_id":"published-v2"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"My Web","owner_id":"owner","tenant_id":"tenant","current_version_id":"published-v2"}`)
 		case r.Method == "DELETE":
 			var body struct {
 				ExpectedVersionID string `json:"expected_version_id"`
@@ -195,11 +195,11 @@ func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
 				t.Error(err)
 			}
 			version = body.ExpectedVersionID
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"published-v2"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"published-v2"}`)
 		}
 	})
 	var out, diagnostics bytes.Buffer
-	if code := runCLI(t.Context(), []string{"web", "delete", "My App", "--force", "--json"}, nil, &out, &diagnostics); code != 0 || version != "published-v2" {
+	if code := runCLI(t.Context(), []string{"web", "delete", "My Web", "--force", "--json"}, nil, &out, &diagnostics); code != 0 || version != "published-v2" {
 		t.Fatalf("code=%d version=%q out=%s diagnostics=%s", code, version, &out, &diagnostics)
 	}
 }
@@ -207,7 +207,7 @@ func TestWebDeleteResolvesPublishedVersionAfterNameLookup(t *testing.T) {
 func TestWebDeleteEmptyApplication(t *testing.T) {
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"Empty","owner_id":"owner","tenant_id":"tenant","versions":[]}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Empty","owner_id":"owner","tenant_id":"tenant","versions":[]}`)
 			return
 		}
 		var body map[string]any
@@ -217,7 +217,7 @@ func TestWebDeleteEmptyApplication(t *testing.T) {
 		if body["expected_version_id"] != "" || body["delete_git"] != false || body["delete_sqlite"] != false {
 			t.Errorf("confirmation=%v", body)
 		}
-		io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":""}`)
+		io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":""}`)
 	})
 	var out, diagnostics bytes.Buffer
 	if code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "--force", "--json"}, nil, &out, &diagnostics); code != 0 {
@@ -231,10 +231,10 @@ func TestWebDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
 		case r.Method == "DELETE":
 			w.WriteHeader(http.StatusConflict)
 			io.WriteString(w, `{"error":{"code":"APP_DELETE_SELECTION_CONFLICT","message":"read existing deletion"}}`)
-		case r.URL.Path == "/api/v1/apps/"+deletionTestID+"/deletion":
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"v1","git_instance_id":"git-1"}`)
+		case r.URL.Path == "/api/v1/web-projects/"+deletionTestID+"/deletion":
+			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"v1","git_instance_id":"git-1"}`)
 		default:
-			io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
+			io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","owner_id":"owner","tenant_id":"tenant","current_version_id":"v1"}`)
 		}
 	})
 	var out, diagnostics bytes.Buffer

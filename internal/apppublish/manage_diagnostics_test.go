@@ -27,7 +27,7 @@ func TestWebSemanticFailuresRetainResponseRequestID(t *testing.T) {
 			case "resolve":
 				_, e = r.Resolve(t.Context(), "AAAAAAAAAAAA")
 			case "delete":
-				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", &AppDeleteRequest{})
+				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", &WebProjectDeleteRequest{})
 			case "deletion":
 				_, e = r.Deletion(t.Context(), "AAAAAAAAAAAA", nil)
 			}
@@ -45,7 +45,7 @@ func TestWebNameOutcomesRetainLastPageRequestID(t *testing.T) {
 			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
 				requestID = req.Header.Get("X-Request-ID")
 				if ambiguous {
-					w.Write([]byte(`{"items":[{"app_id":"web-a","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"},{"app_id":"web-b","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"}]}`))
+					w.Write([]byte(`{"items":[{"id":"web-a","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"},{"id":"web-b","name":"same name","owner_id":"prn-test","tenant_id":"ten-test"}]}`))
 				} else {
 					w.Write([]byte(`{"items":[]}`))
 				}

@@ -12,11 +12,11 @@ class Peer(http.server.BaseHTTPRequestHandler):
     def respond(self):
         self.rfile.read(int(self.headers.get('Content-Length',0)));path=urlsplit(self.path).path;rid=self.headers.get('X-Request-ID');assert rid
         assert self.headers.get('Authorization')=='Bearer fixture-access'
-        web={'app_id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
-        if path=='/api/v1/apps':
-            stage='page2' if '?' in self.path else 'page1';item=dict(web,app_id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['app_id'] if stage=='page1' else ''}
-        elif self.command=='DELETE':stage='delete';body={'app_id':ID,'state':'deleting','requested_at':1}
-        elif path.endswith('/deletion'):stage='observe';body={'app_id':ID,'state':'deleted','requested_at':1,'deleted_at':2}
+        web={'id':ID,'name':'Fixture','owner_id':'owner','tenant_id':'tenant'};code=200
+        if path=='/api/v1/web-projects':
+            stage='page2' if '?' in self.path else 'page1';item=dict(web,id=ID+('b' if stage=='page2' else 'a'));body={'items':[item],'next_cursor':item['id'] if stage=='page1' else ''}
+        elif self.command=='DELETE':stage='delete';body={'id':ID,'state':'deleting','requested_at':1}
+        elif path.endswith('/deletion'):stage='observe';body={'id':ID,'state':'deleted','requested_at':1,'deleted_at':2}
         else:stage='resolve';body=web
         state['requests'].append({'stage':stage,'request_id':rid,'method':self.command})
         fault=state['fault'] if stage==state['stage'] else ''

@@ -32,19 +32,19 @@ func TestAppRequestRejectsAccountChange(t *testing.T) {
 		t.Fatal(newErr)
 	}
 	r.Client = client
-	if _, err := r.request(t.Context(), first, "PUT", "/api/v1/apps/billing", map[string]string{"name": "Billing"}); err == nil || err.Code != "AUTH_REQUIRED" || called {
+	if _, err := r.request(t.Context(), first, "PUT", "/api/v1/web-projects/billing", map[string]string{"name": "Billing"}); err == nil || err.Code != "AUTH_REQUIRED" || called {
 		t.Fatal("account changed during upload but write proceeded")
 	}
 }
 
 func TestAppUnauthorizedWriteDoesNotRefreshOrReplay(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
-		{"PUT", "/api/v1/apps/billing"},
-		{"GET", "/api/v1/apps/billing/versions/version-a"},
-		{"PUT", "/api/v1/apps/billing/versions/version-a"},
-		{"POST", "/api/v1/apps/billing/versions/version-a/uploads"},
-		{"POST", "/api/v1/apps/billing/versions/version-a/complete"},
-		{"GET", "/api/v1/apps/billing/versions/version-a/bootstrap"},
+		{"PUT", "/api/v1/web-projects/billing"},
+		{"GET", "/api/v1/web-projects/billing/versions/version-a"},
+		{"PUT", "/api/v1/web-projects/billing/versions/version-a"},
+		{"POST", "/api/v1/web-projects/billing/versions/version-a/uploads"},
+		{"POST", "/api/v1/web-projects/billing/versions/version-a/complete"},
+		{"GET", "/api/v1/web-projects/billing/versions/version-a/bootstrap"},
 	} {
 		t.Run(route.method+route.path, func(t *testing.T) {
 			calls, requestID := 0, ""
@@ -83,7 +83,7 @@ func TestAppRequestRefreshesExpiredCredential(t *testing.T) {
 		if req.Header.Get("Authorization") != "Bearer fresh-access" {
 			t.Error("did not use refreshed account credential")
 		}
-		json.NewEncoder(w).Encode(map[string]string{"app_id": "AAAAAAAAAAAA", "name": "Billing", "owner_id": "prn-test", "tenant_id": "tenant-a"})
+		json.NewEncoder(w).Encode(map[string]string{"id": "AAAAAAAAAAAA", "name": "Billing", "owner_id": "prn-test", "tenant_id": "tenant-a"})
 	})
 	credential, err := r.Client.LoadCredential()
 	if err != nil {

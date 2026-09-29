@@ -15,9 +15,9 @@ func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 		if cmd.NArg() != 1 {
 			return argumentFailure(ctx, cmd, "Provide NAME for create, or ID for upload/status")
 		}
-		o := apppublish.Options{Command: cmd.Name, AppID: cmd.Args().First(), Dir: cmd.String("dir"), Version: cmd.String("version"), Entry: cmd.String("entry"), UploadCAFile: cmd.String("upload-ca-file")}
+		o := apppublish.Options{Command: cmd.Name, ID: cmd.Args().First(), Dir: cmd.String("dir"), Version: cmd.String("version"), Entry: cmd.String("entry"), UploadCAFile: cmd.String("upload-ca-file")}
 		if cmd.Name == "create" {
-			o.Name, o.AppID = o.AppID, ""
+			o.Name, o.ID = o.ID, ""
 			o.Description = cmd.String("description")
 		}
 		if err := o.Validate(); err != nil {
@@ -49,7 +49,7 @@ func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 		newWebListCommand(input, output, diagnostics),
 		newWebDeleteCommand(input, output, diagnostics),
 		{Name: "create", Usage: "Create a Web application with a server-generated ID", ArgsUsage: "NAME", Flags: createFlags, Action: action},
-		{Name: "upload", Usage: "Upload a build directory and publish a complete version", ArgsUsage: "ID", Description: "Preserves relative file paths within each App version. Repeating unchanged files resumes the same version; it does not build or host the app.", Flags: uploadFlags, Action: action},
+		{Name: "upload", Usage: "Upload a build directory and publish a complete version", ArgsUsage: "ID", Description: "Preserves relative file paths within each Web version. Repeating unchanged files resumes the same version; it does not build or host the app.", Flags: uploadFlags, Action: action},
 		{Name: "status", Usage: "Inspect a version's upload and publication status", ArgsUsage: "ID", Flags: statusFlags, Action: action},
 	}}
 }
@@ -68,8 +68,8 @@ func writeAppResult(result apppublish.Result, jsonMode bool, output, diagnostics
 	if result.Error != nil {
 		fmt.Fprintf(diagnostics, "tiana: %s\n%s\n", result.Error.Message, result.Error.NextAction)
 		if data, ok := result.Data.(map[string]string); ok {
-			if data["app_id"] != "" {
-				fmt.Fprintf(diagnostics, "ID: %s\n", data["app_id"])
+			if data["id"] != "" {
+				fmt.Fprintf(diagnostics, "ID: %s\n", data["id"])
 			}
 			if data["version_id"] != "" {
 				fmt.Fprintf(diagnostics, "Version: %s\n", data["version_id"])

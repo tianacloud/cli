@@ -51,9 +51,9 @@ class Peer(http.server.BaseHTTPRequestHandler):
         path, query = parsed.path, parse_qs(parsed.query)
         mode = state["mode"]
         engine = mode.get("engine", "sqlite")
-        if path.startswith("/api/v1/apps/"):
+        if path.startswith("/api/v1/web-projects/"):
             stage = "app-status"
-            body = {"app_id": "fixture-app", "version_id": "fixture-version", "status": "published"}
+            body = {"id": "fixture-app", "version_id": "fixture-version", "status": "published"}
         elif path == "/api/v1/instances":
             stage = "lookup" if "display_name" in query else "list" + query["page"][0]
             if stage == "lookup":

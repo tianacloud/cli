@@ -29,14 +29,14 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	var mu sync.Mutex
 	var keys []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/v1/apps" {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/web-projects" {
 			t.Error("unexpected creation route")
 		}
 		var body map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if len(body) != 3 || body["name"] != "App" || body["description"] != "应用描述" || body["request_id"] == "" {
+		if len(body) != 3 || body["name"] != "Web" || body["description"] != "应用描述" || body["request_id"] == "" {
 			t.Errorf("body=%v", body)
 		}
 		pending, err := authclient.NewFilePendingCommandStore(pendingPath).Load()
@@ -52,7 +52,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 			io.WriteString(w, `{"error":{"code":"UNAVAILABLE","message":"response lost"}}`)
 			return
 		}
-		io.WriteString(w, `{"app_id":"AAAAAAAAAAAA","name":"App","description":"应用描述","owner_id":"owner","tenant_id":"tenant"}`)
+		io.WriteString(w, `{"id":"AAAAAAAAAAAA","name":"Web","description":"应用描述","owner_id":"owner","tenant_id":"tenant"}`)
 	}))
 	defer server.Close()
 	t.Setenv("TIANA_API_ORIGIN", server.URL)
@@ -66,7 +66,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 		return runCLI(context.Background(), []string{"web", "create", name, "-m", "应用描述", "--json"}, nil, out, &diagnostics)
 	}
 	var out bytes.Buffer
-	if code := run("App", &out); code != 4 {
+	if code := run("Web", &out); code != 4 {
 		t.Fatalf("unknown status=%d %s", code, &out)
 	}
 	store := authclient.NewFilePendingCommandStore(pendingPath)
@@ -74,13 +74,13 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code := runCLI(t.Context(), []string{"web", "create", "App", "-m", "changed", "--json"}, nil, io.Discard, io.Discard); code == 0 {
+	if code := runCLI(t.Context(), []string{"web", "create", "Web", "-m", "changed", "--json"}, nil, io.Discard, io.Discard); code == 0 {
 		t.Fatal("overwrote pending description")
 	}
 	if code := run("Different", io.Discard); code == 0 {
 		t.Fatal("overwrote pending name")
 	}
-	if code := run("App", rejectedWebOutput{}); code != 1 {
+	if code := run("Web", rejectedWebOutput{}); code != 1 {
 		t.Fatalf("output error status=%d", code)
 	}
 	saved, err := store.Load()
@@ -88,7 +88,7 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 		t.Fatalf("output failure lost request: %+v %v", saved, err)
 	}
 	out.Reset()
-	if code := run("App", &out); code != 0 {
+	if code := run("Web", &out); code != 0 {
 		t.Fatalf("recovery status=%d %s", code, &out)
 	}
 	if _, err = store.Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
@@ -109,9 +109,9 @@ func TestWebCreatePreservesRequestAcrossUnknownResultAndOutputFailure(t *testing
 func TestWebCreateRejectsCallerSelectedIdentity(t *testing.T) {
 	t.Setenv("TIANA_PENDING_COMMAND_FILE", filepath.Join(t.TempDir(), "pending.json"))
 	for _, args := range [][]string{
-		{"web", "create"}, {"web", "create", "App", "Extra"},
-		{"web", "create", "--project", "chosen", "--name", "App"},
-		{"web", "create", "App", "--id", "chosen"}, {"web", "create", "App", "--name", "Other"},
+		{"web", "create"}, {"web", "create", "Web", "Extra"},
+		{"web", "create", "--project", "chosen", "--name", "Web"},
+		{"web", "create", "Web", "--id", "chosen"}, {"web", "create", "Web", "--name", "Other"},
 	} {
 		var out, diagnostics bytes.Buffer
 		if code := runCLI(t.Context(), args, nil, &out, &diagnostics); code != 2 {
@@ -146,9 +146,9 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 				if body["description"] != tc.description {
 					t.Errorf("description=%q", body["description"])
 				}
-				json.NewEncoder(w).Encode(map[string]string{"app_id": deletionTestID, "name": "App", "description": body["description"], "owner_id": "owner", "tenant_id": "tenant"})
+				json.NewEncoder(w).Encode(map[string]string{"id": deletionTestID, "name": "Web", "description": body["description"], "owner_id": "owner", "tenant_id": "tenant"})
 			})
-			args := append([]string{"web", "create", "App", "--json"}, tc.args...)
+			args := append([]string{"web", "create", "Web", "--json"}, tc.args...)
 			var out, diagnostics bytes.Buffer
 			code := runCLI(t.Context(), args, nil, &out, &diagnostics)
 			if tc.valid && (code != 0 || calls != 1) || !tc.valid && (code != 2 || calls != 0) {
@@ -160,15 +160,15 @@ func TestWebCreateDescriptionFlagsAndValidation(t *testing.T) {
 
 func TestWebCreateMismatchedDescriptionRetainsIntent(t *testing.T) {
 	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"app_id":"`+deletionTestID+`","name":"App","description":"wrong","owner_id":"owner","tenant_id":"tenant"}`)
+		io.WriteString(w, `{"id":"`+deletionTestID+`","name":"Web","description":"wrong","owner_id":"owner","tenant_id":"tenant"}`)
 	})
 	var out, diagnostics bytes.Buffer
-	code := runCLI(t.Context(), []string{"web", "create", "App", "-m", "expected", "--json"}, nil, &out, &diagnostics)
+	code := runCLI(t.Context(), []string{"web", "create", "Web", "-m", "expected", "--json"}, nil, &out, &diagnostics)
 	if code != 4 || !bytes.Contains(out.Bytes(), []byte("CREATE_OUTCOME_UNKNOWN")) {
 		t.Fatalf("code=%d out=%s", code, &out)
 	}
 	pending, err := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE")).Load()
-	if err != nil || !sameStrings(pending.Args, []string{"create", "App", "--description", "expected"}) {
+	if err != nil || !sameStrings(pending.Args, []string{"create", "Web", "--description", "expected"}) {
 		t.Fatal("lost exact pending description", err)
 	}
 }

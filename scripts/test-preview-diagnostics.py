@@ -30,7 +30,7 @@ class Peer(http.server.BaseHTTPRequestHandler):
 def check(fault,diag,root,origin,ca):
     state.clear();state.update(fault=fault,requests=[],origin=origin)
     build=root/'build';build.mkdir();(build/'app.js').write_text('export function mount(root){root.textContent="Fixture"}')
-    manifest={'schema_version':1,'app_id':'fixture','name':'Fixture','rendering':'csr','routing':'hash','entry':'app.js','database_instance_id':'ins_fixture'}
+    manifest={'schema_version':1,'web_id':'fixture','name':'Fixture','rendering':'csr','routing':'hash','entry':'app.js','database_instance_id':'ins_fixture'}
     (build/'tiana.app.json').write_text(json.dumps(manifest))
     env={k:v for k,v in os.environ.items() if not k.startswith('TIANA_') and 'proxy' not in k.lower()}
     env.update(TIANA_API_ORIGIN=origin,TIANA_CA_FILE=str(ca),TIANA_CREDENTIALS_FILE=str(root/'untouched.json'))
@@ -59,7 +59,7 @@ def check(fault,diag,root,origin,ca):
         c=http.client.HTTPConnection('127.0.0.1',port,timeout=15)
         headers={'Origin':f'http://127.0.0.1:{port}','X-Tiana-Bootstrap':'1','X-Request-ID':'req-preview-login'}
         if cookie:headers['Cookie']=cookie
-        c.request(method,'/apps/fixture'+('/'+path if path else ''),headers=headers);r=c.getresponse();body=r.read();info={'path':path,'status':r.status,'request_id':r.getheader('X-Request-ID')};responses.append(info);cookies=r.getheader('Set-Cookie');c.close();return r.status,body,cookies
+        c.request(method,'/web/fixture'+('/'+path if path else '/'),headers=headers);r=c.getresponse();body=r.read();info={'path':path,'status':r.status,'request_id':r.getheader('X-Request-ID')};responses.append(info);cookies=r.getheader('Set-Cookie');c.close();return r.status,body,cookies
     try:
         if fault in ['json','input','manifest','bind','pipe','saved-pipe']:
             out,err=child.communicate(timeout=10)

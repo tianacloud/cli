@@ -14,7 +14,7 @@ func buildFixture(t *testing.T) string {
 	os.MkdirAll(filepath.Join(dir, "assets"), 0700)
 	os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte(`export function mount(root) { root.textContent="Ledger" }`), 0600)
 	os.WriteFile(filepath.Join(dir, "assets", "app.css"), []byte(`body {color: #123}`), 0600)
-	os.WriteFile(filepath.Join(dir, "tiana.app.json"), []byte(`{"schema_version":1,"app_id":"billing","name":"账单","rendering":"csr","routing":"hash","entry":"assets/app.js","styles":["assets/app.css"],"database_instance_id":"ins_billing"}`), 0600)
+	os.WriteFile(filepath.Join(dir, "tiana.app.json"), []byte(`{"schema_version":1,"web_id":"billing","name":"账单","rendering":"csr","routing":"hash","entry":"assets/app.js","styles":["assets/app.css"],"database_instance_id":"ins_billing"}`), 0600)
 	return dir
 }
 
@@ -24,7 +24,7 @@ func TestLoadBuildAcceptsCSRModulesWithoutHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer build.Close()
-	if build.Manifest.Entry != "assets/app.js" || build.Manifest.AppID != "billing" {
+	if build.Manifest.Entry != "assets/app.js" || build.Manifest.WebID != "billing" {
 		t.Fatal("manifest not loaded")
 	}
 }

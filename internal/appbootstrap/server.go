@@ -74,7 +74,7 @@ func NewServer(c Config) (*Server, error) {
 	if e != nil || port < 1 || port > 65535 {
 		return nil, errors.New("preview requires an explicit valid port")
 	}
-	if c.Build == nil || c.BasePath != "/apps/"+c.Build.Manifest.AppID {
+	if c.Build == nil || c.BasePath != "/web/"+c.Build.Manifest.WebID {
 		return nil, errors.New("preview path must identify the configured app")
 	}
 	return &Server{config: c, host: u.Host, cookie: "tiana_preview_" + u.Port(), sessions: map[string]*session{}}, nil
@@ -169,8 +169,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
-	if r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/" {
-		destination := s.config.BasePath
+	if r.URL.Path == s.config.BasePath || r.URL.Path == "/" {
+		destination := s.config.BasePath + "/"
 		if r.URL.RawQuery != "" {
 			destination += "?" + r.URL.RawQuery
 		}
@@ -233,7 +233,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "pending":
 			s.json(w, 202, map[string]string{"state": "pending"})
 		case "ready":
-			s.json(w, 200, map[string]any{"state": "ready", "user": map[string]string{"id": identity.ID, "label": identity.Label}, "app_id": s.config.Build.Manifest.AppID})
+			s.json(w, 200, map[string]any{"state": "ready", "user": map[string]string{"id": identity.ID, "label": identity.Label}, "web_id": s.config.Build.Manifest.WebID})
 		default:
 			s.failure(w, 401, "LOGIN_REQUIRED")
 		}
