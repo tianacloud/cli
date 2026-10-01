@@ -781,7 +781,7 @@ SDKs rather than adopting their older environment defaults.
 
 The web command retains serve/create/upload/status and argument semantics. The
 old apps spelling is rejected before resource execution; error recovery hints
-must use web. Products groups web/sqlite/git only. The App API collection is /api/v1/apps and its public identity is app_id.
+must use web. Products groups web/sqlite/git only. The Web API collection is /api/v1/web-projects; public JSON uses id and manifests use web_id.
 Preserve idempotency keys, credential files and stored origin keys.
 No extra requests, retries, locks, token handling or hot-path work is introduced.
 
@@ -793,29 +793,26 @@ ambiguous origins, status/web/native Git account selection, App HTTP routes,
 help output, full race/vet, public-source scan, packaging and native builds.
 
 
-## App identity and entry routes (2026-09-28)
+## Web identity and entry routes
 
-The web command hierarchy remains unchanged. MGR owns App identity creation:
-9 random bytes encoded as 12 unpadded base64url characters. Existing App IDs
-retain their values. App and release JSON use app_id, which is also the manifest
-application.app_id and the resource identity in /api/v1/apps. Creation receipts
-validate the same generic identity syntax as manifests and existing resources;
-random generation and uniqueness belong to MGR.
+The product group is `tiana web`. MGR creates globally unique Web identities
+from 9 random bytes encoded as 12 unpadded base64url characters. Existing IDs
+retain their values. Project, release and deletion JSON use `id`; manifests and
+Bootstrap use `web_id`. Management routes are `/api/v1/web-projects`.
 
-Create accepts NAME and request_id, with existing locked pending intent and
-account/tenant binding. Unknown results reuse the original request. Capture
-returned data.app_id and reuse it for publishing, lookup and deletion; display
-names never replace identity. MGR stores Apps in mgr_apps and releases in
-mgr_app_releases, both using app_id. App identity is globally unique.
+Create sends name, optional description and request_id. Save `data.id` and reuse
+it for publication, lookup and deletion. Unknown results retain the original
+locked intent and account/tenant binding. Names never replace identity. MGR uses
+`mgr_web_projects` and `mgr_web_releases` with `web_id` relation columns.
 
-Hosted and preview entries use /apps/<app_id> without a trailing slash; Console
-details use /console/apps/<app_id>. Inject the absolute bootstrap script address
-/apps/<app_id>/_tiana/bootstrap.js into the fixed template, and locate its element
-by id=tiana-bootstrap-script. Preserve version queries and hash routes across
+Hosted and preview entries use `/web/<id>/`; Console details use
+`/console/web/<id>`. Inject `/web/<id>/_tiana/bootstrap.js` into the fixed template
+at `id=tiana-bootstrap-script`. Preserve version queries and hash routes through
 login and reload. Keep the shared Web/CLI runtime files byte-identical.
+Web product errors use `WEB_*`; engine App catalog and Runtime events remain App.
 
-Verify create recovery, App DTO identity binding, upload/resume/status/delete,
-listing/name resolution, preview authorization and absolute bootstrap loading.
+Verify creation recovery, DTO identity binding, upload/resume/status/delete,
+listing/name resolution, preview authorization and absolute Bootstrap loading.
 
 
 ## Web listing and deletion work in progress (2026-09-27)
@@ -833,9 +830,9 @@ User subsequently chose A; the approved deletion contract is recorded below.
 ## Approved Web deletion — App lifecycle (2026-09-27)
 
 User approved deleting all Web versions/origin files while retaining SQLite/Git,
-and merging deletion state into mgr_apps. Retain request_id creation
+and merging deletion state into mgr_web_projects. Retain request_id creation
 idempotency. The lifecycle is active/deleting/deleted with delete_requested_at and
-deleted_at, plus index(state,tenant_id,app_id). Do not add a separate deletion
+deleted_at, plus index(state,tenant_id,web_id). Do not add a separate deletion
 table or delete_storage_namespace/delete_error_code/delete_next_attempt_at fields.
 
 Mark under the App row lock shared with version creation. Allow deletion of empty, published and uploading applications; incomplete local
@@ -945,6 +942,6 @@ Gaia success/IN_SYNC and live readiness/auth boundaries after deployment.
 Web delete reads the current published version before confirmation and persists
 its identity with the pending command. DELETE submits expected_version_id and
 delete_git=false/delete_sqlite=false. Lost responses replay the same saved version;
-APP_DELETE_PREVIEW_CHANGED clears an unaccepted intent for fresh confirmation.
+WEB_DELETE_PREVIEW_CHANGED clears an unaccepted intent for fresh confirmation.
 Uploading applications can be deleted. CLI continues preserving associated
 instances; Console and Gaia independently offer selecting them for deletion.

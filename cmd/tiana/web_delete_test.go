@@ -164,13 +164,13 @@ func TestWebDeletePreviewConflictClearsIntentWithoutWaiting(t *testing.T) {
 		}
 		deletes++
 		w.WriteHeader(http.StatusConflict)
-		io.WriteString(w, `{"error":{"code":"APP_DELETE_PREVIEW_CHANGED","message":"published version changed"}}`)
+		io.WriteString(w, `{"error":{"code":"WEB_DELETE_PREVIEW_CHANGED","message":"published version changed"}}`)
 	})
 	store := authclient.NewFilePendingCommandStore(os.Getenv("TIANA_PENDING_COMMAND_FILE"))
 	for i := 0; i < 2; i++ {
 		var out, diagnostics bytes.Buffer
 		code := runCLI(t.Context(), []string{"web", "delete", deletionTestID, "-f", "-w", "--json"}, nil, &out, &diagnostics)
-		if code != 1 || deletes != i+1 || !bytes.Contains(out.Bytes(), []byte("APP_DELETE_PREVIEW_CHANGED")) {
+		if code != 1 || deletes != i+1 || !bytes.Contains(out.Bytes(), []byte("WEB_DELETE_PREVIEW_CHANGED")) {
 			t.Fatalf("code=%d deletes=%d out=%s", code, deletes, &out)
 		}
 		if _, err := store.Load(); !errors.Is(err, authclient.ErrPendingNotFound) {
@@ -230,7 +230,7 @@ func TestWebDeleteRecoversAlreadyAcceptedSelection(t *testing.T) {
 		switch {
 		case r.Method == "DELETE":
 			w.WriteHeader(http.StatusConflict)
-			io.WriteString(w, `{"error":{"code":"APP_DELETE_SELECTION_CONFLICT","message":"read existing deletion"}}`)
+			io.WriteString(w, `{"error":{"code":"WEB_DELETE_SELECTION_CONFLICT","message":"read existing deletion"}}`)
 		case r.URL.Path == "/api/v1/web-projects/"+deletionTestID+"/deletion":
 			io.WriteString(w, `{"id":"`+deletionTestID+`","state":"deleting","requested_at":1,"expected_version_id":"v1","git_instance_id":"git-1"}`)
 		default:

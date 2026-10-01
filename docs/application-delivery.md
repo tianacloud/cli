@@ -19,10 +19,10 @@ tiana status
 tiana sqlite create billing --wait
 tiana git create billing-source --wait
 tiana web create Billing -m "Team billing dashboard" --json
-# Save data.id as APP_ID; set manifest web_id to APP_ID before building dist.
+# Save data.id as WEB_ID; set manifest web_id to WEB_ID before building dist.
 tiana web serve --dir dist --port 4174
-tiana web upload APP_ID --version release-1 --dir dist --json
-tiana web status APP_ID --version release-1 --json
+tiana web upload WEB_ID --version release-1 --dir dist --json
+tiana web status WEB_ID --version release-1 --json
 ```
 
 Record the real instance IDs and Git remote URL. Push the matching source commit
@@ -120,8 +120,8 @@ and tenant; invalid/nonadvancing cursors fail instead of looping.
 
 ```sh
 tiana web list --json
-tiana web delete APP_ID                 # terminal confirmation
-tiana web delete APP_ID --force --wait --json
+tiana web delete WEB_ID                 # terminal confirmation
+tiana web delete WEB_ID --force --wait --json
 ```
 
 Deletion accepts an immutable ID or exact name; duplicate names require an ID.
@@ -132,7 +132,7 @@ success means a durable deletion was accepted (`state: deleting`).
 
 An empty application or an application with unfinished uploads can be deleted.
 The CLI confirms the current published version and retains both associated resources.
-If publication changes before acceptance, MGR returns `APP_DELETE_PREVIEW_CHANGED`;
+If publication changes before acceptance, MGR returns `WEB_DELETE_PREVIEW_CHANGED`;
 the CLI clears that rejected intent so the next attempt can confirm the new version.
 An unresolved local creation command still needs recovery before another operation.
 
@@ -154,9 +154,9 @@ queued; --wait polls until completion or cancellation, without a stored error co
 (default empty) and limited to 1024 UTF-8 bytes. Unicode, line breaks and tabs are
 preserved; other control characters are rejected. This is application metadata,
 not a version identifier or manifest field. Creation, `web list --json` and the
-MGR App detail response include `description`. Repeat the same name and
+MGR Web detail response include `description`. Repeat the same name and
 description to recover an interrupted creation; changing either cannot replace
-an existing pending request. The matching MGR App API is required.
+an existing pending request. The matching MGR Web API is required.
 
 
 ### Source repository association

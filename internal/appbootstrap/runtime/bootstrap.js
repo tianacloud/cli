@@ -73,7 +73,7 @@ async function loadApplication() {
         let result;
         do {
           result = await request('connection', 'POST', payload);
-          if (result.response.status !== 503 || result.data?.error?.code !== 'APP_ACCOUNT_AUTH_PENDING' || Date.now() >= deadline) break;
+          if (result.response.status !== 503 || result.data?.error?.code !== 'WEB_ACCOUNT_AUTH_PENDING' || Date.now() >= deadline) break;
           await new Promise(resolve => setTimeout(resolve, 500));
         } while (true);
         const {response, data, requestId} = result;

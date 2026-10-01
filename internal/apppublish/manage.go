@@ -160,7 +160,7 @@ func (r Runner) Deletion(ctx context.Context, id string, confirmation *WebProjec
 	res, e := r.boundRequest(ctx, method, path, body)
 	if e != nil {
 		e.NextAction = "Inspect or retry deletion using this exact Web ID; do not resolve the name again"
-		if e.HTTPStatus == 409 && e.Code == "APP_DELETE_PREVIEW_CHANGED" {
+		if e.HTTPStatus == 409 && e.Code == "WEB_DELETE_PREVIEW_CHANGED" {
 			e.NextAction = "Review the new published version and retry deletion; this request did not start deletion"
 		}
 		return WebProjectDeletion{}, e

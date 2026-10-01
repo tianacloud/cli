@@ -220,7 +220,7 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 			VersionURL     string `json:"version_url"`
 		}
 		if json.Unmarshal(res.Body, &view) != nil || view.VersionID != *version || !reflect.DeepEqual(view.Manifest, *manifest.Application) || !validApplicationLinks(view.ApplicationURL, view.VersionURL, *applicationID, *version) {
-			return fail(appError("APP_HOSTING_UNCONFIRMED", "Artifacts are published but MGR has not confirmed matching Bootstrap metadata and HTTPS application links"))
+			return fail(appError("WEB_HOSTING_UNCONFIRMED", "Artifacts are published but MGR has not confirmed matching Bootstrap metadata and HTTPS application links"))
 		}
 		result["application_url"], result["version_url"] = view.ApplicationURL, view.VersionURL
 	}

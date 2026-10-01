@@ -109,13 +109,13 @@ func executeWebDelete(ctx context.Context, reference string, force, wait, jsonMo
 		return fail("PENDING_UNAVAILABLE", "Cannot persist deletion intent; no request sent", "Inspect the pending command store", 1)
 	}
 	d, e := r.Deletion(ctx, target.ID, &apppublish.WebProjectDeleteRequest{ExpectedVersionID: pending.WebDeleteVersionID})
-	if e != nil && e.HTTPStatus == 409 && e.Code == "APP_DELETE_SELECTION_CONFLICT" {
+	if e != nil && e.HTTPStatus == 409 && e.Code == "WEB_DELETE_SELECTION_CONFLICT" {
 		d, e = r.Deletion(ctx, target.ID, nil)
 	}
 	if e != nil {
 		// A changed preview means deletion was not accepted. A fresh attempt
 		// resolves and confirms the current publication.
-		if e.HTTPStatus == 409 && e.Code == "APP_DELETE_PREVIEW_CHANGED" {
+		if e.HTTPStatus == 409 && e.Code == "WEB_DELETE_PREVIEW_CHANGED" {
 			if err = store.Delete(); err != nil {
 				return fail("PENDING_UNAVAILABLE", "Deletion was rejected but its local intent could not be cleared", "Inspect the pending command store", 1)
 			}

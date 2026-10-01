@@ -21,7 +21,7 @@ class Peer(http.server.BaseHTTPRequestHandler):
         state['requests'].append({'stage':stage,'request_id':rid,'method':self.command})
         fault=state['fault'] if stage==state['stage'] else ''
         if fault.startswith('http'):
-            code=int(fault[4:]);body={'error':{'code':'APP_DELETE_PREVIEW_CHANGED' if code==409 else 'FIXTURE','message':'fixture'}}
+            code=int(fault[4:]);body={'error':{'code':'WEB_DELETE_PREVIEW_CHANGED' if code==409 else 'FIXTURE','message':'fixture'}}
         elif fault=='timer-cancel':state['reached'].set()
         elif fault=='semantic':body={}
         elif fault=='cancel':state['reached'].set();state['release'].wait(10);return

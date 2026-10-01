@@ -415,12 +415,12 @@ func (s *Server) applicationDocument(w http.ResponseWriter, r *http.Request) {
 	}{s.config.Build.Manifest, true}
 	data, err := json.Marshal(descriptor)
 	if err != nil {
-		s.failure(w, 500, "APP_UNAVAILABLE")
+		s.failure(w, 500, "WEB_UNAVAILABLE")
 		return
 	}
 	template, err := runtimeFiles.ReadFile("runtime/index.html")
 	if err != nil {
-		s.failure(w, 500, "APP_UNAVAILABLE")
+		s.failure(w, 500, "WEB_UNAVAILABLE")
 		return
 	}
 	document := bytes.Replace(template, []byte("__TIANA_BOOTSTRAP_SCRIPT__"), []byte(s.config.BasePath+"/_tiana/bootstrap.js"), 1)
