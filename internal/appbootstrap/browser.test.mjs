@@ -1,0 +1,127 @@
+import {pathToFileURL} from 'node:url';
+import assert from 'node:assert/strict';
+const {chromium}=await import(pathToFileURL(process.argv[2]).href);
+const origin=process.argv[3];
+const browser=await chromium.launch({headless:true});
+try {
+ const context=await browser.newContext();
+ await context.route('https://fonts.googleapis.com/**',r=>r.fulfill({contentType:'text/css',body:''}));
+ await context.route('https://console.example/authorize', route=>route.fulfill({contentType:'text/html',body:'<h1>Explicit Console test fixture</h1>'}));
+ const page=await context.newPage();
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ const denied=await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js');assert.equal(denied.status(),401);
+ await page.goto(origin+'/web/billing?view=fixture#/transactions');
+ await page.locator('#tiana-sign-in').waitFor({state:'visible'});
+ const popupPromise=context.waitForEvent('page');
+ await page.locator('#tiana-sign-in').click();
+ const popup=await popupPromise;
+ await popup.waitForURL('https://console.example/authorize');
+ assert.equal(await page.locator('#app').isVisible(),false);
+ await context.request.get(origin+'/_fixture/approve');
+ await page.locator('#app').waitFor({state:'visible'});
+ await page.waitForFunction(()=>document.querySelector('#app').dataset.instance==='ins_billing');
+ assert.equal(await page.locator('#app').textContent(),'Browser ledger');
+ assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
+ assert.equal(new URL(page.url()).pathname,'/web/billing/');
+ assert.equal(new URL(page.url()).search,'?view=fixture');
+ assert.equal(await page.locator('#tiana-bar,#tiana-login,#tiana-loading').count(),0);
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app').textContent==='Browser ledger');
+ assert.equal(await page.locator('#tiana-loading').count(),0);
+ await page.route('**/assets/app.css',route=>route.abort());
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(await page.locator('#tiana-loading').count(),0);
+ await page.unroute('**/assets/app.css');
+ await context.request.get(origin+'/_fixture/fail-next-mount');
+ await page.reload();
+ await page.getByText('应用加载失败，请刷新后重试。',{exact:true}).waitFor({state:'visible'});
+ await page.getByRole('button',{name:'重新加载',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(await page.locator('#app').getAttribute('data-failed-mount'),null);
+ assert.equal(await page.locator('#tiana-loading').count(),0);
+ // Exercise provider renewal, concurrent callers and abort isolation in a real browser.
+ let connections=0;
+ await page.route('**/_tiana/connection',async route=>{
+   connections++;
+   const response=await route.fetch();
+   const data=await response.json();
+   data.tianaToken='fixture-access-'+connections;
+   data.expires_at=new Date(Date.now()+(connections===1?1000:3600000)).toISOString();
+   if(connections>1)await new Promise(resolve=>setTimeout(resolve,50));
+   await route.fulfill({response,json:data});
+ });
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ const renewal=await page.evaluate(async()=>{
+   const controller=new AbortController();
+   const cancelled=window.tiana.auth.getAccessToken({signal:controller.signal}).catch(error=>error.name);
+   const one=window.tiana.auth.getAccessToken();
+   const two=window.tiana.auth.getAccessToken();
+   controller.abort();
+   return Promise.all([cancelled,one,two]);
+ });
+ assert.deepEqual(renewal,['AbortError','fixture-access-2','fixture-access-2']);
+ assert.equal(connections,2);
+ await page.unroute('**/_tiana/connection');
+ assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
+ assert.equal(await page.evaluate(()=>document.cookie.includes('tiana_preview')),false);
+ await context.grantPermissions(['clipboard-read','clipboard-write'],{origin});
+ for(const mode of ['http','json','network']) {
+  let requestID;
+  await context.route('**/_tiana/connection', async route=>{
+   requestID=route.request().headers()['x-request-id'];
+   if(mode==='network')return route.abort();
+   return route.fulfill({status:mode==='http'?503:200,contentType:'application/json',body:mode==='json'?'{':'{}'});
+  });
+  await page.reload();
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+  assert.ok(requestID,'request ID must precede fetch');
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),requestID);
+  assert.ok(await page.getByText('Request ID: '+requestID,{exact:true}).isVisible());
+  await context.unroute('**/_tiana/connection');
+ }
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ await page.evaluate(()=>fetch(new URL('/web/billing/_tiana/logout',location.origin),{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}}));
+ await page.reload();
+ await page.locator('#tiana-sign-in').waitFor({state:'visible'});
+ assert.equal((await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js')).status(),401);
+ for (const mode of ['http','json','network']) {
+  let requestID;
+  await context.route('**/_tiana/login',route=>{
+   requestID=route.request().headers()['x-request-id'];
+   if(mode==='network')return route.abort();
+   return route.fulfill({status:mode==='http'?503:200,contentType:'application/json',body:mode==='json'?'{':'{}'});
+  });
+  await page.reload();
+  await page.locator('#tiana-sign-in').click();
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+  assert.ok(requestID);
+  await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),requestID);
+  await context.unroute('**/_tiana/login');
+ }
+ let sessionID;
+ await context.route('**/_tiana/session',route=>{sessionID=route.request().headers()['x-request-id'];return route.abort();});
+ await page.reload();
+ await page.getByRole('button',{name:'复制 Request ID',exact:true}).waitFor({timeout:5000});
+ assert.ok(sessionID);
+ await page.getByRole('button',{name:'复制 Request ID',exact:true}).click();
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),sessionID);
+ await context.unroute('**/_tiana/session');
+ const launch=await (await context.request.get(origin+'/_fixture/launch')).json();
+ await page.goto(launch.url);
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(await page.evaluate(()=>window.tiana.auth.getAccessToken()),'fixture-saved-access');
+ assert.equal(new URL(page.url()).hash,'');
+ assert.equal(await page.locator('#tiana-sign-in').count(),0);
+ const stranger=await browser.newContext();
+ const replay=await stranger.newPage();await replay.goto(launch.url);
+ await replay.getByText('本地授权链接已失效，请重新启动预览或使用 Console 登录。',{exact:false}).waitFor();
+ assert.equal((await stranger.request.get(origin+'/web/billing/_tiana/app')).status(),401);
+ await stranger.close();
+ assert.deepEqual(errors,[]);
+ console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout.');
+} finally {await browser.close();}

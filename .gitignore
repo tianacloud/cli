@@ -1,0 +1,11 @@
+# Local Go build and test artifacts
+/bin/
+/dist/
+/vendor/
+/.cache/
+/internal/releaseasset/generated/
+*.test
+*.out
+coverage.*
+
+/packaging/npm/node_modules/

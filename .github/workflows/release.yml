@@ -1,0 +1,193 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing source tag, matching packaging/npm/package.json
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify artifacts without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/platforms.yml
+    with:
+      source_ref: ${{ inputs.tag || github.ref }}
+    secrets: inherit
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOPRIVATE: github.com/tianacloud/sdk-go,github.com/tianacloud/sdk-go-sqlite
+      GOWORK: 'off'
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: stable
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Check source release version
+        id: version
+        run: |
+          # JavaScript template literals are passed to Node unchanged.
+          # shellcheck disable=SC2016
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            const version=JSON.parse(readFileSync("packaging/npm/package.json")).version;
+            if(process.env.RELEASE_TAG!==`v${version}`) throw new Error("Source tag and package version must match");
+            const channel=version.split("+")[0].includes("-")?"next":"latest";
+            appendFileSync(process.env.GITHUB_OUTPUT,`version=${version}\nchannel=${channel}\n`);'
+      - name: Download private SDK dependencies
+        env:
+          SDK_READ_TOKEN: ${{ secrets.SDK_READ_TOKEN }}
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ''
+        run: |
+          test -n "$SDK_READ_TOKEN"
+          export GIT_ASKPASS
+          GIT_ASKPASS="$(mktemp "$RUNNER_TEMP/tiana-sdk-askpass.XXXXXX")"
+          trap 'rm -f "$GIT_ASKPASS"' EXIT
+          cat > "$GIT_ASKPASS" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$SDK_READ_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$GIT_ASKPASS"
+          # Fetch full SDK histories before Go resolves the pinned module revisions.
+          for module in sdk-go sdk-go-sqlite; do
+            mirror="$RUNNER_TEMP/tiana-$module.git"
+            git clone --mirror "https://github.com/tianacloud/$module.git" "$mirror"
+          done
+          for module in sdk-go sdk-go-sqlite; do
+            mirror="$RUNNER_TEMP/tiana-$module.git"
+            git config --global "url.file://$mirror.insteadOf" "https://github.com/tianacloud/$module"
+          done
+          go mod download
+      - name: Public source checks
+        run: |
+          python3 scripts/test_public_source.py
+          python3 scripts/check-public-source.py
+      - name: Compile seven targets and pack eight npm artifacts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for target in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 linux-riscv64 windows-amd64 windows-arm64; do
+            node scripts/build-platform.mjs "$target" dist/assets "$RELEASE_VERSION"
+          done
+          node scripts/package-cli.mjs dist/assets dist/npm-release "$RELEASE_VERSION"
+      - name: Preserve exact npm release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-npm-release
+          path: |
+            dist/npm-release/*.tgz
+            dist/npm-release/npm-release.json
+          compression-level: 0
+          if-no-files-found: error
+
+  artifact-test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cli-npm-release
+          path: dist/npm-release
+      - name: Run this build's matching platform package
+        run: node scripts/verify-local-install.mjs dist/npm-release
+
+  publish:
+    needs: [build, artifact-test]
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm install --global npm@11.20.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cli-npm-release
+          path: dist/npm-release
+      - name: Publish platform packages, then main
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_CHANNEL: ${{ needs.build.outputs.channel }}
+        run: node scripts/publish-npm.mjs dist/npm-release "$RELEASE_VERSION" "$RELEASE_CHANNEL"
+
+  registry-test:
+    needs: [build, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Fresh npm registry installation and command checks
+        shell: bash
+        run: |
+          prefix="$(mktemp -d "$RUNNER_TEMP/tiana-npm-install.XXXXXX")"
+          npm install --prefix "$prefix" --cache "$prefix/cache" --include=optional --ignore-scripts --registry=https://registry.npmjs.org/ "@tianacloud/cli@$RELEASE_VERSION"
+          node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" version
+          node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" web list-template --help
+          node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" web init-template --help

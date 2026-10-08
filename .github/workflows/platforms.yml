@@ -1,0 +1,79 @@
+name: Native CLI platforms
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Source ref to test
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOPRIVATE: github.com/tianacloud/sdk-go,github.com/tianacloud/sdk-go-sqlite
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: stable
+          cache: false
+      - name: Download private SDK dependencies
+        env:
+          SDK_READ_TOKEN: ${{ secrets.SDK_READ_TOKEN }}
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ''
+        run: |
+          test -n "$SDK_READ_TOKEN"
+          export GIT_ASKPASS
+          GIT_ASKPASS="$(mktemp "$RUNNER_TEMP/tiana-sdk-askpass.XXXXXX")"
+          trap 'rm -f "$GIT_ASKPASS"' EXIT
+          cat > "$GIT_ASKPASS" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$SDK_READ_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$GIT_ASKPASS"
+          # Fetch full SDK histories before Go resolves the pinned module revisions.
+          for module in sdk-go sdk-go-sqlite; do
+            mirror="$RUNNER_TEMP/tiana-$module.git"
+            git clone --mirror "https://github.com/tianacloud/$module.git" "$mirror"
+          done
+          for module in sdk-go sdk-go-sqlite; do
+            mirror="$RUNNER_TEMP/tiana-$module.git"
+            git config --global "url.file://$mirror.insteadOf" "https://github.com/tianacloud/$module"
+          done
+          go mod download
+      - name: Native CLI tests
+        run: |
+          go test -mod=readonly -timeout 3m ./...
+          go vet -mod=readonly ./...
+      - name: npm launcher and installation tests
+        run: node --test packaging/launcher.test.mjs packaging/install.test.mjs
+      - name: Seven-platform packaging
+        if: runner.os == 'Linux'
+        run: node --test packaging/package.test.mjs packaging/release.test.mjs

@@ -1,0 +1,45 @@
+{
+  "name": "@tianacloud/cli",
+  "version": "1.0.0",
+  "description": "Tiana CLI for account login, SQLite, Git and application publication",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tianacloud/cli.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "latest"
+  },
+  "bin": {
+    "tiana": "bin/tiana.mjs",
+    "git-remote-tiana": "bin/git-remote-tiana.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64",
+    "riscv64"
+  ],
+  "optionalDependencies": {
+    "@tianacloud/cli-darwin-x64": "1.0.0",
+    "@tianacloud/cli-darwin-arm64": "1.0.0",
+    "@tianacloud/cli-linux-x64": "1.0.0",
+    "@tianacloud/cli-linux-arm64": "1.0.0",
+    "@tianacloud/cli-linux-riscv64": "1.0.0",
+    "@tianacloud/cli-win32-x64": "1.0.0",
+    "@tianacloud/cli-win32-arm64": "1.0.0"
+  }
+}
