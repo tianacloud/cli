@@ -16,7 +16,7 @@ esac
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd -P)
 sdk_rust_dir=${TIANA_SDK_RUST_DIR:-"$repo_dir/../sdk"}
-version=${TIANA_RELEASE_VERSION:-1.0.0}
+version=${TIANA_RELEASE_VERSION:-1.0.1}
 insecure_tls=${TIANA_INSECURE_TLS:-false}
 go_bin=${GO_BIN:-go}
 cargo_bin=${CARGO_BIN:-cargo}

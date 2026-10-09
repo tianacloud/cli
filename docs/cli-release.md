@@ -103,3 +103,14 @@ variable without saving its contents.
 A failed install check after publication leaves the published version in npm;
 inspect the exact version and channel before deciding the next release. Reports
 must distinguish artifact verification, cross compilation and real native tests.
+
+
+## 1.0.1 management output and state recovery
+
+The stable release adds JSON for resource lists/details/deletion, SQLite branches,
+account status/logout/version and preview startup. SQL keeps its own result format.
+Local pending/receipt/update state uses the SDK XDG configuration root; previous
+platform pending records require explicit original-path recovery. Login outputs
+only verified facts, and publication confirmation separates upload receipts from
+current serving checksums. SDK dependencies remain v1.0.0. Release 1.0.1 together
+with agent-skills 1.0.2; its CLI minimum is 1.0.1.
