@@ -15,6 +15,8 @@ func deleteWaitOption() cli.Flag {
 	return &cli.BoolFlag{Name: "wait", Aliases: []string{"w"}, Usage: "Wait for the deletion operation to succeed; Ctrl-C stops waiting", Local: true}
 }
 
+var errOperationFailed = errors.New("operation failed; inspect the operation before retrying")
+
 type deletionObserver interface {
 	GetInstanceOperation(context.Context, string, string) (authclient.InstanceOperation, error)
 }
@@ -37,7 +39,7 @@ func waitForDeletion(ctx context.Context, client deletionObserver, instanceID, o
 		case "success":
 			return nil
 		case "failed":
-			return errors.New("deletion operation failed; inspect the operation before retrying")
+			return errOperationFailed
 		case "pending", "running", "retry_wait":
 		default:
 			return errors.New("unrecognized deletion operation state")

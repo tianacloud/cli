@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
@@ -17,23 +18,35 @@ type showOptions struct {
 }
 
 func executeSQLiteShow(ctx context.Context, options showOptions, output, errorOutput io.Writer) int {
-	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive)
+	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive || managementJSON(ctx))
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
 		return 1
 	}
 	instance, err := resolveInstanceWithLogin(ctx, client, options.reference)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		reportResolveError(errorOutput, options.reference, err)
 		return 1
 	}
 	if err := sqliteManagementScope.check(instance); err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		writeCommandError(errorOutput, err)
 		return 1
 	}
 	state := instanceDisplayState(instance)
 	if !options.urlOnly && options.branch == "" && (state == "DELETING" || state == "DELETED") {
 		// The instance remains inspectable after its default branch is removed.
+		if managementJSON(ctx) {
+			return writeAppResult(apppublish.Success(instanceJSON(instance)), true, output, errorOutput)
+		}
 		if err := printInstanceDetail(output, instance); err != nil {
 			writeCommandError(errorOutput, err)
 			return 1
@@ -42,11 +55,19 @@ func executeSQLiteShow(ctx context.Context, options showOptions, output, errorOu
 	}
 	detail, err := client.ResolveBranch(ctx, instance.ID, options.branch)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		reportResolveError(errorOutput, options.reference, err)
 		return 1
 	}
 	instance.EndpointID = detail.Branch.EndpointID
 	instance.Connection = detail.Connection
+	if managementJSON(ctx) {
+		data := instanceJSON(instance)
+		data.Branch = &detail.Branch
+		return writeAppResult(apppublish.Success(data), true, output, errorOutput)
+	}
 	if options.urlOnly {
 		url, ready := instanceConnectionURL(instance)
 		if !ready {

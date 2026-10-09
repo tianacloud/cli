@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/gitremote"
 	"github.com/urfave/cli/v3"
@@ -63,7 +64,7 @@ func newGitCreateCommand(output, diagnostics io.Writer) *cli.Command {
 }
 
 func newGitListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "list", Usage: "List Git instances only", Description: "Fetch all pages and display every matching instance without prompting.",
+	return &cli.Command{Name: "list", Usage: "List Git instances only", Description: "Fetch all pages and display every matching instance without prompting.", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 {
 				return argumentFailure(ctx, cmd, "list does not accept arguments")
@@ -74,8 +75,11 @@ func newGitListCommand(input io.Reader, output, diagnostics io.Writer) *cli.Comm
 }
 
 func newGitShowCommand(output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "show", Usage: "Show a Git instance", ArgsUsage: "INSTANCE", Description: "Use an instance ID or exact name. With --url, stdout contains only the Git connection URL.", Flags: []cli.Flag{boolOption("url", "Print only the Git connection URL")},
+	return &cli.Command{Name: "show", Usage: "Show a Git instance", ArgsUsage: "INSTANCE", Description: "Use an instance ID or exact name. With --url, stdout contains only the Git connection URL.", Flags: []cli.Flag{boolOption("url", "Print only the Git connection URL"), boolOption("json", "Write a structured JSON result")},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Bool("json") && cmd.Bool("url") {
+				return argumentFailure(ctx, cmd, "--json and --url are mutually exclusive")
+			}
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")
 			}
@@ -88,19 +92,31 @@ func newGitShowCommand(output, diagnostics io.Writer) *cli.Command {
 }
 
 func executeGitShow(ctx context.Context, reference string, urlOnly bool, output, diagnostics io.Writer) int {
-	client, err := newAuthClient(ctx, diagnostics, false)
+	client, err := newAuthClient(ctx, diagnostics, managementJSON(ctx))
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	instance, err := resolveGitInstanceWithLogin(ctx, client, reference)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		reportResolveError(diagnostics, reference, err)
 		return 1
 	}
 	if err := gitManagementScope.check(instance); err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
+	}
+	if managementJSON(ctx) {
+		return writeAppResult(apppublish.Success(instanceJSON(instance)), true, output, diagnostics)
 	}
 	if urlOnly {
 		locator, ready := instanceConnectionURL(instance)

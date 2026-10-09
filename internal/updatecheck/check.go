@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tianacloud/cli/internal/localfile"
+	"github.com/tianacloud/cli/internal/localstate"
 	"golang.org/x/mod/semver"
 )
 
@@ -55,11 +56,11 @@ type Checker struct {
 }
 
 func DefaultPath() (string, error) {
-	root, err := os.UserConfigDir()
+	root, err := localstate.Directory()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "tiana", "update-state.json"), nil
+	return filepath.Join(root, "update-state.json"), nil
 }
 func (c Checker) Check(ctx context.Context, versions map[string]string, options Options) Result {
 	result := Result{CheckStatus: "unavailable", Updates: []Update{}}

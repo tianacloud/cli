@@ -11,6 +11,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/localstate"
 )
 
 type createOptions struct {
@@ -28,9 +29,15 @@ func executeSQLiteCreate(ctx context.Context, options createOptions, args []stri
 // is created. Only --wait polls jobs. Unknown outcomes retain the same request ID.
 func executeInstanceCreate(ctx context.Context, options createOptions, args []string, output, errorOutput io.Writer, scope databaseScope) (resultCode int) {
 	var receipt any
+	var err error
 	jsonWritten := false
 	defer func() {
 		if options.json && !jsonWritten && resultCode != 0 {
+			var local *localstate.Error
+			if errors.As(err, &local) || errors.Is(err, authclient.ErrAuthenticationRequired) || errors.Is(err, authclient.ErrCredentialNotFound) {
+				_ = managementFailure(err, output, io.Discard, receipt)
+				return
+			}
 			_ = json.NewEncoder(output).Encode(apppublish.Result{Status: "failed", Data: receipt, Error: &apppublish.Error{Code: "CREATE_FAILED", Message: "Instance creation did not complete", NextAction: "Inspect stderr; repeat the same command to recover a pending request", ExitCode: resultCode}})
 		}
 	}()
@@ -38,7 +45,7 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 	if scope.engine == "git" {
 		key = "git.create"
 	}
-	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive)
+	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive || options.json)
 	if err != nil {
 		writeCommandError(errorOutput, err)
 		return 1

@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
@@ -23,8 +24,11 @@ func executeSQLiteList(ctx context.Context, options listOptions, stdin io.Reader
 }
 
 func executeInstanceList(ctx context.Context, options listOptions, stdin io.Reader, output, errorOutput io.Writer, scope databaseScope) int {
-	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive)
+	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive || managementJSON(ctx))
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
 		return 1
 	}
@@ -35,6 +39,12 @@ func executeInstanceList(ctx context.Context, options listOptions, stdin io.Read
 		instances, err := fetchAllInstancesScoped(operationContext, fetch, nonInteractivePageSize, scope)
 		if err != nil {
 			return err
+		}
+		if managementJSON(ctx) {
+			if code := writeAppResult(apppublish.Success(instanceListJSON(instances)), true, output, errorOutput); code != 0 {
+				return errors.New("cannot write instance list")
+			}
+			return nil
 		}
 		if scope.engine == "git" && len(instances) == 0 {
 			_, err := fmt.Fprintln(output, "No Git repositories found.")
@@ -48,6 +58,9 @@ func executeInstanceList(ctx context.Context, options listOptions, stdin io.Read
 		err = client.RunAuthenticated(ctx, operation)
 	}
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		writeCommandError(errorOutput, err)
 		return 1
 	}

@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/urfave/cli/v3"
 )
@@ -15,7 +17,7 @@ import (
 func newInstanceDeleteCommand(input io.Reader, output, diagnostics io.Writer, scope databaseScope) *cli.Command {
 	return &cli.Command{Name: "delete", Usage: "Delete an instance", ArgsUsage: "INSTANCE",
 		Description: "Delete the entire instance, including its branches and data. Accepts an ID or exact name. Requires terminal confirmation unless --force is set. By default success means asynchronous acceptance; -w/--wait waits for the deletion operation to succeed.",
-		Flags:       []cli.Flag{deleteWaitOption(), &cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}},
+		Flags:       []cli.Flag{boolOption("json", "Write a structured JSON result"), deleteWaitOption(), &cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "Skip deletion confirmation", Local: true}},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")
@@ -29,12 +31,18 @@ func newInstanceDeleteCommand(input io.Reader, output, diagnostics io.Writer, sc
 }
 
 func executeInstanceDelete(ctx context.Context, reference string, force, wait bool, input io.Reader, output, diagnostics io.Writer, scope databaseScope) int {
+	if managementJSON(ctx) && !force {
+		return writeAppResult(apppublish.Failure(&apppublish.Error{Code: "CONFIRMATION_REQUIRED", Message: "JSON deletion requires --force", NextAction: "Specify --force only after confirming deletion of this instance", ExitCode: 2}), true, output, diagnostics)
+	}
 	if !force && !isTerminal(input) {
 		fmt.Fprintln(diagnostics, "tiana: deletion requires terminal confirmation; use --force (-f) for non-interactive deletion")
 		return 2
 	}
-	client, err := newAuthClient(ctx, diagnostics, !isTerminal(input))
+	client, err := newAuthClient(ctx, diagnostics, managementJSON(ctx) || !isTerminal(input))
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
@@ -42,21 +50,33 @@ func executeInstanceDelete(ctx context.Context, reference string, force, wait bo
 	// durably deduplicates deletion by immutable instance ID; no new local schema.
 	store, err := newPendingStore()
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	release, err := store.Acquire(ctx)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	defer release()
 	pending, err := store.Load()
 	if err == nil {
+		if managementJSON(ctx) {
+			return writeAppResult(apppublish.Failure(&apppublish.Error{Code: "PENDING_COMMAND", Message: "An unresolved command blocks this mutation", NextAction: "Recover the original pending command before another write", ExitCode: 1}), true, output, diagnostics)
+		}
 		reportUnfinishedOperation(diagnostics, store.Path, pending)
 		return 1
 	}
 	if !errors.Is(err, authclient.ErrPendingNotFound) {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
@@ -71,6 +91,9 @@ func executeInstanceDelete(ctx context.Context, reference string, force, wait bo
 		err = client.RunAuthenticated(ctx, resolve)
 	}
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		reportResolveError(diagnostics, reference, err)
 		return 1
 	}
@@ -105,12 +128,22 @@ func executeInstanceDelete(ctx context.Context, reference string, force, wait bo
 	// No name re-resolution or command-level retry on transport/server failure.
 	receipt, err := client.DeleteInstance(ctx, instance.ID, key)
 	if err != nil {
+		if managementJSON(ctx) {
+			return mutationJSONFailure(ctx, err, map[string]string{"instance_id": instance.ID, "request_id": key}, output, diagnostics)
+		}
 		writeCommandError(diagnostics, err)
 		fmt.Fprintf(diagnostics, "Deletion was not confirmed for instance %s; check its status before retrying with this ID.\n", safeDisplay(instance.ID))
 		if ctx.Err() != nil {
 			return 130
 		}
 		return 1
+	}
+	if managementJSON(ctx) {
+		if wait {
+			fmt.Fprintf(diagnostics, "Deletion accepted: instance=%s operation=%s\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID))
+			return observedMutationJSON(ctx, waitForDeletion(ctx, client, receipt.InstanceID, receipt.OperationID, "DELETE_INSTANCE", "", time.Second), receipt, output, diagnostics)
+		}
+		return writeAppResult(apppublish.Result{Status: "accepted", Data: receipt}, true, output, diagnostics)
 	}
 	if _, err := fmt.Fprintf(output, "Deletion accepted: instance=%s operation=%s\n", safeDisplay(receipt.InstanceID), safeDisplay(receipt.OperationID)); err != nil {
 		fmt.Fprintln(diagnostics, "tiana: deletion accepted but cannot write receipt; inspect the result before retrying")

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tianacloud/cli/internal/localfile"
+	"github.com/tianacloud/cli/internal/localstate"
 	"github.com/tianacloud/sdk-go/auth"
 	"os"
 	"path/filepath"
@@ -30,9 +31,9 @@ var ErrPendingNotFound = errors.New("pending command not found")
 const maxPendingBytes = 8 << 20
 
 func DefaultPendingCommandPath() (string, error) {
-	directory, err := os.UserConfigDir()
+	directory, err := localstate.Directory()
 	if err != nil {
-		return "", errors.New("resolve pending command directory")
+		return "", err
 	}
 	origin, err := ResolveOrigin(context.Background())
 	if err != nil {
@@ -40,7 +41,20 @@ func DefaultPendingCommandPath() (string, error) {
 	}
 	// Use the same trailing-slash equivalence as the account credential store.
 	key := sha256.Sum256([]byte(strings.TrimRight(origin, "/")))
-	return filepath.Join(directory, "tiana", fmt.Sprintf("pending-command-%x.json", key)), nil
+	name := fmt.Sprintf("pending-command-%x.json", key)
+	path := filepath.Join(directory, name)
+	// Do not silently abandon an unresolved request when the default directory changes.
+	if legacyRoot, legacyErr := os.UserConfigDir(); legacyErr == nil {
+		legacy := filepath.Join(legacyRoot, "tiana", name)
+		if filepath.Clean(legacy) != filepath.Clean(path) {
+			if _, err := os.Lstat(legacy); err == nil {
+				return "", &localstate.Error{Code: "LEGACY_PENDING_COMMAND", Operation: "recover pending command", Path: legacy}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return "", localstate.Wrap("inspect previous pending command", legacy, err)
+			}
+		}
+	}
+	return path, nil
 }
 
 // FilePendingCommandStore keeps a command whose control-plane effect has not
@@ -62,7 +76,7 @@ func (s *FilePendingCommandStore) Load() (PendingCommand, error) {
 		return PendingCommand{}, ErrPendingNotFound
 	}
 	if err != nil {
-		return PendingCommand{}, errors.New("cannot read pending command: require an owned, regular mode-0600 file, no symlinks, at most 8 MiB")
+		return PendingCommand{}, localstate.Wrap("read owned regular mode-0600 pending command (no symlinks, at most 8 MiB)", s.Path, err)
 	}
 	defer clear(contents)
 	var command PendingCommand
@@ -111,7 +125,7 @@ func validatePendingFile(path string) error {
 	contents, err := localfile.Read(path, maxPendingBytes, true)
 	clear(contents)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.New("unsafe pending command file; require an owned, regular mode-0600 file, no symlinks, at most 8 MiB")
+		return localstate.Wrap("validate owned regular mode-0600 pending command (no symlinks, at most 8 MiB)", path, err)
 	}
 	return nil
 }

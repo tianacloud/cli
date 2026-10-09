@@ -360,3 +360,14 @@ Source defaults, release script defaults and npm package/optional dependencies
 are 1.0.0; release overrides stay supported. No protocol, persistence, credential
 or TLS policy changes accompany this dependency/version update. Verify clean
 module resolution, race/vet, packaging and actual App SQLite compatibility.
+
+
+## Reviewed CLI output and local state fixes (unpublished source)
+
+Management JSON uses one status/data/error envelope, all-page lists and noninteractive account checks. New fields preserve decimal-string 64-bit quantities; existing create job_id keeps its number contract. Raw connect/Git streams and SQL formats remain independent. JSON flags do not alter request identities or permit retries. JSON delete requires force, accepted/completed/failed/unknown remain distinct, cancellation only stops observation. Preview startup JSON carries a short-lived launch capability solely on stdout; never log it.
+
+All new default state paths derive from SDK DefaultCredentialPath. A legacy platform pending record blocks new default mutations until explicit original-path recovery. Do not move/delete records or lock inodes; old/new writer coordination is required across upgrades. Publication receipts in previous directories remain untouched. Preserve private permissions, locks, same-directory atomic writes and request-before-effect ordering. No new credential override, SDK pin, database schema or wire protocol.
+
+Login outputs only verified login/pending facts: no pending is not logged out, failed storage may leave resumable credentials, and unknown states are omitted. Error diagnostics retain safe local paths and allowlisted causes, never contents or arbitrary peer errors. Preserve the single-use exchange guard and recovery without another exchange after account-save failure.
+
+Web current and receipt status are distinguished additively with query_kind; reject null/non-object control responses. Upload success is not activation; use running plus target remote/serving checksums. Verification includes malformed replies, persistent recovery, no replay, precision, machine-output failures, root argument parsing, full race/vet, public source checks and supported-target builds. These source changes need a coordinated CLI/Skills release; no publication is authorized by this note.

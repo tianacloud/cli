@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tianacloud/cli/internal/localfile"
+	"github.com/tianacloud/cli/internal/localstate"
 	"os"
 	"time"
 )
@@ -28,7 +29,7 @@ type pendingLogin struct {
 func (c *Client) StartLogin(ctx context.Context) (AuthTransaction, error) {
 	unlock, err := c.lockPendingLogin(ctx)
 	if err != nil {
-		return AuthTransaction{}, ErrCredentialSaveFailed
+		return AuthTransaction{}, errors.Join(ErrCredentialSaveFailed, err)
 	}
 	defer unlock()
 	pending, err := c.loadPendingLogin()
@@ -60,7 +61,7 @@ func (c *Client) ResumeLogin(ctx context.Context) (AuthTransaction, error) {
 	defer cancel()
 	unlock, err := c.lockPendingLogin(ctx)
 	if err != nil {
-		return AuthTransaction{}, ErrCredentialSaveFailed
+		return AuthTransaction{}, errors.Join(ErrCredentialSaveFailed, err)
 	}
 	defer unlock()
 	pending, err := c.loadPendingLogin()
@@ -100,7 +101,11 @@ func (c *Client) ResumeLogin(ctx context.Context) (AuthTransaction, error) {
 		}
 	}
 	if err := c.config.Store.Save(*pending.Credential); err != nil {
-		return transaction, ErrCredentialSaveFailed
+		path, _ := c.pendingLoginPath()
+		if store, ok := c.config.Store.(*FileStore); ok {
+			path = store.Path
+		}
+		return transaction, errors.Join(ErrCredentialSaveFailed, localstate.Wrap("save account credential", path, err))
 	}
 	return transaction, c.clearPendingLogin()
 }
@@ -124,11 +129,11 @@ func (c *Client) loadPendingLogin() (pendingLogin, error) {
 		return pendingLogin{}, ErrLoginNotStarted
 	}
 	if err != nil {
-		return pendingLogin{}, ErrCredentialSaveFailed
+		return pendingLogin{}, errors.Join(ErrCredentialSaveFailed, localstate.Wrap("read pending authorization", path, err))
 	}
 	var pending pendingLogin
 	if json.Unmarshal(contents, &pending) != nil || pending.Transaction.ID == "" || pending.ClientSecret == "" {
-		return pendingLogin{}, ErrCredentialSaveFailed
+		return pendingLogin{}, errors.Join(ErrCredentialSaveFailed, localstate.Wrap("validate pending authorization", path, errors.New("invalid authorization state")))
 	}
 	pending.Transaction.ClientSecret = pending.ClientSecret
 	return pending, nil
@@ -151,7 +156,7 @@ func (c *Client) savePendingLogin(pending pendingLogin) error {
 		return err
 	}
 	if err := atomicWritePrivate(path, contents); err != nil {
-		return ErrCredentialSaveFailed
+		return errors.Join(ErrCredentialSaveFailed, localstate.Wrap("save pending authorization", path, err))
 	}
 	return nil
 }
@@ -165,7 +170,7 @@ func (c *Client) clearPendingLogin() error {
 		return err
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return ErrCredentialSaveFailed
+		return errors.Join(ErrCredentialSaveFailed, localstate.Wrap("remove pending authorization", path, err))
 	}
 	return nil
 }

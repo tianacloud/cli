@@ -31,7 +31,7 @@ func waitForBranchCreation(ctx context.Context, client branchCreationObserver, r
 			}
 			return nil
 		case "failed":
-			return errors.New("branch creation failed; inspect the operation before retrying")
+			return errOperationFailed
 		case "pending", "running", "retry_wait":
 		default:
 			return errors.New("unrecognized branch creation operation state")

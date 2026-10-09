@@ -19,7 +19,7 @@ import (
 )
 
 func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "serve", Usage: "Preview a CSR/hash application through the fixed Tiana Bootstrap", Flags: []cli.Flag{stringOption("dir", "Built module and asset output", ""), &cli.IntFlag{Name: "port", Usage: "Loopback preview port", Value: 4174, Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+	return &cli.Command{Name: "serve", Usage: "Preview a CSR/hash application through the fixed Tiana Bootstrap", Flags: []cli.Flag{boolOption("json", "Write one startup result; launch_url contains a short-lived authorization capability"), stringOption("dir", "Built module and asset output", ""), &cli.IntFlag{Name: "port", Usage: "Loopback preview port", Value: 4174, Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		port := cmd.Int("port")
 		if cmd.NArg() != 1 || cmd.String("dir") == "" || port < 1 || port > 65535 {
 			return argumentFailure(ctx, cmd, "serve requires a Web ID, --dir and a port between 1 and 65535")
@@ -40,11 +40,11 @@ func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
 		}
 		runner, e := (apppublish.Runner{Client: client}).Bind(ctx)
 		if e != nil {
-			return statusError(writeAppResult(apppublish.Failure(e), false, output, diagnostics))
+			return statusError(writeAppResult(apppublish.Failure(e), cmd.Bool("json"), output, diagnostics))
 		}
 		project, e := runner.Resolve(ctx, cmd.Args().First())
 		if e != nil {
-			return statusError(writeAppResult(apppublish.Failure(e), false, output, diagnostics))
+			return statusError(writeAppResult(apppublish.Failure(e), cmd.Bool("json"), output, diagnostics))
 		}
 		build, err := appbootstrap.LoadBuild(cmd.String("dir"), appbootstrap.Manifest{WebID: project.ID, Name: project.Name, ProjectRevision: project.ProjectRevision, Entry: project.Entry, DatabaseInstanceID: project.DatabaseInstanceID, GitInstanceID: project.GitInstanceID})
 		if err != nil {
@@ -94,10 +94,23 @@ func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
 		if authErr == nil {
 			message = "This one-use link authorizes trusted app code with your CLI account; expires in 5 minutes. This build has not been published."
 		}
-		if _, err := fmt.Fprintf(output, "Local preview: %s\n%s\n", previewURL, message); err != nil {
-			writeCommandError(diagnostics, err)
-			return statusError(1)
+		if cmd.Bool("json") {
+			authorization := "console"
+			var launch any
+			if authErr == nil {
+				authorization = "cli"
+				launch = previewURL
+			}
+			if code := writeAppResult(apppublish.Success(map[string]any{"port": port, "preview_url": origin + base, "launch_url": launch, "authorization": authorization}), true, output, diagnostics); code != 0 {
+				return statusError(code)
+			}
+		} else {
+			if _, err := fmt.Fprintf(output, "Local preview: %s\n%s\n", previewURL, message); err != nil {
+				writeCommandError(diagnostics, err)
+				return statusError(1)
+			}
 		}
+
 		err = server.Serve(listener)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(diagnostics, "tiana: preview server stopped unexpectedly")

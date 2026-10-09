@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/tianacloud/sdk-go/fetch"
 	"io"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/localfile"
+	"github.com/tianacloud/cli/internal/localstate"
 )
 
 type fakeWebFetch struct {
@@ -99,10 +99,10 @@ func TestServerlessPublicationUsesAccountCredentialAndDoesNotReplay(t *testing.T
 		if receipt.PublishID == "" || receipt.InstanceID != "web-instance" || len(receipt.SHA256) != 64 || receipt.ArchivePath == "" {
 			t.Fatal("incomplete durable receipt")
 		}
-		return errors.New("fixture unavailable")
+		return localstate.Wrap("save publish receipt", "/synthetic/receipts/path.json", os.ErrPermission)
 	}
 	failed := r.Run(t.Context(), Options{Command: "publish", ID: "web-one", Dir: dir})
-	if failed.Error == nil || fake.calls != 1 {
+	if failed.Error == nil || !strings.Contains(failed.Error.Message, "/synthetic/receipts/path.json") || !strings.Contains(failed.Error.NextAction, "XDG_CONFIG_HOME") || fake.calls != 1 {
 		t.Fatal("publication sent despite receipt failure")
 	}
 	r.PersistPublication = nil

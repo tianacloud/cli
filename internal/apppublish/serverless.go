@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/url"
 	"os"
 	"time"
 
 	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/localstate"
 	"github.com/tianacloud/sdk-go/fetch"
 )
 
@@ -101,7 +103,19 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		request = fetch.Request{Method: "PUT", PathQuery: "/_tiana/web/publish", Body: archive, BodyLength: stat.Size(), Headers: []fetch.Header{{Name: "x-tiana-publish-id", Value: publishID}, {Name: "x-tiana-content-sha256", Value: sha}}}
 		if r.PersistPublication != nil {
 			if err = r.PersistPublication(ctx, PublicationReceipt{Origin: r.Client.Origin(), TenantID: bound.TenantID, UserID: bound.PrincipalID, WebID: project.ID, InstanceID: instance.ID, PublishID: publishID, SHA256: digest, ArchivePath: archivePath, CreatedAt: time.Now().UTC()}); err != nil {
-				return Failure(&Error{Code: "PUBLISH_RECEIPT_UNAVAILABLE", Message: "Cannot safely save publication identity; no upload was sent", NextAction: "Check the local receipt directory permissions", ExitCode: 1})
+				failure := &Error{Code: "PUBLISH_RECEIPT_UNAVAILABLE", Message: "Cannot safely save publication identity; no upload was sent", NextAction: "Check the local receipt directory permissions", ExitCode: 1}
+				var local *localstate.Error
+				if errors.As(err, &local) {
+					failure.Message += ": " + local.Error()
+					failure.NextAction = "Set XDG_CONFIG_HOME to a writable directory or repair the local receipt path"
+					if local.Code == "LEGACY_PENDING_COMMAND" {
+						failure.NextAction = "Set TIANA_PENDING_COMMAND_FILE to the previous path and recover the original command"
+					}
+					if local.Code == "LOCAL_STATE_BUSY" {
+						failure.NextAction = "Wait for the other CLI command to release the receipt lock"
+					}
+				}
+				return Failure(failure)
 			}
 		}
 		if r.OnPublishID != nil {
@@ -131,11 +145,17 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		return Failure(inputError("Invalid Web control response"))
 	}
 	var body map[string]any
-	if json.Unmarshal(raw, &body) != nil {
+	if json.Unmarshal(raw, &body) != nil || body == nil {
 		if o.Command == "publish" {
 			return Result{Status: "unknown", Data: map[string]string{"id": project.ID, "publish_id": publishID, "sha256": digest, "archive_path": archivePath}, Error: &Error{Code: "INVALID_UPLOAD_RECEIPT", Message: "Publication response invalid; outcome unknown", NextAction: "Query publication status before another publish", ExitCode: 4}}
 		}
 		return Failure(inputError("Invalid Web control JSON"))
+	}
+	if o.Command == "status" {
+		body["query_kind"] = "current"
+		if o.PublishID != "" {
+			body["query_kind"] = "receipt"
+		}
 	}
 	if result.Status >= 300 {
 		if o.Command == "publish" {
@@ -149,7 +169,7 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 			}
 		}
 		if o.Command == "status" && result.Status == 404 && code == "PUBLISH_NOT_FOUND" {
-			return Result{Status: "unknown", Data: map[string]string{"id": project.ID, "publish_id": publishID}, Error: &Error{Code: code, Message: "Publication receipt unavailable after expiry or App restart; outcome unknown", NextAction: "Query tiana web status " + project.ID + " and compare current checksums", ExitCode: 4}}
+			return Result{Status: "unknown", Data: map[string]string{"id": project.ID, "publish_id": publishID, "query_kind": "receipt"}, Error: &Error{Code: code, Message: "Publication receipt unavailable after expiry or App restart; outcome unknown", NextAction: "Query tiana web status " + project.ID + " and compare current checksums", ExitCode: 4}}
 		}
 		if o.Command == "publish" && result.Status >= 500 {
 			exit = 4

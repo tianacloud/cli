@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/supervisor"
 	"github.com/tianacloud/cli/internal/updatecheck"
 	"github.com/urfave/cli/v3"
@@ -21,9 +22,12 @@ func printCurrentVersion(output io.Writer) error {
 	return err
 }
 func newVersionCommand(output, diagnostics io.Writer, checker updatecheck.Checker) *cli.Command {
-	return &cli.Command{Name: "version", Usage: "Print version or check package updates", Action: func(ctx context.Context, cmd *cli.Command) error {
+	return &cli.Command{Name: "version", Usage: "Print version or check package updates", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 0 {
 			return argumentFailure(ctx, cmd, "version does not accept arguments")
+		}
+		if managementJSON(ctx) {
+			return statusError(writeAppResult(apppublish.Success(map[string]any{"version": version, "helper_contract": supervisor.HelperContractVersion}), true, output, diagnostics))
 		}
 		if printCurrentVersion(output) != nil {
 			return statusError(1)

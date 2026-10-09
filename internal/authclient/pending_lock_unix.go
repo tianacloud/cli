@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tianacloud/cli/internal/localstate"
 	"golang.org/x/sys/unix"
 )
 
@@ -27,19 +28,19 @@ func (s *FilePendingCommandStore) Acquire(ctx context.Context) (func(), error) {
 	}
 	fd, err := unix.Open(s.Path+".lock", unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0600)
 	if err != nil {
-		return nil, errors.New("cannot open pending command lock")
+		return nil, localstate.Wrap("open pending command lock", s.Path+".lock", err)
 	}
 	var stat unix.Stat_t
 	if unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&07777 != 0600 || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
 		_ = unix.Close(fd)
-		return nil, errors.New("unsafe pending command lock")
+		return nil, localstate.Wrap("validate private pending command lock", s.Path+".lock", errors.New("unsafe lock"))
 	}
 	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = unix.Close(fd)
 		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-			return nil, errors.New("another CLI command is using this pending store; wait for it to finish and retry")
+			return nil, &localstate.Error{Code: "LOCAL_STATE_BUSY", Operation: "lock pending command", Path: s.Path + ".lock", Cause: err}
 		}
-		return nil, errors.New("cannot lock pending command store")
+		return nil, localstate.Wrap("lock pending command", s.Path+".lock", err)
 	}
 	if err := ctx.Err(); err != nil {
 		_ = unix.Close(fd)
@@ -53,19 +54,19 @@ func (s *FilePendingCommandStore) Acquire(ctx context.Context) (func(), error) {
 // and restrict the opened directory rather than following a path in Chmod.
 func preparePendingDir(path string) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
-		return errors.New("cannot prepare pending command directory")
+		return localstate.Wrap("prepare pending command directory", path, err)
 	}
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return errors.New("pending command directory must not be a symlink")
+		return localstate.Wrap("open nonsymlink pending command directory", path, err)
 	}
 	defer unix.Close(fd)
 	var st unix.Stat_t
 	if unix.Fstat(fd, &st) != nil || st.Uid != uint32(os.Geteuid()) {
 		return errors.New("pending command directory must belong to the current user")
 	}
-	if unix.Fchmod(fd, 0700) != nil {
-		return errors.New("cannot restrict pending command directory")
+	if err := unix.Fchmod(fd, 0700); err != nil {
+		return localstate.Wrap("restrict pending command directory", path, err)
 	}
 	return nil
 }

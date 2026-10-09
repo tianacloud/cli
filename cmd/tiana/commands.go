@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
@@ -56,6 +57,12 @@ func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, 
 		return 2
 	}
 	cmd := newCLICommand(input, output, diagnostics, sqlAction)
+	var machine *countedJSONWriter
+	if requestedManagementJSON(cmd, args) {
+		ctx = context.WithValue(ctx, managementJSONKey{}, true)
+		machine = &countedJSONWriter{Writer: output}
+		cmd = newCLICommand(input, machine, diagnostics, sqlAction)
+	}
 	err := cmd.Run(ctx, append([]string{"tiana"}, args...))
 	if err == nil {
 		passiveUpdate(ctx, args, input, output, diagnostics)
@@ -64,6 +71,14 @@ func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, 
 	_, _ = io.Copy(diagnostics, &requestIDs)
 	var status *commandStatus
 	if errors.As(err, &status) {
+		if machine != nil && machine.written == 0 {
+			failure := &apppublish.Error{Code: "MANAGEMENT_FAILED", Message: "Command did not complete", ExitCode: status.code}
+			if status.code == 2 {
+				failure.Code = "INVALID_INPUT"
+				failure.Message = "Invalid command options or arguments"
+			}
+			_ = writeAppResult(apppublish.Failure(failure), true, machine, diagnostics)
+		}
 		if status.code == 1 && ctx.Err() != nil {
 			return 130
 		}
@@ -84,6 +99,9 @@ func showHelp(ctx context.Context, cmd *cli.Command) error {
 }
 
 func argumentFailure(ctx context.Context, cmd *cli.Command, message string) error {
+	if managementJSON(ctx) {
+		return statusError(writeAppResult(apppublish.Failure(&apppublish.Error{Code: "INVALID_INPUT", Message: message, ExitCode: 2}), true, cmd.Root().Writer, cmd.Root().ErrWriter))
+	}
 	fmt.Fprintln(cmd.Root().ErrWriter, "tiana:", message)
 	writer := cmd.Root().Writer
 	cmd.Root().Writer = cmd.Root().ErrWriter
@@ -152,8 +170,8 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		Commands: []*cli.Command{
 			newVersionCommand(output, diagnostics, updatecheck.Checker{}),
 			newLoginCommand(output, diagnostics),
-			{Name: "logout", Usage: "Sign out and clear local account credentials", Action: noArgs(runLogout)},
-			{Name: "status", Usage: "Show login status and tenant quota", Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status.", Action: noArgs(runStatus)},
+			{Name: "logout", Usage: "Sign out and clear local account credentials", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: noArgs(runLogout)},
+			{Name: "status", Usage: "Show login status and tenant quota", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status.", Action: noArgs(runStatus)},
 
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
 			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
@@ -238,15 +256,18 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 			o := createOptions{json: cmd.Bool("json"), wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: name, Notes: cmd.String("message"), Engine: "sqlite", Config: map[string]interface{}{}}, nonInteractive: false}
 			return statusError(executeSQLiteCreate(ctx, o, leafArguments(cmd), output, diagnostics))
 		}}
-	list := &cli.Command{Name: "list", Usage: "List SQLite instances only", Description: "Fetch all pages and display every matching instance without prompting.", Flags: nil,
+	list := &cli.Command{Name: "list", Usage: "List SQLite instances only", Description: "Fetch all pages and display every matching instance without prompting.", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 {
 				return argumentFailure(ctx, cmd, "list does not accept arguments")
 			}
 			return statusError(executeSQLiteList(ctx, listOptions{nonInteractive: false}, input, output, diagnostics))
 		}}
-	show := &cli.Command{Name: "show", Usage: "Show a SQLite instance", ArgsUsage: "INSTANCE", Description: "With --url, stdout contains only the connection URL.", Flags: []cli.Flag{boolOption("url", "Print only the connection URL"), branchOption()},
+	show := &cli.Command{Name: "show", Usage: "Show a SQLite instance", ArgsUsage: "INSTANCE", Description: "With --url, stdout contains only the connection URL. --url and --json are mutually exclusive.", Flags: []cli.Flag{boolOption("url", "Print only the connection URL"), boolOption("json", "Write a structured JSON result"), branchOption()},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Bool("json") && cmd.Bool("url") {
+				return argumentFailure(ctx, cmd, "--json and --url are mutually exclusive")
+			}
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")
 			}
@@ -258,7 +279,7 @@ func newSQLiteCommand(input io.Reader, output, diagnostics io.Writer, sqlAction 
 	branches := &cli.Command{Name: "branch", Usage: "Manage SQLite branches", Action: groupAction, Commands: []*cli.Command{
 		newBranchMutationCommand("create", input, output, diagnostics),
 		newBranchMutationCommand("delete", input, output, diagnostics),
-		{Name: "list", Usage: "List all matching branches", ArgsUsage: "INSTANCE", Flags: []cli.Flag{stringOption("after", "Start after this branch cursor", ""), stringOption("search", "Filter branch names by substring", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "list", Usage: "List all matching branches", ArgsUsage: "INSTANCE", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("after", "Start after this branch cursor", ""), stringOption("search", "Filter branch names by substring", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 				return argumentFailure(ctx, cmd, "one instance ID or name is required")
 			}
@@ -274,6 +295,7 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 		stringOption("endpoint", "Connect directly using an HTTPS Endpoint URL or hostname[:port]; uses TIANA_TOKEN/TIANA_TOKEN_FILE or account login", ""),
 		branchOption(),
 		stringOption("format", "table, json, ndjson or csv", "table"),
+		boolOption("json", "Alias for --format json with non-interactive SQL"),
 		stringOption("output", "Exclusively create a private result file", ""),
 		&cli.UintFlag{Name: "timeout", Usage: "Per-request timeout in milliseconds (1..3600000)", Value: 30000, Local: true},
 		&cli.StringFlag{Name: "execute", Aliases: []string{"e"}, Usage: "Execute one SQL statement and exit", Local: true},
@@ -283,6 +305,14 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 	return &cli.Command{Name: "shell", Usage: "Open the SQLite shell, execute SQL (-e), or run a script (-f)", ArgsUsage: "[INSTANCE | --endpoint ENDPOINT]",
 		Description: "Resolve INSTANCE through MGR, or use --endpoint to bypass MGR. Direct mode cannot use INSTANCE or --branch. Use TIANA_TOKEN or TIANA_TOKEN_FILE when set; otherwise use the logged-in account access token. Missing login is an error.",
 		Flags:       flags, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Bool("json") {
+				if cmd.IsSet("format") && cmd.String("format") != "json" {
+					return argumentFailure(ctx, cmd, "--json conflicts with the selected --format")
+				}
+				if !cmd.IsSet("execute") && !cmd.IsSet("file") && isTerminal(cmd.Root().Reader) {
+					return argumentFailure(ctx, cmd, "--json requires -e, -f or piped SQL input")
+				}
+			}
 			if cmd.IsSet("atomic") {
 				return argumentFailure(ctx, cmd, "--atomic is unavailable until SQLite grammar equivalence is verified")
 			}
@@ -316,6 +346,9 @@ func newSQLCommand(action sqlCommandAction) *cli.Command {
 				}
 			}
 			o := sqliteOptions{command: "shell", endpoint: endpoint, port: port, reference: cmd.Args().First(), branch: cmd.String("branch"), format: cmd.String("format"), output: cmd.String("output"), timeout: time.Duration(cmd.Uint("timeout")) * time.Millisecond}
+			if cmd.Bool("json") {
+				o.format = "json"
+			}
 			if cmd.IsSet("execute") {
 				o.command = "exec"
 				o.sql = cmd.String("execute")

@@ -155,10 +155,10 @@ tiana login --start --no-open --json
 tiana login --resume --json
 ```
 
-Pending authorization exits 3 and returns `data.verification_uri`. Show that link
+Pending authorization exits 3 and returns `data.pending_auth=true` and `data.verification_uri`. Show that link
 to the user; a successful resume persists the account session and returns
 `data.logged_in=true`. An unfinished exchange is never automatically replayed.
-`logout` also removes this origin's unfinished login state.
+`logout` also removes this origin's unfinished login state. Missing pending authorization returns `NO_PENDING_AUTH` (exit 1) with `pending_auth=false`; it does not establish that the account is signed out. Unverified login/pending states are omitted. Local state failures return `LOCAL_STATE_UNAVAILABLE` with safe path/cause and an action; expired and declined authorization return `AUTH_EXPIRED` / `AUTH_DENIED`. Do not repeat start for a filesystem error. Use `status --json` to verify the account independently.
 
 For a deployment with a private CA:
 
@@ -523,7 +523,7 @@ export TIANA_TOKEN_FILE=/path/to/connection-token
 A token file must be an owned regular file, not a symlink, and contain at most
 512 credential bytes with an optional trailing newline. Account credentials use
 `~/.config/tiana/credentials.json`, or `$XDG_CONFIG_HOME/tiana/credentials.json`
-when set. Credential readers share this default path; individual credential-file
+when set. Command recovery, publication receipts and update state share this root. Login pending files remain beside credentials. Credential readers share this default path; individual credential-file
 overrides are not supported. On Linux/macOS, credential files require mode 0600
 and their directory mode 0700.
 On Windows, Tiana creates private files and directories with an owner-only ACL.
@@ -542,6 +542,18 @@ An explicitly empty origin variable is an error.
 | `TIANA_TOKEN_FILE` | Path to an explicit connection credential file. |
 | `TIANA_PENDING_COMMAND_FILE` | Override the instance-creation recovery file path. |
 | `XDG_CONFIG_HOME` | Base directory for account configuration. |
+
+## Structured management output
+
+SQLite/Git `list`, `show`, `delete`, SQLite `branch list/create/delete`, and top-level `status/logout/version` accept `--json`. These results use `status/data/error`; stdout contains one result and diagnostics go to stderr. JSON management never opens browser login. All matching list pages are returned in `data.items`, including an empty array. Instance detail includes the selected `branch` when applicable. `--url` and `--json` are mutually exclusive.
+
+New instance detail/list `current_job_id`, revision, quota quantities and millisecond timestamps preserve decimal-string precision. Existing create JSON keeps its original `job_id` number contract; use a lossless JSON parser for it. Default mutation output means `accepted`, waiting success means `succeeded`. A confirmed operation failure is `failed`; uncertain mutation/observation returns `unknown` and retains immutable targets and receipt IDs. Unknown outcomes exit 4; cancellation exits 130 and does not cancel server work. JSON deletion requires explicit `--force`.
+
+`status --json` returns verified `logged_in`, `user` and `quota`; a quota failure retains the verified account with `quota:null`. `sqlite shell --json` is a non-interactive alias for `--format json`, preserving the SQL result contract; it conflicts with other formats. Native `connect` and Git remote-helper retain their protocol streams.
+
+`web serve --json` emits one startup result with `port`, `preview_url`, `launch_url` and `authorization`. The CLI-authorized launch URL is a short-lived capability and must not be written to ordinary logs or source; Console fallback has `launch_url:null`. Running logs stay on stderr.
+
+When upgrading directory defaults on macOS/Windows, an unresolved command in the previous platform directory raises `LEGACY_PENDING_COMMAND` before a new mutation. Stop older CLI processes, set `TIANA_PENDING_COMMAND_FILE` to that original path and recover the original command with the same account and arguments. Unset the override after recovery. No automatic move/deletion occurs; previous publication receipts remain available in the old directory. Different old/new records must be investigated, not overwritten. Coordinate upgrades because older writers do not lock the new path.
 
 ## Troubleshooting
 
@@ -626,3 +638,6 @@ tiana version check --skills-version <当前加载技能的版本> --json
 ```
 
 普通终端命令使用缓存与后台检查，两次提醒至少间隔 24 小时。JSON、非交互调用和 Git 协议输出保持机器可读；检查失败不阻断业务命令，升级需用户确认。分发与维护流程见 [CLI release](docs/cli-release.md)。
+
+
+Web status JSON adds `query_kind: current / receipt` without changing existing `state`. Current `state=running` describes the application; receipt `REMOTE_COMMITTED` / `SUCCEEDED` describes upload. Confirm serving only when running and both current checksums match the saved target SHA256. Receipt expiry remains unknown; target content may still be confirmed by current checksums. `publish_id:null` in current status is valid and is not reconstructed from identical content hashes.

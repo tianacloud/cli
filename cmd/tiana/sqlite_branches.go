@@ -6,6 +6,7 @@ import (
 	"io"
 	"text/tabwriter"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
@@ -26,24 +27,42 @@ func resolveSQLiteBranchWithLogin(ctx context.Context, client *authclient.Client
 }
 
 func executeSQLiteBranchesList(ctx context.Context, reference, after, search string, output, diagnostics io.Writer) int {
-	client, err := newAuthClient(ctx, diagnostics, false)
+	client, err := newAuthClient(ctx, diagnostics, managementJSON(ctx))
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	instance, err := resolveInstanceWithLogin(ctx, client, reference)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		reportResolveError(diagnostics, reference, err)
 		return 1
 	}
 	if err = sqliteManagementScope.check(instance); err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	branches, err := fetchAllBranches(ctx, client, instance.ID, after, search)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
+	}
+	if managementJSON(ctx) {
+		if branches == nil {
+			branches = []authclient.Branch{}
+		}
+		return writeAppResult(apppublish.Success(map[string]any{"instance_id": instance.ID, "items": branches}), true, output, diagnostics)
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(table, "NAME\tBRANCH ID\tDEFAULT\tSTATE\tRUNTIME\tENDPOINT\tMESSAGE")
@@ -51,6 +70,9 @@ func executeSQLiteBranchesList(ctx context.Context, reference, after, search str
 		fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%s\n", safeDisplay(branch.Name), safeDisplay(branch.ID), branch.Root, safeDisplay(branch.LifecycleState), safeDisplay(branch.RuntimeState), safeDisplay(branch.EndpointID), safeDisplay(branch.Notes))
 	}
 	if err := table.Flush(); err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}

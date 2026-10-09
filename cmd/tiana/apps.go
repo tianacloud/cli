@@ -68,7 +68,7 @@ func writeAppResult(result apppublish.Result, jsonMode bool, output, diagnostics
 		return code
 	}
 	if result.Error != nil {
-		fmt.Fprintf(diagnostics, "tiana: %s\n%s\n", result.Error.Message, result.Error.NextAction)
+		fmt.Fprintf(diagnostics, "tiana: %s\n%s\n", safeDisplay(result.Error.Message), safeDisplay(result.Error.NextAction))
 		if data, ok := result.Data.(map[string]string); ok {
 			if data["id"] != "" {
 				fmt.Fprintf(diagnostics, "ID: %s\n", data["id"])

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
@@ -129,13 +130,19 @@ func runLogin(ctx context.Context, output, errorOutput io.Writer) int {
 }
 
 func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
-	client, err := newAuthClient(ctx, output, false)
+	client, err := newAuthClient(ctx, errorOutput, managementJSON(ctx))
 	if err == nil {
 		err = client.Logout(ctx)
 	}
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, errorOutput, nil)
+		}
 		writeCommandError(errorOutput, err)
 		return 1
+	}
+	if managementJSON(ctx) {
+		return writeAppResult(apppublish.Success(map[string]bool{"logged_in": false}), true, output, errorOutput)
 	}
 	if _, err := fmt.Fprintln(output, "✓ Signed out"); err != nil {
 		writeCommandError(errorOutput, err)

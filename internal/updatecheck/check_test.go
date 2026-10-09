@@ -232,3 +232,19 @@ func TestUpdateLockProcessHelper(t *testing.T) {
 	os.Stdout.Write([]byte("R"))
 	time.Sleep(time.Minute)
 }
+
+func TestUpdateStateUsesConfiguredDirectory(t *testing.T) {
+	home := t.TempDir()
+	config := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("XDG_CONFIG_HOME", config)
+	path, err := DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(config, "tiana", "update-state.json") {
+		t.Fatalf("update state escaped config: %s", path)
+	}
+}

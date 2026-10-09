@@ -11,17 +11,24 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
 func runStatus(ctx context.Context, output, diagnostics io.Writer) int {
 	client, err := newAuthClient(ctx, diagnostics, true)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		writeCommandError(diagnostics, err)
 		return 1
 	}
 	user, err := client.Whoami(ctx)
 	if err != nil {
+		if managementJSON(ctx) {
+			return managementFailure(err, output, diagnostics, nil)
+		}
 		if errors.Is(err, authclient.ErrAuthenticationRequired) {
 			fmt.Fprintln(output, "Not signed in\nQuota: unavailable (sign in first)")
 		}
@@ -29,22 +36,40 @@ func runStatus(ctx context.Context, output, diagnostics io.Writer) int {
 		return 1
 	}
 	if user.ID == "" {
+		if managementJSON(ctx) {
+			return writeAppResult(apppublish.Failure(&apppublish.Error{Code: "INVALID_ACCOUNT_RESPONSE", Message: "Invalid account status response", ExitCode: 1}), true, output, diagnostics)
+		}
 		fmt.Fprintln(diagnostics, "tiana: invalid account status response")
 		return 1
 	}
-	for _, field := range []struct{ label, value string }{{"Email", user.Email}, {"Name", user.DisplayName}, {"Username", user.Username}} {
-		if field.value != "" {
-			if _, err := fmt.Fprintf(output, "%s: %s\n", field.label, safeDisplay(field.value)); err != nil {
-				fmt.Fprintln(diagnostics, "tiana: cannot write status")
-				return 1
+	if !managementJSON(ctx) {
+		for _, field := range []struct{ label, value string }{{"Email", user.Email}, {"Name", user.DisplayName}, {"Username", user.Username}} {
+			if field.value != "" {
+				if _, err := fmt.Fprintf(output, "%s: %s\n", field.label, safeDisplay(field.value)); err != nil {
+					fmt.Fprintln(diagnostics, "tiana: cannot write status")
+					return 1
+				}
 			}
 		}
 	}
 	quota, err := client.GetTenantUsage(ctx)
 	if err != nil {
+		if managementJSON(ctx) {
+			writeCommandError(diagnostics, err)
+			return writeAppResult(apppublish.Result{Status: "failed", Data: map[string]any{"logged_in": true, "user": user, "quota": nil}, Error: &apppublish.Error{Code: "QUOTA_UNAVAILABLE", Message: "Account verified but quota is unavailable", NextAction: "Query tiana status again when quota service is available", ExitCode: 1}}, true, output, diagnostics)
+		}
 		fmt.Fprintln(output, "Quota: unavailable")
 		writeCommandError(diagnostics, err)
 		return 1
+	}
+	if managementJSON(ctx) {
+		data := map[string]any{"logged_in": true, "user": user, "quota": map[string]any{"tenant_id": quota.TenantID, "compute_used": quota.ComputeUsed, "storage_used": quota.StorageUsed, "instances_used": quota.InstancesUsed, "updated_at": millisJSON(quota.UpdatedAt), "period_start": millisJSON(quota.PeriodStart), "period_end": millisJSON(quota.PeriodEnd), "limits": quota.Limits, "blocked": quota.Blocked, "reason": quota.Reason}}
+		// Encode uint64 quantities as decimal strings independently of API decoding.
+		q := data["quota"].(map[string]any)
+		q["compute_used"] = quantityJSON(quota.ComputeUsed)
+		q["storage_used"] = quantityJSON(quota.StorageUsed)
+		q["instances_used"] = quantityJSON(quota.InstancesUsed)
+		return writeAppResult(apppublish.Success(data), true, output, diagnostics)
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(table, "Quota period: %s (%s to %s)\n", safeDisplay(quota.Limits.Period), statusTime(quota.PeriodStart), statusTime(quota.PeriodEnd))
@@ -120,4 +145,17 @@ func statusQuotaProgress(used *uint64, limit uint64) (string, string) {
 		filled = int(cells.Quo(cells, denominator).Int64())
 	}
 	return percent + "%", "[" + strings.Repeat("█", filled) + strings.Repeat("░", width-filled) + "]"
+}
+
+func millisJSON(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return strconv.FormatInt(*value, 10)
+}
+func quantityJSON(value *uint64) any {
+	if value == nil {
+		return nil
+	}
+	return strconv.FormatUint(*value, 10)
 }
