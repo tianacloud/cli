@@ -157,11 +157,94 @@ func TestPipedShellStopsAtInputOrExecutionFailure(t *testing.T) {
 				t.Fatal("piped shell swallowed failure")
 			}
 			want := 1
-			if strings.HasPrefix(input, "insert") {
-				want = 0
-			}
 			if requests != want || dials.Load() != int32(want) {
 				t.Fatalf("requests=%d dials=%d", requests, dials.Load())
+			}
+		})
+	}
+}
+
+// A grammar error must reach the server and stop the remaining script without
+// replaying its preceding write. The session's confirmed transaction survives.
+func TestServerParseErrorStopsScriptWithoutDiscardingSession(t *testing.T) {
+	for _, transaction := range []bool{false, true} {
+		var mu sync.Mutex
+		var queries []string
+		auto := true
+		c, dials := peerClient(t, func(req peerRequest, _ int) string {
+			if req.Requests[0].Statement == nil {
+				return httpReply(successResponse(req, "next"))
+			}
+			q := strings.TrimSpace(req.Requests[0].Statement.SQL)
+			mu.Lock()
+			queries = append(queries, q)
+			mu.Unlock()
+			switch q {
+			case "BEGIN;":
+				auto = false
+			case "ROLLBACK;":
+				auto = true
+			}
+			body := successResponse(req, "next")
+			if q == "SELECT FROM;" {
+				body = `{"baton":"next","results":[{"type":"error","error":{"code":"SQL_PARSE_ERROR","message":"untrusted SQL text"}},{"type":"ok","response":{"type":"get_autocommit","is_autocommit":true}}]}`
+			}
+			if !auto {
+				body = strings.ReplaceAll(body, `"is_autocommit":true`, `"is_autocommit":false`)
+			}
+			return httpReply(body)
+		})
+		if transaction {
+			if _, e := c.Execute(context.Background(), "BEGIN;", false); e != nil {
+				t.Fatal(e)
+			}
+		}
+		parts, e := Split("INSERT INTO t VALUES(1); SELECT FROM; SELECT 99;")
+		if e != nil {
+			t.Fatalf("grammar was rejected locally: %v", e)
+		}
+		e = Script(context.Background(), c, NewOutput(io.Discard, "table"), parts)
+		if e == nil || e.Code != "SQL_PARSE_ERROR" || e.ExitCode != 4 || e.Outcome != "failed" || e.Statement != 2 {
+			t.Fatalf("definite server parse error misclassified: %v", e)
+		}
+		if state, known := c.Autocommit(); !known || state == transaction {
+			t.Fatalf("session state changed: %v %v", state, known)
+		}
+		if _, e = c.executeInteractive(context.Background(), "SELECT 2;", io.Discard); e != nil {
+			t.Fatal(e)
+		}
+		if transaction {
+			if _, e = c.Execute(context.Background(), "ROLLBACK;", false); e != nil {
+				t.Fatal(e)
+			}
+		}
+		if e = c.Finish(context.Background(), nil); e != nil {
+			t.Fatal(e)
+		}
+		mu.Lock()
+		got := strings.Join(queries, "|")
+		mu.Unlock()
+		want := "INSERT INTO t VALUES(1);|SELECT FROM;|SELECT 2;"
+		if transaction {
+			want = "BEGIN;|" + want + "|ROLLBACK;"
+		}
+		if got != want || dials.Load() != 1 {
+			t.Fatalf("replayed/skipped/reconnected SQL: %s connects=%d", got, dials.Load())
+		}
+	}
+}
+
+func TestWholeInputResourceFailureSendsNoEarlierStatements(t *testing.T) {
+	for name, sql := range map[string]string{
+		"encoded request":       "INSERT INTO t VALUES(1); SELECT '" + strings.Repeat("\t", MaxBytes/2) + "';\n",
+		"statement count":       "INSERT INTO t VALUES(1);" + strings.Repeat("SELECT 1;", MaxStatements) + "\n",
+		"late incomplete quote": "INSERT INTO t VALUES(1); SELECT 'unterminated\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, connects := peerClient(t, func(peerRequest, int) string { t.Error("resource/lexical preflight sent SQL"); return "" })
+			e := Shell(context.Background(), c, NewOutput(io.Discard, "table"), strings.NewReader(sql), io.Discard, false)
+			if e == nil || e.Code != "INPUT_ERROR" || connects.Load() != 0 {
+				t.Fatalf("preflight failed too late: %v connects=%d", e, connects.Load())
 			}
 		})
 	}

@@ -114,3 +114,17 @@ platform pending records require explicit original-path recovery. Login outputs
 only verified facts, and publication confirmation separates upload receipts from
 current serving checksums. SDK dependencies remain v1.0.0. Release 1.0.1 together
 with agent-skills 1.0.2; its CLI minimum is 1.0.1.
+
+## 1.0.2 native SQL boundaries and parse-error recovery
+
+The CLI delegates SQL grammar validation to the App and uses lexical boundaries
+for scripts and multiline input. Native vec0/FTS/RTree arguments, aggregate ORDER
+BY, bracket identifiers and numeric separators are forwarded without rewriting.
+Resource/encoding limits and explicit VACUUM/ATTACH/DETACH restrictions remain.
+Scripts stop on the first server error; a later syntax error can follow earlier
+autocommit writes. Use explicit transactions when rollback is required.
+
+The immutable SQLite SDK v1.0.1 preserves confirmed sessions/transactions after
+SQL_PARSE_ERROR. Core sdk-go stays pinned to v1.0.0. Unknown responses and lost
+outcomes remain conservative and never authorize replay. The main and seven
+platform npm packages use 1.0.2 and the stable latest channel.

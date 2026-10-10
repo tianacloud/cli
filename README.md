@@ -397,11 +397,20 @@ Use the interactive shell or a script for `BEGIN`, `COMMIT`, `ROLLBACK` and
 savepoints. A session keeps statements on one connection. If it exits with a
 known open transaction, the CLI attempts rollback and returns a nonzero status.
 
-Scripts are checked before execution and stop at the first failure. Earlier
-autocommitted statements can remain committed; scripts are not automatically
-atomic. The parser supports a subset of SQLite syntax: for example, `VACUUM`,
-`ATTACH`, `DETACH` and bracket-quoted identifiers are rejected. SQL input is
-limited to 8 MiB and scripts to 10,000 statements.
+Scripts are scanned for complete lexical boundaries and resource limits before
+execution, then sent unchanged one statement at a time. SQL grammar and schema
+validation belong to the server. Execution stops at the first failure; earlier
+autocommitted statements can remain committed, including when a later statement
+has a syntax error. Scripts are not automatically atomic; use explicit
+transactions when rollback is required.
+
+The CLI supports native function/module syntax, including aggregate argument
+ORDER BY, bracket-quoted identifiers, numeric separators and vec0 dimensions.
+It preserves explicit command restrictions: VACUUM, ATTACH and DETACH are rejected,
+including EXPLAIN forms. SQL input is limited to 8 MiB, scripts to 10,000 statements
+and parenthesis nesting to 128 levels. Each encoded request is bounded before any
+script statement executes. Quotes/comments and CREATE TRIGGER bodies remain
+indivisible; an incomplete final buffer is an input error.
 
 In an interactive terminal, syntax and SQL errors return to the prompt. A failed
 multi-statement input or `.read` stops at the first unrecovered error; earlier

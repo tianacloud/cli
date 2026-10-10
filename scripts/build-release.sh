@@ -40,7 +40,7 @@ cargo build \
     --bin tiana-helper \
     --target "$rust_target"
 
-version=${TIANA_RELEASE_VERSION:-1.0.1}
+version=${TIANA_RELEASE_VERSION:-1.0.2}
 insecure_tls=${TIANA_INSECURE_TLS:-false}
 mkdir -p "$repo_dir/dist"
 output="$repo_dir/dist/tiana-cli-$target_os-$target_arch-$version"

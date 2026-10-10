@@ -144,81 +144,92 @@ func TestSQLiteDirectEndpointGatewayRefusalAndTLS(t *testing.T) {
 
 func TestSQLiteDirectEndpointShellAndScript(t *testing.T) {
 	t.Setenv("TIANA_TOKEN", sqlitepeer.Token)
-	path := filepath.Join(t.TempDir(), "script.sql")
-	if err := os.WriteFile(path, []byte("SELECT 1;\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	for _, mode := range []string{"shell", "script"} {
-		t.Run(mode, func(t *testing.T) {
-			var queries atomic.Int32
-			config, count := sqlitepeer.Gateway(t, func(r io.Reader, w io.Writer) {
-				reader := bufio.NewReader(r)
-				for {
-					req, err := http.ReadRequest(reader)
-					if err == io.EOF {
-						return
-					}
-					if err != nil {
-						t.Error(err)
-						return
-					}
-					var body struct {
-						Requests []struct {
-							Type string `json:"type"`
-							Stmt struct {
-								SQL string `json:"sql"`
-							} `json:"stmt"`
-						} `json:"requests"`
-					}
-					err = json.NewDecoder(req.Body).Decode(&body)
-					req.Body.Close()
-					if err != nil {
-						t.Error(err)
-						return
-					}
-					results := []string{}
-					closed := false
-					for _, item := range body.Requests {
-						switch item.Type {
-						case "execute":
-							queries.Add(1)
-							if item.Stmt.SQL != "SELECT 1;" {
-								t.Errorf("SQL changed: %q", item.Stmt.SQL)
+	for _, query := range []struct{ name, sql string }{
+		{"scalar", "SELECT 1;"},
+		{"vec", "CREATE VIRTUAL TABLE note_vectors USING vec0(embedding float[2]);"},
+		{"fts", "CREATE VIRTUAL TABLE docs USING fts5(body, tokenize='unicode61');"},
+		{"rtree", "CREATE VIRTUAL TABLE boxes USING rtree(id,minX,maxX,+label);"},
+		{"rowid", "INSERT INTO note_vectors(rowid,embedding) VALUES(1,'[1,0]');"},
+	} {
+		path := filepath.Join(t.TempDir(), "script.sql")
+		if err := os.WriteFile(path, []byte(query.sql+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, mode := range []string{"execute", "shell", "script"} {
+			t.Run(query.name+"/"+mode, func(t *testing.T) {
+				var queries atomic.Int32
+				config, count := sqlitepeer.Gateway(t, func(r io.Reader, w io.Writer) {
+					reader := bufio.NewReader(r)
+					for {
+						req, err := http.ReadRequest(reader)
+						if err == io.EOF {
+							return
+						}
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						var body struct {
+							Requests []struct {
+								Type string `json:"type"`
+								Stmt struct {
+									SQL string `json:"sql"`
+								} `json:"stmt"`
+							} `json:"requests"`
+						}
+						err = json.NewDecoder(req.Body).Decode(&body)
+						req.Body.Close()
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						results := []string{}
+						closed := false
+						for _, item := range body.Requests {
+							switch item.Type {
+							case "execute":
+								queries.Add(1)
+								if item.Stmt.SQL != query.sql {
+									t.Errorf("SQL changed: %q", item.Stmt.SQL)
+								}
+								results = append(results, `{"type":"ok","response":{"type":"execute","result":{"cols":[{"name":"x","decltype":null}],"rows":[[{"type":"integer","value":"1"}]],"affected_row_count":0,"last_insert_rowid":null}}}`)
+							case "get_autocommit":
+								results = append(results, `{"type":"ok","response":{"type":"get_autocommit","is_autocommit":true}}`)
+							case "close":
+								closed = true
+								results = append(results, `{"type":"ok","response":{"type":"close"}}`)
+							default:
+								t.Errorf("unexpected request %q", item.Type)
+								return
 							}
-							results = append(results, `{"type":"ok","response":{"type":"execute","result":{"cols":[{"name":"x","decltype":null}],"rows":[[{"type":"integer","value":"1"}]],"affected_row_count":0,"last_insert_rowid":null}}}`)
-						case "get_autocommit":
-							results = append(results, `{"type":"ok","response":{"type":"get_autocommit","is_autocommit":true}}`)
-						case "close":
-							closed = true
-							results = append(results, `{"type":"ok","response":{"type":"close"}}`)
-						default:
-							t.Errorf("unexpected request %q", item.Type)
+						}
+						baton := `"next"`
+						if closed {
+							baton = "null"
+						}
+						response := `{"baton":` + baton + `,"results":[` + strings.Join(results, ",") + `]}`
+						fmt.Fprintf(w, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(response), response)
+						if closed {
 							return
 						}
 					}
-					baton := `"next"`
-					if closed {
-						baton = "null"
-					}
-					response := `{"baton":` + baton + `,"results":[` + strings.Join(results, ",") + `]}`
-					fmt.Fprintf(w, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", len(response), response)
-					if closed {
-						return
-					}
+				}, false)
+				args := []string{"shell", "--endpoint", sqlitepeer.Endpoint, "--format=json"}
+				input := query.sql + "\n.quit\n"
+				if mode == "execute" {
+					args = append(args, "-e", query.sql)
+					input = ""
+				} else if mode == "script" {
+					args = append(args, "-f", path)
+					input = ""
 				}
-			}, false)
-			args := []string{"shell", "--endpoint", sqlitepeer.Endpoint, "--format=json"}
-			input := "SELECT 1;\n.quit\n"
-			if mode == "script" {
-				args = append(args, "-f", path)
-				input = ""
-			}
-			var out, diag bytes.Buffer
-			code := runSQLiteWith(context.Background(), args, strings.NewReader(input), &out, &diag, nil, &config)
-			if code != 0 || queries.Load() != 1 || count.Load() != 1 || !json.Valid(out.Bytes()) {
-				t.Fatalf("code=%d queries=%d connects=%d out=%s diag=%s", code, queries.Load(), count.Load(), &out, &diag)
-			}
-		})
+				var out, diag bytes.Buffer
+				code := runSQLiteWith(context.Background(), args, strings.NewReader(input), &out, &diag, nil, &config)
+				if code != 0 || queries.Load() != 1 || count.Load() != 1 || !json.Valid(out.Bytes()) {
+					t.Fatalf("code=%d queries=%d connects=%d out=%s diag=%s", code, queries.Load(), count.Load(), &out, &diag)
+				}
+			})
+		}
 	}
 }
 

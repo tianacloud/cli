@@ -1,6 +1,6 @@
 {
   "name": "@tianacloud/cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Tiana CLI for account login, SQLite, Git and application publication",
   "repository": {
     "type": "git",
@@ -34,12 +34,12 @@
     "riscv64"
   ],
   "optionalDependencies": {
-    "@tianacloud/cli-darwin-x64": "1.0.1",
-    "@tianacloud/cli-darwin-arm64": "1.0.1",
-    "@tianacloud/cli-linux-x64": "1.0.1",
-    "@tianacloud/cli-linux-arm64": "1.0.1",
-    "@tianacloud/cli-linux-riscv64": "1.0.1",
-    "@tianacloud/cli-win32-x64": "1.0.1",
-    "@tianacloud/cli-win32-arm64": "1.0.1"
+    "@tianacloud/cli-darwin-x64": "1.0.2",
+    "@tianacloud/cli-darwin-arm64": "1.0.2",
+    "@tianacloud/cli-linux-x64": "1.0.2",
+    "@tianacloud/cli-linux-arm64": "1.0.2",
+    "@tianacloud/cli-linux-riscv64": "1.0.2",
+    "@tianacloud/cli-win32-x64": "1.0.2",
+    "@tianacloud/cli-win32-arm64": "1.0.2"
   }
 }

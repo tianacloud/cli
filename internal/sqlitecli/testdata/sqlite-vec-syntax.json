@@ -1,0 +1,974 @@
+[
+  {
+    "name": "version",
+    "sql": "SELECT CAST((vec_version()) AS TEXT)",
+    "value": "v0.1.9"
+  },
+  {
+    "name": "debug",
+    "sql": "SELECT CAST((length(vec_debug()) > 0) AS TEXT)",
+    "value": "1"
+  },
+  {
+    "name": "registered scalar inventory",
+    "sql": "SELECT group_concat(name,',') FROM (SELECT name FROM pragma_function_list WHERE name LIKE 'vec_%' ORDER BY name)",
+    "value": "vec_add,vec_bit,vec_debug,vec_distance_cosine,vec_distance_hamming,vec_distance_l1,vec_distance_l2,vec_f32,vec_int8,vec_length,vec_normalize,vec_quantize_binary,vec_quantize_int8,vec_slice,vec_sub,vec_to_json,vec_type,vec_version"
+  },
+  {
+    "name": "constructor whitespace and case",
+    "sql": "CREATE VIRTUAL TABLE case_vec USING vec0( Embedding FLOAT[2] distance_metric=COSINE , chunk_size = 8 )"
+  },
+  {
+    "name": "case typed insert",
+    "sql": "INSERT INTO case_vec(rowid,Embedding) VALUES(1,'[1,0]')"
+  },
+  {
+    "name": "case typed KNN",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM case_vec WHERE Embedding MATCH '[1,0]' AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "f32 JSON",
+    "sql": "SELECT CAST((vec_to_json(vec_f32('[1,2]'))) AS TEXT)",
+    "value": "[1.000000,2.000000]"
+  },
+  {
+    "name": "f32 BLOB",
+    "sql": "SELECT CAST((vec_to_json(vec_f32(X'0000803F00000040'))) AS TEXT)",
+    "value": "[1.000000,2.000000]"
+  },
+  {
+    "name": "int8 JSON",
+    "sql": "SELECT CAST((hex(vec_int8('[-128,0,127]'))) AS TEXT)",
+    "value": "80007F"
+  },
+  {
+    "name": "int8 BLOB",
+    "sql": "SELECT CAST((vec_to_json(vec_int8(X'80007F'))) AS TEXT)",
+    "value": "[-128,0,127]"
+  },
+  {
+    "name": "bit BLOB",
+    "sql": "SELECT CAST((vec_to_json(vec_bit(X'81'))) AS TEXT)",
+    "value": "[1,0,0,0,0,0,0,1]"
+  },
+  {
+    "name": "float length",
+    "sql": "SELECT CAST((vec_length('[1,2]')) AS TEXT)",
+    "value": "2"
+  },
+  {
+    "name": "int8 length",
+    "sql": "SELECT CAST((vec_length(vec_int8(X'0102'))) AS TEXT)",
+    "value": "2"
+  },
+  {
+    "name": "bit length",
+    "sql": "SELECT CAST((vec_length(vec_bit(X'81'))) AS TEXT)",
+    "value": "8"
+  },
+  {
+    "name": "float type",
+    "sql": "SELECT CAST((vec_type(vec_f32('[1,2]'))) AS TEXT)",
+    "value": "float32"
+  },
+  {
+    "name": "int8 type",
+    "sql": "SELECT CAST((vec_type(vec_int8('[1,2]'))) AS TEXT)",
+    "value": "int8"
+  },
+  {
+    "name": "bit type",
+    "sql": "SELECT CAST((vec_type(vec_bit(X'81'))) AS TEXT)",
+    "value": "bit"
+  },
+  {
+    "name": "float add",
+    "sql": "SELECT CAST((vec_to_json(vec_add('[1,2]','[3,4]'))) AS TEXT)",
+    "value": "[4.000000,6.000000]"
+  },
+  {
+    "name": "int8 add",
+    "sql": "SELECT CAST((vec_to_json(vec_add(vec_int8('[1,2]'),vec_int8('[3,4]')))) AS TEXT)",
+    "value": "[4,6]"
+  },
+  {
+    "name": "float sub",
+    "sql": "SELECT CAST((vec_to_json(vec_sub('[3,4]','[1,2]'))) AS TEXT)",
+    "value": "[2.000000,2.000000]"
+  },
+  {
+    "name": "int8 sub",
+    "sql": "SELECT CAST((vec_to_json(vec_sub(vec_int8('[3,4]'),vec_int8('[1,2]')))) AS TEXT)",
+    "value": "[2,2]"
+  },
+  {
+    "name": "float slice",
+    "sql": "SELECT CAST((vec_to_json(vec_slice('[1,2,3]',1,3))) AS TEXT)",
+    "value": "[2.000000,3.000000]"
+  },
+  {
+    "name": "int8 slice",
+    "sql": "SELECT CAST((vec_to_json(vec_slice(vec_int8('[1,2,3]'),1,3))) AS TEXT)",
+    "value": "[2,3]"
+  },
+  {
+    "name": "bit slice",
+    "sql": "SELECT CAST((hex(vec_slice(vec_bit(X'0180'),8,16))) AS TEXT)",
+    "value": "80"
+  },
+  {
+    "name": "normalize",
+    "sql": "SELECT CAST((vec_to_json(vec_normalize('[3,4]'))) AS TEXT)",
+    "value": "[0.600000,0.800000]"
+  },
+  {
+    "name": "float L2",
+    "sql": "SELECT CAST((vec_distance_l2('[0,0]','[3,4]')) AS TEXT)",
+    "value": "5.0"
+  },
+  {
+    "name": "int8 L2",
+    "sql": "SELECT CAST((vec_distance_l2(vec_int8('[0,0]'),vec_int8('[3,4]'))) AS TEXT)",
+    "value": "5.0"
+  },
+  {
+    "name": "float L1",
+    "sql": "SELECT CAST((vec_distance_l1('[0,0]','[3,4]')) AS TEXT)",
+    "value": "7.0"
+  },
+  {
+    "name": "int8 L1",
+    "sql": "SELECT CAST((vec_distance_l1(vec_int8('[0,0]'),vec_int8('[3,4]'))) AS TEXT)",
+    "value": "7"
+  },
+  {
+    "name": "float cosine",
+    "sql": "SELECT CAST((vec_distance_cosine('[1,0]','[0,1]')) AS TEXT)",
+    "value": "1.0"
+  },
+  {
+    "name": "int8 cosine",
+    "sql": "SELECT CAST((vec_distance_cosine(vec_int8('[1,0]'),vec_int8('[0,1]'))) AS TEXT)",
+    "value": "1.0"
+  },
+  {
+    "name": "hamming",
+    "sql": "SELECT CAST((vec_distance_hamming(vec_bit(X'00'),vec_bit(X'FF'))) AS TEXT)",
+    "value": "8.0"
+  },
+  {
+    "name": "binary quantize float",
+    "sql": "SELECT CAST((hex(vec_quantize_binary('[1,-1,1,-1,1,-1,1,-1]'))) AS TEXT)",
+    "value": "55"
+  },
+  {
+    "name": "binary quantize int8",
+    "sql": "SELECT CAST((hex(vec_quantize_binary(vec_int8('[1,-1,1,-1,1,-1,1,-1]')))) AS TEXT)",
+    "value": "55"
+  },
+  {
+    "name": "int8 quantize unit",
+    "sql": "SELECT CAST((vec_to_json(vec_quantize_int8('[-1,1]','unit'))) AS TEXT)",
+    "value": "[-128,126]"
+  },
+  {
+    "name": "each float",
+    "sql": "SELECT group_concat(value) FROM vec_each('[1,2,3]')",
+    "value": "1.0,2.0,3.0"
+  },
+  {
+    "name": "each int8",
+    "sql": "SELECT group_concat(value) FROM vec_each(vec_int8('[1,2,3]'))",
+    "value": "1,2,3"
+  },
+  {
+    "name": "each bit",
+    "sql": "SELECT group_concat(value) FROM vec_each(vec_bit(X'81'))",
+    "value": "1,0,0,0,0,0,0,1"
+  },
+  {
+    "name": "vector alias float",
+    "sql": "CREATE VIRTUAL TABLE typed0 USING vec0(v float[2])"
+  },
+  {
+    "name": "insert float",
+    "sql": "INSERT INTO typed0(rowid,v) VALUES(1,'[1,2]')"
+  },
+  {
+    "name": "read float",
+    "sql": "SELECT CAST(vec_length(v) AS TEXT) FROM typed0 WHERE rowid=1",
+    "value": "2"
+  },
+  {
+    "name": "vector alias f32",
+    "sql": "CREATE VIRTUAL TABLE typed1 USING vec0(v f32[2])"
+  },
+  {
+    "name": "insert f32",
+    "sql": "INSERT INTO typed1(rowid,v) VALUES(1,'[1,2]')"
+  },
+  {
+    "name": "read f32",
+    "sql": "SELECT CAST(vec_length(v) AS TEXT) FROM typed1 WHERE rowid=1",
+    "value": "2"
+  },
+  {
+    "name": "vector alias int8",
+    "sql": "CREATE VIRTUAL TABLE typed2 USING vec0(v int8[2])"
+  },
+  {
+    "name": "insert int8",
+    "sql": "INSERT INTO typed2(rowid,v) VALUES(1,vec_int8('[1,2]'))"
+  },
+  {
+    "name": "read int8",
+    "sql": "SELECT CAST(vec_length(v) AS TEXT) FROM typed2 WHERE rowid=1",
+    "value": "2"
+  },
+  {
+    "name": "vector alias i8",
+    "sql": "CREATE VIRTUAL TABLE typed3 USING vec0(v i8[2])"
+  },
+  {
+    "name": "insert i8",
+    "sql": "INSERT INTO typed3(rowid,v) VALUES(1,vec_int8('[1,2]'))"
+  },
+  {
+    "name": "read i8",
+    "sql": "SELECT CAST(vec_length(v) AS TEXT) FROM typed3 WHERE rowid=1",
+    "value": "2"
+  },
+  {
+    "name": "vector alias bit",
+    "sql": "CREATE VIRTUAL TABLE typed4 USING vec0(v bit[8])"
+  },
+  {
+    "name": "insert bit",
+    "sql": "INSERT INTO typed4(rowid,v) VALUES(1,vec_bit(X'81'))"
+  },
+  {
+    "name": "read bit",
+    "sql": "SELECT CAST(vec_length(v) AS TEXT) FROM typed4 WHERE rowid=1",
+    "value": "8"
+  },
+  {
+    "name": "primary key integer",
+    "sql": "CREATE VIRTUAL TABLE pk0 USING vec0(id integer primary key, v float[2])"
+  },
+  {
+    "name": "primary insert integer",
+    "sql": "INSERT INTO pk0(id,v) VALUES(7,'[1,0]')"
+  },
+  {
+    "name": "primary lookup integer",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM pk0 WHERE id=7",
+    "value": "1"
+  },
+  {
+    "name": "primary key int",
+    "sql": "CREATE VIRTUAL TABLE pk1 USING vec0(id int primary key, v float[2])"
+  },
+  {
+    "name": "primary insert int",
+    "sql": "INSERT INTO pk1(id,v) VALUES(7,'[1,0]')"
+  },
+  {
+    "name": "primary lookup int",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM pk1 WHERE id=7",
+    "value": "1"
+  },
+  {
+    "name": "primary key text",
+    "sql": "CREATE VIRTUAL TABLE pk2 USING vec0(id text primary key, v float[2])"
+  },
+  {
+    "name": "primary insert text",
+    "sql": "INSERT INTO pk2(id,v) VALUES('key','[1,0]')"
+  },
+  {
+    "name": "primary lookup text",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM pk2 WHERE id='key'",
+    "value": "1"
+  },
+  {
+    "name": "metadata alias text",
+    "sql": "CREATE VIRTUAL TABLE meta0 USING vec0(v float[2], m text)"
+  },
+  {
+    "name": "metadata alias boolean",
+    "sql": "CREATE VIRTUAL TABLE meta1 USING vec0(v float[2], m boolean)"
+  },
+  {
+    "name": "metadata alias bool",
+    "sql": "CREATE VIRTUAL TABLE meta2 USING vec0(v float[2], m bool)"
+  },
+  {
+    "name": "metadata alias int64",
+    "sql": "CREATE VIRTUAL TABLE meta3 USING vec0(v float[2], m int64)"
+  },
+  {
+    "name": "metadata alias integer64",
+    "sql": "CREATE VIRTUAL TABLE meta4 USING vec0(v float[2], m integer64)"
+  },
+  {
+    "name": "metadata alias integer",
+    "sql": "CREATE VIRTUAL TABLE meta5 USING vec0(v float[2], m integer)"
+  },
+  {
+    "name": "metadata alias int",
+    "sql": "CREATE VIRTUAL TABLE meta6 USING vec0(v float[2], m int)"
+  },
+  {
+    "name": "metadata alias float",
+    "sql": "CREATE VIRTUAL TABLE meta7 USING vec0(v float[2], m float)"
+  },
+  {
+    "name": "metadata alias double",
+    "sql": "CREATE VIRTUAL TABLE meta8 USING vec0(v float[2], m double)"
+  },
+  {
+    "name": "metadata alias float64",
+    "sql": "CREATE VIRTUAL TABLE meta9 USING vec0(v float[2], m float64)"
+  },
+  {
+    "name": "metadata alias f64",
+    "sql": "CREATE VIRTUAL TABLE meta10 USING vec0(v float[2], m f64)"
+  },
+  {
+    "name": "auxiliary alias text",
+    "sql": "CREATE VIRTUAL TABLE aux0 USING vec0(v float[2], +payload text)"
+  },
+  {
+    "name": "auxiliary alias integer",
+    "sql": "CREATE VIRTUAL TABLE aux1 USING vec0(v float[2], +payload integer)"
+  },
+  {
+    "name": "auxiliary alias int",
+    "sql": "CREATE VIRTUAL TABLE aux2 USING vec0(v float[2], +payload int)"
+  },
+  {
+    "name": "auxiliary alias float",
+    "sql": "CREATE VIRTUAL TABLE aux3 USING vec0(v float[2], +payload float)"
+  },
+  {
+    "name": "auxiliary alias double",
+    "sql": "CREATE VIRTUAL TABLE aux4 USING vec0(v float[2], +payload double)"
+  },
+  {
+    "name": "auxiliary alias blob",
+    "sql": "CREATE VIRTUAL TABLE aux5 USING vec0(v float[2], +payload blob)"
+  },
+  {
+    "name": "partition alias text",
+    "sql": "CREATE VIRTUAL TABLE part0 USING vec0(v float[2], tenant text partition key)"
+  },
+  {
+    "name": "partition alias integer",
+    "sql": "CREATE VIRTUAL TABLE part1 USING vec0(v float[2], tenant integer partition key)"
+  },
+  {
+    "name": "partition alias int",
+    "sql": "CREATE VIRTUAL TABLE part2 USING vec0(v float[2], tenant int partition key)"
+  },
+  {
+    "name": "distance metric L2 float",
+    "sql": "CREATE VIRTUAL TABLE metric0float USING vec0(v float[2] distance_metric=L2, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric0float",
+    "sql": "INSERT INTO metric0float(rowid,v) VALUES(1,'[1,0]')"
+  },
+  {
+    "name": "distance match metric0float",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric0float WHERE v MATCH '[1,0]' AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "distance metric L2 int8",
+    "sql": "CREATE VIRTUAL TABLE metric0int8 USING vec0(v int8[2] distance_metric=L2, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric0int8",
+    "sql": "INSERT INTO metric0int8(rowid,v) VALUES(1,vec_int8('[1,0]'))"
+  },
+  {
+    "name": "distance match metric0int8",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric0int8 WHERE v MATCH vec_int8('[1,0]') AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "distance metric L1 float",
+    "sql": "CREATE VIRTUAL TABLE metric1float USING vec0(v float[2] distance_metric=L1, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric1float",
+    "sql": "INSERT INTO metric1float(rowid,v) VALUES(1,'[1,0]')"
+  },
+  {
+    "name": "distance match metric1float",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric1float WHERE v MATCH '[1,0]' AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "distance metric L1 int8",
+    "sql": "CREATE VIRTUAL TABLE metric1int8 USING vec0(v int8[2] distance_metric=L1, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric1int8",
+    "sql": "INSERT INTO metric1int8(rowid,v) VALUES(1,vec_int8('[1,0]'))"
+  },
+  {
+    "name": "distance match metric1int8",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric1int8 WHERE v MATCH vec_int8('[1,0]') AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "distance metric cosine float",
+    "sql": "CREATE VIRTUAL TABLE metric2float USING vec0(v float[2] distance_metric=cosine, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric2float",
+    "sql": "INSERT INTO metric2float(rowid,v) VALUES(1,'[1,0]')"
+  },
+  {
+    "name": "distance match metric2float",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric2float WHERE v MATCH '[1,0]' AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "distance metric cosine int8",
+    "sql": "CREATE VIRTUAL TABLE metric2int8 USING vec0(v int8[2] distance_metric=cosine, chunk_size=8)"
+  },
+  {
+    "name": "distance insert metric2int8",
+    "sql": "INSERT INTO metric2int8(rowid,v) VALUES(1,vec_int8('[1,0]'))"
+  },
+  {
+    "name": "distance match metric2int8",
+    "sql": "SELECT CAST(rowid AS TEXT) FROM metric2int8 WHERE v MATCH vec_int8('[1,0]') AND k=1",
+    "value": "1"
+  },
+  {
+    "name": "quoted table schema",
+    "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS main.\"quoted table\" USING vec0(v f32[2])"
+  },
+  {
+    "name": "if not exists",
+    "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS main.\"quoted table\" USING vec0(v f32[2])"
+  },
+  {
+    "name": "temporary table",
+    "sql": "CREATE VIRTUAL TABLE temp.local_vec USING vec0(v float[2])"
+  },
+  {
+    "name": "all column kinds",
+    "sql": "CREATE VIRTUAL TABLE catalog USING vec0(id text primary key, embedding float[2], secondary i8[2] distance_metric=cosine, bits bit[8], tenant integer partition key, grp text partition key, label text, n int, score float, flag boolean, +contents text, +raw blob, chunk_size=8)"
+  },
+  {
+    "name": "multi row typed insert",
+    "sql": "INSERT INTO catalog(id,embedding,secondary,bits,tenant,grp,label,n,score,flag,contents,raw) VALUES ('r1','[1,0]',vec_int8('[1,0]'),vec_bit(X'00'),1,'A','alpha',1,1.0,1,'one',X'01'),('r2',vec_f32('[2,0]'),vec_int8('[0,1]'),vec_bit(X'FF'),1,'A','beta',2,2.0,0,'two',X'02'),('r3',X'0000404000000000',vec_int8('[-1,0]'),vec_bit(X'0F'),2,'B','alpha',3,3.0,1,'three',X'03')"
+  },
+  {
+    "name": "full scan",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM catalog",
+    "value": "3"
+  },
+  {
+    "name": "text primary point",
+    "sql": "SELECT contents FROM catalog WHERE id='r1'",
+    "value": "one"
+  },
+  {
+    "name": "KNN k",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1",
+    "value": "r1"
+  },
+  {
+    "name": "KNN LIMIT",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' LIMIT 1",
+    "value": "r1"
+  },
+  {
+    "name": "KNN ORDER ASC",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' ORDER BY distance ASC LIMIT 1",
+    "value": "r1"
+  },
+  {
+    "name": "KNN int8",
+    "sql": "SELECT id FROM catalog WHERE secondary MATCH vec_int8('[1,0]') AND k=1",
+    "value": "r1"
+  },
+  {
+    "name": "KNN bit",
+    "sql": "SELECT id FROM catalog WHERE bits MATCH vec_bit(X'00') AND k=1",
+    "value": "r1"
+  },
+  {
+    "name": "KNN auxiliary payload",
+    "sql": "SELECT contents FROM catalog WHERE embedding MATCH '[1,0]' AND k=1",
+    "value": "one"
+  },
+  {
+    "name": "KNN auxiliary BLOB",
+    "sql": "SELECT hex(raw) FROM catalog WHERE embedding MATCH '[1,0]' AND k=1",
+    "value": "01"
+  },
+  {
+    "name": "KNN CTE JOIN",
+    "sql": "WITH hits AS (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1) SELECT c.contents FROM hits JOIN catalog c ON c.id=hits.id",
+    "value": "one"
+  },
+  {
+    "name": "metadata n =",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n = 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata n !=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n != 2)",
+    "value": "2"
+  },
+  {
+    "name": "metadata n >",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n > 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata n >=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n >= 2)",
+    "value": "2"
+  },
+  {
+    "name": "metadata n <",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n < 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata n <=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n <= 2)",
+    "value": "2"
+  },
+  {
+    "name": "metadata score =",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score = 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata score !=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score != 2)",
+    "value": "2"
+  },
+  {
+    "name": "metadata score >",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score > 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata score >=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score >= 2)",
+    "value": "2"
+  },
+  {
+    "name": "metadata score <",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score < 2)",
+    "value": "1"
+  },
+  {
+    "name": "metadata score <=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score <= 2)",
+    "value": "2"
+  },
+  {
+    "name": "text metadata =",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label = 'alpha')",
+    "value": "2"
+  },
+  {
+    "name": "text metadata !=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label != 'alpha')",
+    "value": "1"
+  },
+  {
+    "name": "text metadata >",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label > 'alpha')",
+    "value": "1"
+  },
+  {
+    "name": "text metadata >=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label >= 'alpha')",
+    "value": "3"
+  },
+  {
+    "name": "text metadata <",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label < 'alpha')",
+    "value": "0"
+  },
+  {
+    "name": "text metadata <=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label <= 'alpha')",
+    "value": "2"
+  },
+  {
+    "name": "partition tenant =",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant = 1)",
+    "value": "2"
+  },
+  {
+    "name": "partition tenant !=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant != 1)",
+    "value": "1"
+  },
+  {
+    "name": "partition tenant >",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant > 1)",
+    "value": "1"
+  },
+  {
+    "name": "partition tenant >=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant >= 1)",
+    "value": "3"
+  },
+  {
+    "name": "partition tenant <",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant < 1)",
+    "value": "0"
+  },
+  {
+    "name": "partition tenant <=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant <= 1)",
+    "value": "2"
+  },
+  {
+    "name": "partition grp =",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp = 'A')",
+    "value": "2"
+  },
+  {
+    "name": "partition grp !=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp != 'A')",
+    "value": "1"
+  },
+  {
+    "name": "partition grp >",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp > 'A')",
+    "value": "1"
+  },
+  {
+    "name": "partition grp >=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp >= 'A')",
+    "value": "3"
+  },
+  {
+    "name": "partition grp <",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp < 'A')",
+    "value": "0"
+  },
+  {
+    "name": "partition grp <=",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp <= 'A')",
+    "value": "2"
+  },
+  {
+    "name": "KNN flag=TRUE",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND flag=TRUE)",
+    "value": "2"
+  },
+  {
+    "name": "KNN flag!=TRUE",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND flag!=TRUE)",
+    "value": "1"
+  },
+  {
+    "name": "KNN flag=FALSE",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND flag=FALSE)",
+    "value": "1"
+  },
+  {
+    "name": "KNN n IN (1,3)",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n IN (1,3))",
+    "value": "2"
+  },
+  {
+    "name": "KNN label IN ('alpha')",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND label IN ('alpha'))",
+    "value": "2"
+  },
+  {
+    "name": "KNN id IN ('r1','r3')",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND id IN ('r1','r3'))",
+    "value": "2"
+  },
+  {
+    "name": "KNN n BETWEEN 1 AND 2",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND n BETWEEN 1 AND 2)",
+    "value": "2"
+  },
+  {
+    "name": "KNN tenant BETWEEN 1 AND 2",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND tenant BETWEEN 1 AND 2)",
+    "value": "3"
+  },
+  {
+    "name": "KNN grp BETWEEN 'A' AND 'B'",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND grp BETWEEN 'A' AND 'B')",
+    "value": "3"
+  },
+  {
+    "name": "KNN score BETWEEN 1.0 AND 2.0",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND score BETWEEN 1.0 AND 2.0)",
+    "value": "2"
+  },
+  {
+    "name": "KNN distance>0",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND distance>0)",
+    "value": "2"
+  },
+  {
+    "name": "KNN distance>=1",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND distance>=1)",
+    "value": "2"
+  },
+  {
+    "name": "KNN distance<1",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND distance<1)",
+    "value": "1"
+  },
+  {
+    "name": "KNN distance<=1",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND distance<=1)",
+    "value": "2"
+  },
+  {
+    "name": "KNN distance BETWEEN 1 AND 2",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=3 AND distance BETWEEN 1 AND 2)",
+    "value": "2"
+  },
+  {
+    "name": "k zero",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM (SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=0)",
+    "value": "0"
+  },
+  {
+    "name": "INSERT SELECT",
+    "sql": "CREATE TABLE vector_source(id, v)"
+  },
+  {
+    "name": "source insert",
+    "sql": "INSERT INTO vector_source VALUES('r4','[4,0]')"
+  },
+  {
+    "name": "target for insert select",
+    "sql": "CREATE VIRTUAL TABLE copied USING vec0(id text primary key, v float[2])"
+  },
+  {
+    "name": "INSERT SELECT data",
+    "sql": "INSERT INTO copied(id,v) SELECT id,v FROM vector_source"
+  },
+  {
+    "name": "copied lookup",
+    "sql": "SELECT id FROM copied WHERE v MATCH '[4,0]' AND k=1",
+    "value": "r4"
+  },
+  {
+    "name": "update vector metadata aux",
+    "sql": "UPDATE catalog SET embedding='[4,0]',label='long metadata label',n=4,score=4.0,flag=1,contents='updated',raw=X'04' WHERE id='r2'"
+  },
+  {
+    "name": "updated KNN",
+    "sql": "SELECT contents FROM catalog WHERE embedding MATCH '[4,0]' AND k=1",
+    "value": "updated"
+  },
+  {
+    "name": "updated metadata",
+    "sql": "SELECT label FROM catalog WHERE id='r2'",
+    "value": "long metadata label"
+  },
+  {
+    "name": "begin vector transaction",
+    "sql": "BEGIN"
+  },
+  {
+    "name": "vector savepoint",
+    "sql": "SAVEPOINT vec_save"
+  },
+  {
+    "name": "delete in savepoint",
+    "sql": "DELETE FROM catalog WHERE id='r3'"
+  },
+  {
+    "name": "rollback vector savepoint",
+    "sql": "ROLLBACK TO vec_save"
+  },
+  {
+    "name": "release vector savepoint",
+    "sql": "RELEASE vec_save"
+  },
+  {
+    "name": "commit vector transaction",
+    "sql": "COMMIT"
+  },
+  {
+    "name": "savepoint restored",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM catalog",
+    "value": "3"
+  },
+  {
+    "name": "quoted constructor",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(\"embedding float[2]\")",
+    "error": true
+  },
+  {
+    "name": "quoted column",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(\"embedding\" float[2])",
+    "error": true
+  },
+  {
+    "name": "leading underscore",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(_embedding float[2])",
+    "error": true
+  },
+  {
+    "name": "unknown metadata type",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(v float[2],m real)",
+    "error": true
+  },
+  {
+    "name": "bad chunk size",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(v float[2],chunk_size=7)",
+    "error": true
+  },
+  {
+    "name": "bit explicit metric",
+    "sql": "CREATE VIRTUAL TABLE invalid_vec USING vec0(v bit[8] distance_metric=L2)",
+    "error": true
+  },
+  {
+    "name": "KNN missing k",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]'",
+    "error": true
+  },
+  {
+    "name": "KNN k with LIMIT",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 LIMIT 1",
+    "error": true
+  },
+  {
+    "name": "KNN two MATCH",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND secondary MATCH vec_int8('[1,0]') AND k=1",
+    "error": true
+  },
+  {
+    "name": "KNN DESC",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 ORDER BY distance DESC",
+    "error": true
+  },
+  {
+    "name": "KNN wrong ORDER",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 ORDER BY id",
+    "error": true
+  },
+  {
+    "name": "KNN aux predicate",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 AND contents='one'",
+    "error": true
+  },
+  {
+    "name": "KNN float IN",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 AND score IN (1.0,2.0)",
+    "error": true
+  },
+  {
+    "name": "KNN bool IN",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 AND flag IN (1,0)",
+    "error": true
+  },
+  {
+    "name": "KNN distance equality",
+    "sql": "SELECT id FROM catalog WHERE embedding MATCH '[1,0]' AND k=1 AND distance=0",
+    "error": true
+  },
+  {
+    "name": "partition update forbidden",
+    "sql": "UPDATE catalog SET tenant=9 WHERE id='r1'",
+    "error": true
+  },
+  {
+    "name": "text primary update forbidden",
+    "sql": "UPDATE catalog SET id='newid' WHERE id='r1'",
+    "error": true
+  },
+  {
+    "name": "vector wrong dimension",
+    "sql": "INSERT INTO typed0(rowid,v) VALUES(2,'[1]')",
+    "error": true
+  },
+  {
+    "name": "vector wrong type",
+    "sql": "INSERT INTO typed0(rowid,v) VALUES(2,vec_int8('[1,2]'))",
+    "error": true
+  },
+  {
+    "name": "invalid JSON",
+    "sql": "SELECT vec_f32('bad')",
+    "error": true
+  },
+  {
+    "name": "invalid f32 BLOB",
+    "sql": "SELECT vec_f32(X'01')",
+    "error": true
+  },
+  {
+    "name": "invalid int8 range",
+    "sql": "SELECT vec_int8('[128]')",
+    "error": true
+  },
+  {
+    "name": "invalid bit arithmetic",
+    "sql": "SELECT vec_add(vec_bit(X'01'),vec_bit(X'02'))",
+    "error": true
+  },
+  {
+    "name": "invalid int8 normalize",
+    "sql": "SELECT vec_normalize(vec_int8('[1,2]'))",
+    "error": true
+  },
+  {
+    "name": "invalid bit slice",
+    "sql": "SELECT vec_slice(vec_bit(X'01'),1,8)",
+    "error": true
+  },
+  {
+    "name": "mixed distance types",
+    "sql": "SELECT vec_distance_l2('[1,2]',vec_int8('[1,2]'))",
+    "error": true
+  },
+  {
+    "name": "disabled filesystem",
+    "sql": "SELECT vec_npy_file('/etc/passwd')",
+    "error": true
+  },
+  {
+    "name": "disabled raw pointer",
+    "sql": "SELECT vec_static_blob_from_raw(1,1,1,1)",
+    "error": true
+  },
+  {
+    "name": "delete by key",
+    "sql": "DELETE FROM catalog WHERE id='r3'"
+  },
+  {
+    "name": "delete result",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM catalog",
+    "value": "2"
+  },
+  {
+    "name": "drop virtual table",
+    "sql": "DROP TABLE catalog"
+  },
+  {
+    "name": "drop shadow cleanup",
+    "sql": "SELECT CAST(count(*) AS TEXT) FROM sqlite_schema WHERE name GLOB 'catalog*'",
+    "value": "0"
+  }
+]

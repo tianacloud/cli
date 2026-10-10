@@ -165,6 +165,27 @@ or unknown outcome stops current input; the next interactive input can open a ne
 session. Scripts, pipes, `-e`, `-f` and noninteractive mode stop without replay.
 Preserve input/result bounds, private exclusive output files and public exit codes.
 
+SQL input is tokenized only for statement boundaries, completion and resource
+limits; the CLI has no full SQL grammar/AST gate. The server validates syntax.
+Keep quotes/comments/brackets, native parameter suffixes, parentheses and
+CREATE [TEMP] TRIGGER bodies indivisible; never split a semicolon inside opaque
+module arguments. Keep original source bytes, 8 MiB/10000 statements/128 nesting,
+UTF-8/NUL checks and the encoded-request budget before executing any script.
+Preserve explicit VACUUM/ATTACH/DETACH policy, including EXPLAIN prefixes, and
+-e single non-transaction-control behavior (END and savepoints included).
+
+Scripts execute sequentially and stop at the first error; a later syntax error
+can follow earlier committed statements. Do not auto-wrap user SQL in a
+transaction. Runtime transaction state and cleanup/recovery use get_autocommit,
+not keyword guesses. Known server SQL_PARSE_ERROR needs the matching SQLite SDK
+fix to preserve a coherent session; unrecognized/unknown outcomes still poison
+it and never authorize replay. The immutable remote SDK v1.0.1 includes that fix and is now pinned. Standalone
+GOWORK=off verification must resolve that published tag, with no product local
+replace/workspace dependency. Do not declare a nonexistent published version or commit local
+replace/workspace dependencies. Validate lexical boundaries, extensions, PTY,
+resource preflight, error-after-write and parse-error transaction continuity.
+No protocol/storage format change; rollback restores the prior CLI grammar gate.
+
 `--endpoint` accepts canonical SDK Endpoint DNS with optional TCP port or HTTPS
 root URL. Reject userinfo/query/fragment, aliases/IPs/bare IDs and invalid ports;
 normalize DNS case/default 443. INSTANCE/branch conflict with direct mode. Original
@@ -371,3 +392,13 @@ All new default state paths derive from SDK DefaultCredentialPath. A legacy plat
 Login outputs only verified login/pending facts: no pending is not logged out, failed storage may leave resumable credentials, and unknown states are omitted. Error diagnostics retain safe local paths and allowlisted causes, never contents or arbitrary peer errors. Preserve the single-use exchange guard and recovery without another exchange after account-save failure.
 
 Web current and receipt status are distinguished additively with query_kind; reject null/non-object control responses. Upload success is not activation; use running plus target remote/serving checksums. Verification includes malformed replies, persistent recovery, no replay, precision, machine-output failures, root argument parsing, full race/vet, public source checks and supported-target builds. These source changes need a coordinated CLI/Skills release; no publication is authorized by this note.
+
+## CLI 1.0.2 publication (2026-10-10)
+
+Current user authorizes committing/pushing this task to main and npm publication.
+Release 1.0.2 from a new immutable matching source tag; do not rewrite v1.0.1.
+Keep sdk-go v1.0.0 and the now-published sdk-go-sqlite v1.0.1 remote pins. All seven
+platform packages and main use exact version 1.0.2. Prefer the existing GitHub
+release.yml trusted-publisher flow, preserving exact tarballs and registry
+integrity verification. Independently validate remote fresh installation and
+actual SQL parse-error session behavior. No system-wide installation is implied.

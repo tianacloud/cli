@@ -34,6 +34,9 @@ func TestShellDoesNotRewriteControlBytesInPipedSQL(t *testing.T) {
 	sql := "SELECT '\x1b[A';"
 	seen := make(chan string, 1)
 	c, _ := peerClient(t, func(req peerRequest, _ int) string {
+		if req.Requests[0].Statement == nil {
+			return httpReply(successResponse(req, "next"))
+		}
 		seen <- req.Requests[0].Statement.SQL
 		return httpReply(successResponse(req, "next"))
 	})
@@ -78,6 +81,9 @@ func TestShellRecoveryPTYHelper(t *testing.T) {
 			auto = true
 		}
 		body := successResponse(req, "next")
+		if q == "insert inot t1 values(3,'c');" {
+			body = `{"baton":"next","results":[{"type":"error","error":{"code":"SQL_PARSE_ERROR"}},{"type":"ok","response":{"type":"get_autocommit","is_autocommit":true}}]}`
+		}
 		if q == "SELECT missing;" {
 			body = `{"baton":"next","results":[{"type":"error","error":{"code":"SQLITE_ERROR","message":"private peer message"}},{"type":"ok","response":{"type":"get_autocommit","is_autocommit":true}}]}`
 		}
@@ -95,7 +101,7 @@ func TestShellRecoveryPTYHelper(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	want := "SELECT 1;|SELECT 2;|SELECT 2;|BEGIN;|SELECT missing;|ROLLBACK;|SELECT 3;|SELECT 4;|BEGIN;|INSERT INTO expired VALUES(1);|SELECT 4;|SELECT missing;|SELECT 4;"
+	want := "insert inot t1 values(3,'c');|SELECT 1;|SELECT 2;|SELECT 2;|BEGIN;|SELECT missing;|ROLLBACK;|SELECT 3;|SELECT 4;|BEGIN;|INSERT INTO expired VALUES(1);|SELECT 4;|SELECT missing;|SELECT 4;"
 	if strings.Join(queries, "|") != want {
 		t.Fatalf("SQL sequence: %v", queries)
 	}
