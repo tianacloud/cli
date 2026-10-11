@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -224,7 +223,7 @@ func (c *Client) Upload(ctx context.Context, form Form, path string, size int64,
 		}
 	}
 	header := textproto.MIMEHeader{}
-	header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": "file", "filename": path[strings.LastIndex(path, "/")+1:]}))
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, path[strings.LastIndex(path, "/")+1:]))
 	header.Set("Content-Type", form.Fields["Content-Type"])
 	if _, err := writer.CreatePart(header); err != nil {
 		return err

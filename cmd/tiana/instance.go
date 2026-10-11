@@ -24,6 +24,19 @@ func isHelp(args []string) bool {
 func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authclient.PendingCommand) {
 	fmt.Fprintln(errorOutput, "tiana: an unfinished product operation must be completed first")
 	switch pending.Command {
+	case "files.put":
+		if pending.File != nil {
+			args := []string{"put"}
+			if pending.File.Overwrite {
+				args = append(args, "--overwrite")
+			}
+			args = append(args, pending.File.LocalPath, pending.File.RemotePath)
+			fmt.Fprintf(errorOutput, "Resume the file upload with the original local file:\n  tiana files %s\n", safeDisplay(quoteCommandArgs(args)))
+		}
+	case "files.delete":
+		if pending.File != nil {
+			fmt.Fprintf(errorOutput, "Resume the file deletion with:\n  tiana files delete --force %s\n", safeDisplay(quoteCommandArgs([]string{pending.File.RemotePath})))
+		}
 	case "web.delete":
 		fmt.Fprintf(errorOutput, "Recover the Web deletion with:\n  tiana web delete %s --force --wait\n", safeDisplay(quoteCommandArgs([]string{pending.InstanceID})))
 	case "web.create":

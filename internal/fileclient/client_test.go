@@ -31,6 +31,9 @@ func TestMultipartUploadStreamsExactTypeAndLength(t *testing.T) {
 			data, _ := io.ReadAll(part)
 			if part.FormName() == "file" {
 				found = true
+				if !strings.Contains(part.Header.Get("Content-Disposition"), `name="file"`) {
+					t.Error("OSS POST requires the file field name to be quoted")
+				}
 				if string(data) != "abc" || part.Header.Get("Content-Type") != "text/plain" || part.FileName() != "报告.txt" {
 					t.Error("invalid file part")
 				}
