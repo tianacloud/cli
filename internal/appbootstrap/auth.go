@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/fileclient"
 	"github.com/tianacloud/cli/internal/supervisor"
 )
 
@@ -59,6 +60,22 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 	if err != nil || user.ID == "" {
 		return Identity{}, errors.New("Console identity unavailable")
 	}
+	var operationMu sync.Mutex
+	var stopped error
+	fileRequest := fileclient.Request(func(call context.Context, method, path string, body, result any) error {
+		operationMu.Lock()
+		defer operationMu.Unlock()
+		if stopped != nil {
+			return stopped
+		}
+		credential, err := client.EnsureCredential(call)
+		if err != nil || credential.User.ID != user.ID || credential.User.TenantID != user.TenantID {
+			stopped = errors.New("preview account changed or authorization unavailable")
+			return stopped
+		}
+		return client.RequestFileJSON(call, method, path, body, credential, result)
+	})
+	fileHTTP := client.FileHTTPClient()
 	if instanceID == "" {
 		if len(resourceID) != 1 || resourceID[0] == "" {
 			return Identity{}, errors.New("preview requires a project instance")
@@ -67,17 +84,18 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 		if e != nil || instance.Engine != "web" || instance.ID != resourceID[0] {
 			return Identity{}, errors.New("Web project authorization unavailable")
 		}
-		return Identity{ID: user.ID, Label: user.ID, Connection: func(context.Context) (Connection, error) {
+		return Identity{ID: user.ID, Label: user.ID, FileRequest: fileRequest, FileHTTP: fileHTTP, Connection: func(context.Context) (Connection, error) {
 			return Connection{}, errors.New("Web project has no database binding")
 		}}, nil
 	}
 	var mu sync.Mutex
-	var stopped error
 	var flight *previewFlight
 	// Only the broker performs management operations, serially. Once an SDK
 	// operation fails, it may have consumed a rotating refresh token. Stop
 	// this session rather than blindly retrying an ambiguous refresh.
 	resolveOnce := func(ctx context.Context) (Connection, error) {
+		operationMu.Lock()
+		defer operationMu.Unlock()
 		if stopped != nil {
 			return Connection{}, stopped
 		}
@@ -184,7 +202,7 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 	if label == "" {
 		label = user.ID
 	}
-	return Identity{ID: user.ID, Label: label, Connection: resolve}, nil
+	return Identity{ID: user.ID, Label: label, Connection: resolve, FileRequest: fileRequest, FileHTTP: fileHTTP}, nil
 }
 
 type previewFlight struct {

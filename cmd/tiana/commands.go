@@ -160,7 +160,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		}
 	}
 	root := &cli.Command{
-		Name: "tiana", Usage: "Tiana account, Web, SQLite and Git commands",
+		Name: "tiana", Usage: "Tiana account, Web, SQLite, Git and file commands",
 		Reader: input, Writer: output, ErrWriter: diagnostics, HideVersion: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "ca-file", Usage: "Deployment CA PEM for all MGR and Gateway connections"},
@@ -181,11 +181,12 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 				}},
 			newGitCommand(input, output, diagnostics),
 			newWebCommand(input, output, diagnostics),
+			newFilesCommand(input, output, diagnostics),
 		},
 	}
 	for _, command := range root.Commands {
 		switch command.Name {
-		case "web", "sqlite", "git":
+		case "web", "sqlite", "git", "files":
 			command.Category = "Products"
 		}
 	}

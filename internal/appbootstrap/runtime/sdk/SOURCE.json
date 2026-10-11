@@ -1,0 +1,7 @@
+{
+  "package": "@tianacloud/serverless",
+  "version": "0.1.0-beta.2",
+  "source": "https://github.com/tianacloud/serverless-js",
+  "commit": "464cb759f7948ed344403469a167ee7bc99e0547",
+  "tarball_sha256": "ed79b666eb1ff9c66c1806a66a60a74b107e2e78d3ff3345417d31d7f189e927"
+}

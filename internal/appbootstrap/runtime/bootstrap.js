@@ -1,3 +1,4 @@
+import {createTianaFiles} from './sdk/files.js';
 const base = new URL('../', import.meta.url);
 const dataElement = document.querySelector('#tiana-bootstrap-data');
 const manifest = JSON.parse(dataElement.textContent);
@@ -61,7 +62,31 @@ async function loadApplication() {
       if (signal.aborted) abort();
     });
   }});
-  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, async connection() {
+  let fileWrites = Promise.resolve();
+  const fileRequest = (url, init) => {
+    const send = () => {
+      const headers = new Headers(init.headers);
+      headers.set('X-Tiana-Bootstrap', '1');
+      headers.set('X-Request-ID', 'req-' + crypto.randomUUID());
+      if (!localPreview) {
+        const proof = document.cookie.split('; ').find(item => item.startsWith('tiana_mgr_csrf='));
+        if (proof) headers.set('X-CSRF-Token', decodeURIComponent(proof.split('=').slice(1).join('=')));
+      }
+      return fetch(url, {...init, headers});
+    };
+    if (init.method !== 'POST' && init.method !== 'DELETE') return send();
+    const result = fileWrites.then(send);
+    fileWrites = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  const files = createTianaFiles({
+    apiBaseUrl: new URL('_tiana/file-storage', base).href,
+    request: fileRequest,
+    ...(localPreview ? {contentBaseUrl: new URL('_tiana/file-storage/content', base).href} : {}),
+  });
+  await files.ready();
+  window.addEventListener('pagehide', () => files.dispose(), {once: true});
+  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, files, async connection() {
     if (credential && credentialExpiresAt > Date.now() + 30000) return credential;
     if (!pendingConnection) {
       pendingConnection = (async () => {

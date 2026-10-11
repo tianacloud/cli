@@ -19,10 +19,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tianacloud/cli/internal/fileclient"
 	"github.com/tianacloud/sdk-go/auth"
 )
 
-//go:embed runtime/index.html runtime/bootstrap.js runtime/authorize.html runtime/authorize.js runtime/authorize.css
+//go:embed runtime/index.html runtime/bootstrap.js runtime/authorize.html runtime/authorize.js runtime/authorize.css runtime/sdk/*.js
 var runtimeFiles embed.FS
 
 type Connection struct {
@@ -33,8 +34,11 @@ type Connection struct {
 	ExpiresAt  string `json:"expires_at"`
 }
 type Identity struct {
-	ID, Label  string
-	Connection func(context.Context) (Connection, error)
+	FileRequest fileclient.Request
+	FileHTTP    *http.Client
+	Files       *fileclient.Client
+	ID, Label   string
+	Connection  func(context.Context) (Connection, error)
 }
 type LoginFlow struct {
 	VerificationURL string
@@ -160,12 +164,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 403, "ORIGIN_REJECTED")
 		return
 	}
-	if r.Method == http.MethodPost && (r.Header.Get("Origin") != s.config.Origin || r.Header.Get("X-Tiana-Bootstrap") != "1") {
+	if (r.Method == http.MethodPost || r.Method == http.MethodDelete) && (r.Header.Get("Origin") != s.config.Origin || r.Header.Get("X-Tiana-Bootstrap") != "1") {
 		s.failure(w, 403, "ORIGIN_REJECTED")
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodPost {
-		w.Header().Set("Allow", "GET, HEAD, POST")
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		w.Header().Set("Allow", "GET, HEAD, POST, DELETE")
 		s.failure(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
@@ -201,6 +205,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p == "_tiana/authorize" && (r.Method == "GET" || r.Method == "HEAD") {
 
 		s.platformFile(w, r, "authorize.html")
+		return
+	}
+	if strings.HasPrefix(p, "_tiana/sdk/") && (r.Method == "GET" || r.Method == "HEAD") {
+		name := strings.TrimPrefix(p, "_tiana/sdk/")
+		if name != "files.js" && name != "auth.js" && name != "diagnostics.js" {
+			http.NotFound(w, r)
+			return
+		}
+		s.platformFile(w, r, "sdk/"+name)
+		return
+	}
+	if strings.HasPrefix(p, "_tiana/file-storage/") {
+		identity, state := s.identity(r)
+		if state != "ready" {
+			s.failure(w, 401, "LOGIN_REQUIRED")
+			return
+		}
+		s.fileStorage(w, r, identity, strings.TrimPrefix(p, "_tiana/file-storage/"))
 		return
 	}
 	if p == "_tiana/environment" && r.Method == http.MethodGet {
@@ -311,6 +333,12 @@ func (s *Server) identity(r *http.Request) (Identity, string) {
 		v.cancel()
 		delete(s.sessions, cookie.Value)
 		return Identity{}, "expired"
+	}
+	if v.state == "ready" && v.identity.Files == nil && v.identity.FileRequest != nil {
+		request := v.identity.FileRequest
+		v.identity.Files = &fileclient.Client{HTTP: v.identity.FileHTTP, Request: func(ctx context.Context, method, path string, body, result any) error {
+			return request(ctx, method, "/api/v1/web-projects/"+s.config.Build.Manifest.WebID+"/file-storage"+path, body, result)
+		}}
 	}
 	return v.identity, v.state
 }

@@ -79,3 +79,13 @@ tiana.app.json is retired; entry JS loads CSS. Publish packages empty root web.y
 plus data/, validates the fixed entry, and uploads channel 1. Channel 0 remains
 native GET/HEAD, v4 unchanged. CLI serve requires ID and saved project parameters.
 No entry override on update/publish/serve. No migration or deployment is implied.
+
+## WebApp file access
+
+Bootstrap installs `context.files` before mounting the app. Hosted Site obtains
+its WebApp-scoped files cookie before module import. Local preview uses the
+existing session and fixed `_tiana/file-storage/` broker; downloads stream via
+an isolated file grant header, while uploads go directly to OSS. Public SDK
+modules are embedded from the same pinned serverless-js build as Web; keep
+both bootstrap copies and their SDK provenance aligned. Existing project ID
+is available before publication, so unpublished local preview has a stable scope.

@@ -650,3 +650,37 @@ tiana version check --skills-version <当前加载技能的版本> --json
 
 
 Web status JSON adds `query_kind: current / receipt` without changing existing `state`. Current `state=running` describes the application; receipt `REMOTE_COMMITTED` / `SUCCEEDED` describes upload. Confirm serving only when running and both current checksums match the saved target SHA256. Receipt expiry remains unknown; target content may still be confirmed by current checksums. `publish_id:null` in current status is valid and is not reconstructed from identical content hashes.
+
+### Files
+
+Files belong to the current tenant and share its storage quota. Paths are
+relative to that tenant's files directory:
+
+```sh
+tiana files list docs/
+tiana files list docs/ --cursor NEXT_CURSOR
+tiana files put ./report.pdf docs/report.pdf
+tiana files get docs/report.pdf ./report.pdf
+tiana files get-url docs/report.pdf
+tiana files delete docs/report.pdf
+```
+
+`list` returns one directory page. `put --overwrite` explicitly deletes the
+existing file before uploading; a failed replacement cannot recover that file.
+`delete --force` skips the existing interactive confirmation. `--json` returns
+structured results. A pending upload retains its operation and upload ID so the
+same command can inspect/complete an uncertain transfer without repeating the
+replacement deletion. Upload credentials expire after 30 minutes.
+
+Downloads and `get-url` use the configured files CDN. The returned URL contains
+a public scope selector, not a bearer credential: opening it requires a browser
+file cookie or a valid file Authorization header. The CLI obtains its own
+15-minute read grant and sends only that grant to the CDN. File bytes upload
+directly to OSS; tenant identity is checked through the MGR account API.
+
+`tiana web serve` exposes the same SDK as `context.files` to the mounted app.
+It needs the existing WebApp ID, including for an unpublished project. The
+loopback broker fixes operations to that WebApp's directory, streams downloads
+using a server-side file grant and keeps them same-origin for the browser.
+Uploads still go directly to OSS. File credentials are separate from database
+connection credentials.
