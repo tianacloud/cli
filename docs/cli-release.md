@@ -128,3 +128,9 @@ The immutable SQLite SDK v1.0.1 preserves confirmed sessions/transactions after
 SQL_PARSE_ERROR. Core sdk-go stays pinned to v1.0.0. Unknown responses and lost
 outcomes remain conservative and never authorize replay. The main and seven
 platform npm packages use 1.0.2 and the stable latest channel.
+
+## 1.0.3 tenant file storage
+
+Adds `tiana files list/get/get-url/put/delete`, direct OSS uploads, and file
+authorization for local Web previews. Explicit overwrite deletes the existing
+object before uploading. Requires the deployed MGR file-storage APIs.
