@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {runNPM} from './npm-command.mjs';
 import { createHash } from 'node:crypto';
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { targets, binaryName, platformPackage } from '../packaging/npm/bin/platforms.mjs';
@@ -14,6 +14,7 @@ if (!assetsArgument || !outputArgument || extra.length) {
 const assets = path.resolve(assetsArgument);
 const output = path.resolve(outputArgument);
 const template = fileURLToPath(new URL('../packaging/npm', import.meta.url));
+const license = fileURLToPath(new URL('../LICENSE', import.meta.url));
 const pkg = JSON.parse(readFileSync(path.join(template, 'package.json'), 'utf8'));
 if (versionArgument) pkg.version = versionArgument;
 const sha = filename => createHash('sha256').update(readFileSync(filename)).digest('hex');
@@ -53,8 +54,8 @@ for (const target of targets) {
   chmodSync(path.join(directory, 'bin', binary), 0o755);
   copyFileSync(path.join(assets, target, 'manifest.json'), path.join(directory, 'manifest.json'));
   copyFileSync(path.join(template, 'README.md'), path.join(directory, 'README.md'));
-  if (existsSync(path.join(template, 'LICENSE'))) copyFileSync(path.join(template, 'LICENSE'), path.join(directory, 'LICENSE'));
-  const metadata = { name, version: pkg.version, description: `Tiana CLI native executable for ${npmOS}/${npmArch}`, repository: pkg.repository, os: [npmOS], cpu: [npmArch], files: ['bin', 'manifest.json', 'README.md', 'LICENSE'], publishConfig: pkg.publishConfig };
+  copyFileSync(license, path.join(directory, 'LICENSE'));
+  const metadata = { name, version: pkg.version, description: `Tiana CLI native executable for ${npmOS}/${npmArch}`, repository: pkg.repository, license: pkg.license, os: [npmOS], cpu: [npmArch], files: ['bin', 'manifest.json', 'README.md', 'LICENSE'], publishConfig: pkg.publishConfig };
   writeFileSync(path.join(directory, 'package.json'), JSON.stringify(metadata, null, 2)+'\n');
   pack(directory, target);
 }
@@ -62,6 +63,7 @@ const staging = path.join(output, 'package');
 mkdirSync(staging);
 cpSync(path.join(template, 'bin'), path.join(staging, 'bin'), { recursive: true });
 copyFileSync(path.join(template, 'README.md'), path.join(staging, 'README.md'));
+copyFileSync(license, path.join(staging, 'LICENSE'));
 pkg.optionalDependencies = Object.fromEntries(targets.map(target => {
   const [os,arch] = target.split('-');
   return [platformPackage(os==='windows'?'win32':os,arch==='amd64'?'x64':arch),pkg.version];

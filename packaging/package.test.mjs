@@ -39,6 +39,8 @@ test('seven platform packages and an npm launcher package', { timeout: 180000, s
       assert.equal(entry.integrity, 'sha512-'+createHash('sha512').update(readFileSync(tarball)).digest('base64'));
       const pkg = JSON.parse(execFileSync('tar',['-xOzf',tarball,'package/package.json'],{encoding:'utf8'}));
       assert.equal(pkg.name,entry.name);assert.equal(pkg.version,version);
+      assert.equal(pkg.license, 'Apache-2.0');
+      assert.equal(execFileSync('tar', ['-xOzf', tarball, 'package/LICENSE'], { encoding: 'utf8' }), readFileSync(path.join(repo, 'LICENSE'), 'utf8'));
       if (entry.name === '@tianacloud/cli') {
         assert.deepEqual(pkg.optionalDependencies,Object.fromEntries(targets.map(target=>{
           const [os,arch]=target.split('-');return [platformPackage(os==='windows'?'win32':os,arch==='amd64'?'x64':arch),version];

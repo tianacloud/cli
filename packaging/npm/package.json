@@ -1,6 +1,7 @@
 {
   "name": "@tianacloud/cli",
   "version": "1.0.3",
+  "license": "Apache-2.0",
   "description": "Tiana CLI for account login, SQLite, Git and application publication",
   "repository": {
     "type": "git",
