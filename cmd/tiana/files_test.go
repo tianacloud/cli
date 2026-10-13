@@ -46,12 +46,12 @@ func TestFilesListAndURL(t *testing.T) {
 	env := newTestEnv(t, server.URL)
 	fileCredential(t, server.URL, env.credentialsPath)
 	var out, diag bytes.Buffer
-	if code := runCLI(t.Context(), []string{"files", "list", "docs", "--json"}, nil, &out, &diag); code != 0 || !strings.Contains(out.String(), `"cursor":"page2"`) {
+	if code := runCLI(t.Context(), []string{"file", "list", "docs", "--json"}, nil, &out, &diag); code != 0 || !strings.Contains(out.String(), `"cursor":"page2"`) {
 		t.Fatal(code, out.String(), diag.String())
 	}
 	out.Reset()
 	diag.Reset()
-	if code := runCLI(t.Context(), []string{"files", "get-url", "报告 #.txt"}, nil, &out, &diag); code != 0 || out.String() != "https://files.example.test/users/tenant-files/files/%E6%8A%A5%E5%91%8A%20%23.txt?_fs_scope=scope\n" {
+	if code := runCLI(t.Context(), []string{"file", "get-url", "报告 #.txt"}, nil, &out, &diag); code != 0 || out.String() != "https://files.example.test/users/tenant-files/files/%E6%8A%A5%E5%91%8A%20%23.txt?_fs_scope=scope\n" {
 		t.Fatal(code, out.String(), diag.String())
 	}
 	if calls != 2 {
@@ -100,7 +100,7 @@ func TestFilesPutRecoversCompletedReplacementWithoutDeletingOrUploadingAgain(t *
 	if err := os.WriteFile(source, []byte("hello"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"files", "put", source, "file.txt", "--overwrite", "--json"}
+	args := []string{"file", "put", source, "file.txt", "--overwrite", "--json"}
 	var out, diag bytes.Buffer
 	if code := runCLI(t.Context(), args, nil, &out, &diag); code == 0 {
 		t.Fatal("unknown completion reported success")
@@ -139,12 +139,12 @@ func TestFilesDeleteRequiresConfirmationAndUsesStableRequest(t *testing.T) {
 	env := newTestEnv(t, server.URL)
 	fileCredential(t, server.URL, env.credentialsPath)
 	var out, diag bytes.Buffer
-	if code := runCLI(t.Context(), []string{"files", "delete", "a.txt"}, strings.NewReader("y\n"), &out, &diag); code != 2 || requests != 0 {
+	if code := runCLI(t.Context(), []string{"file", "delete", "a.txt"}, strings.NewReader("y\n"), &out, &diag); code != 2 || requests != 0 {
 		t.Fatal(code, requests)
 	}
 	out.Reset()
 	diag.Reset()
-	if code := runCLI(t.Context(), []string{"files", "delete", "a.txt", "-f", "--json"}, nil, &out, &diag); code != 0 || requests != 1 {
+	if code := runCLI(t.Context(), []string{"file", "delete", "a.txt", "-f", "--json"}, nil, &out, &diag); code != 0 || requests != 1 {
 		t.Fatal(code, requests, out.String(), diag.String())
 	}
 }

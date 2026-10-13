@@ -186,7 +186,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 	}
 	for _, command := range root.Commands {
 		switch command.Name {
-		case "web", "sqlite", "git", "files":
+		case "web", "sqlite", "git", "file":
 			command.Category = "Products"
 		}
 	}

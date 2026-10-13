@@ -134,3 +134,9 @@ platform npm packages use 1.0.2 and the stable latest channel.
 Adds `tiana files list/get/get-url/put/delete`, direct OSS uploads, and file
 authorization for local Web previews. Explicit overwrite deletes the existing
 object before uploading. Requires the deployed MGR file-storage APIs.
+
+## 1.0.4 singular file command
+
+Use `tiana file list/get/get-url/put/delete` for tenant file storage. Help,
+recovery instructions and Skills 1.0.4 examples use the singular command name.
+Existing scripts invoking `tiana files` must switch to `tiana file`.

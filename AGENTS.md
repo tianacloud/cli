@@ -37,8 +37,9 @@ only when TIANA_API_ORIGIN selects staging; otherwise use system roots. Extra
 roots are added to system trust. Preserve verified TLS in source and packaging builds.
 Environment origin overrides permit HTTP only for loopback development.
 
-Products are `web`, `sqlite` and `git`. Removed `apps`, `whoami`, `verify-install`,
-SQLite Token commands and `branches` spellings have no compatibility aliases.
+Products are `web`, `sqlite`, `git` and `file`. Tenant file commands use
+`tiana file` with `list`, `get`, `get-url`, `put` and `delete` subcommands.
+Removed `apps`, `whoami`, `verify-install`, SQLite Token commands and `branches` spellings have no compatibility aliases.
 Instance create requires one nonblank NAME and fixed engine `sqlite` or `git`;
 removed engine/display-name flags fail before state/network work. Descriptions
 are verbatim valid UTF-8, <=2048 bytes for both instances and Web (Web description projects instance notes).

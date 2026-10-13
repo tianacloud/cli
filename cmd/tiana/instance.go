@@ -31,11 +31,11 @@ func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authc
 				args = append(args, "--overwrite")
 			}
 			args = append(args, pending.File.LocalPath, pending.File.RemotePath)
-			fmt.Fprintf(errorOutput, "Resume the file upload with the original local file:\n  tiana files %s\n", safeDisplay(quoteCommandArgs(args)))
+			fmt.Fprintf(errorOutput, "Resume the file upload with the original local file:\n  tiana file %s\n", safeDisplay(quoteCommandArgs(args)))
 		}
 	case "files.delete":
 		if pending.File != nil {
-			fmt.Fprintf(errorOutput, "Resume the file deletion with:\n  tiana files delete --force %s\n", safeDisplay(quoteCommandArgs([]string{pending.File.RemotePath})))
+			fmt.Fprintf(errorOutput, "Resume the file deletion with:\n  tiana file delete --force %s\n", safeDisplay(quoteCommandArgs([]string{pending.File.RemotePath})))
 		}
 	case "web.delete":
 		fmt.Fprintf(errorOutput, "Recover the Web deletion with:\n  tiana web delete %s --force --wait\n", safeDisplay(quoteCommandArgs([]string{pending.InstanceID})))

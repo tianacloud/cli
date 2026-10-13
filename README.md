@@ -657,12 +657,12 @@ Files belong to the current tenant and share its storage quota. Paths are
 relative to that tenant's files directory:
 
 ```sh
-tiana files list docs/
-tiana files list docs/ --cursor NEXT_CURSOR
-tiana files put ./report.pdf docs/report.pdf
-tiana files get docs/report.pdf ./report.pdf
-tiana files get-url docs/report.pdf
-tiana files delete docs/report.pdf
+tiana file list docs/
+tiana file list docs/ --cursor NEXT_CURSOR
+tiana file put ./report.pdf docs/report.pdf
+tiana file get docs/report.pdf ./report.pdf
+tiana file get-url docs/report.pdf
+tiana file delete docs/report.pdf
 ```
 
 `list` returns one directory page. `put --overwrite` explicitly deletes the
