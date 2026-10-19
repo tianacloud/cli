@@ -9,3 +9,6 @@
 coverage.*
 
 /packaging/npm/node_modules/
+
+__pycache__/
+*.py[cod]
