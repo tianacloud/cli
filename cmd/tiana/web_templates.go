@@ -12,6 +12,70 @@ import (
 
 func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 	return []*cli.Command{
+		{Name: "publish-share-template", Usage: "Publish a reviewed install.zip as an app template", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("file", "Reviewed install.zip file", ""), &cli.BoolFlag{Name: "wait", Aliases: []string{"w"}, Usage: "Wait for publication to finish", Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 || cmd.String("file") == "" {
+				return argumentFailure(ctx, cmd, "Provide WEB_ID and --file install.zip")
+			}
+			auth, err := newAuthClient(ctx, diagnostics, true)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			client := webtemplate.Client{Auth: auth}
+			result, err := client.PublishShare(ctx, cmd.Args().First(), cmd.String("file"))
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			var value any = result
+			if cmd.Bool("wait") {
+				value, err = client.WaitShare(ctx, cmd.Args().First(), result.JobID)
+				if err != nil {
+					return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+				}
+			}
+			return statusError(writeAppResult(apppublish.Success(value), cmd.Bool("json"), output, diagnostics))
+		}},
+		{Name: "status-share-template", Usage: "Read the current share, publication and cleanup status", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
+				return argumentFailure(ctx, cmd, "Provide WEB_ID")
+			}
+			auth, err := newAuthClient(ctx, diagnostics, true)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			result, err := (webtemplate.Client{Auth: auth}).ShareStatus(ctx, cmd.Args().First())
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
+		}},
+		{Name: "withdraw-share-template", Usage: "Withdraw the current template and queue material cleanup", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 {
+				return argumentFailure(ctx, cmd, "Provide WEB_ID")
+			}
+			auth, err := newAuthClient(ctx, diagnostics, true)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			id, err := (webtemplate.Client{Auth: auth}).WithdrawShare(ctx, cmd.Args().First())
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			return statusError(writeAppResult(apppublish.Success(map[string]any{"cleanup_job_id": id}), cmd.Bool("json"), output, diagnostics))
+		}},
+		{Name: "init-share-template", Usage: "Download shared source into a new project directory", ArgsUsage: "LINK", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 || cmd.String("dir") == "" {
+				return argumentFailure(ctx, cmd, "Provide LINK and --dir for a new project")
+			}
+			auth, err := newAuthClient(ctx, diagnostics, true)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			result, err := (webtemplate.Client{Auth: auth}).InitShare(ctx, cmd.Args().First(), cmd.String("dir"))
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
+		}},
 		{Name: "list-template", Usage: "Read the current Web template catalog", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("after", "Next-page cursor", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 {
 				return argumentFailure(ctx, cmd, "list-template does not accept positional arguments")

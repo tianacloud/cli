@@ -1,7 +1,6 @@
 package webtemplate
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Archive struct {
@@ -24,6 +24,7 @@ type Source struct {
 }
 
 type Result struct {
+	Prompt       string `json:"prompt,omitempty"`
 	Name         string `json:"name"`
 	Directory    string `json:"directory"`
 	MetadataPath string `json:"metadata_path"`
@@ -33,6 +34,8 @@ type Result struct {
 }
 
 func Materialize(ctx context.Context, archive Archive, target string) (Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -43,7 +46,8 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 	if err := requireAbsent(target); err != nil {
 		return Result{}, err
 	}
-	zr, err := zip.NewReader(archive.Reader, archive.Size)
+	budget := &archiveBudget{ctx: ctx}
+	zr, err := budget.open(archive.Reader, archive.Size, true)
 	if err != nil {
 		return Result{}, errors.New("template ZIP is invalid")
 	}
@@ -70,6 +74,9 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 			return Result{}, errors.New("template ZIP contains an invalid path")
 		}
 		if entry.FileInfo().IsDir() {
+			if _, err := budget.copy(io.Discard, entry, MaxMaterialBytes); err != nil {
+				return Result{}, err
+			}
 			if err := root.MkdirAll(filepath.FromSlash(name), 0755); err != nil {
 				return Result{}, err
 			}
@@ -81,21 +88,12 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 		if err := root.MkdirAll(filepath.FromSlash(path.Dir(name)), 0755); err != nil {
 			return Result{}, err
 		}
-		mode := entry.Mode().Perm()
-		if mode == 0 {
-			mode = 0644
-		}
+		mode := 0644 | (entry.Mode().Perm() & 0111)
 		out, err := root.OpenFile(filepath.FromSlash(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 		if err != nil {
 			return Result{}, err
 		}
-		in, err := entry.Open()
-		if err != nil {
-			out.Close()
-			return Result{}, err
-		}
-		_, copyErr := io.Copy(out, contextReader{ctx, in})
-		in.Close()
+		_, copyErr := budget.copy(out, entry, MaxMaterialBytes)
 		closeErr := out.Close()
 		if copyErr != nil {
 			return Result{}, copyErr
@@ -126,7 +124,7 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 	if err := requireAbsent(target); err != nil {
 		return Result{}, err
 	}
-	if err := os.Rename(temporary, target); err != nil {
+	if err := renameProject(temporary, target); err != nil {
 		return Result{}, err
 	}
 	return Result{Name: archive.Name, Directory: target, MetadataPath: filepath.Join(target, "metadata.json"), Source: manifest.Source, ZIPSize: archive.Size}, nil

@@ -67,6 +67,9 @@ func (c Client) Init(ctx context.Context, name, target string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if descriptor.ZIPSize <= 0 || descriptor.ZIPSize > MaxPackageBytes {
+		return Result{}, errors.New("source ZIP exceeds the 16 MiB limit")
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, descriptor.DownloadURL, nil)
 	if err != nil {
 		return Result{}, errors.New("template download URL is invalid")
@@ -75,7 +78,10 @@ func (c Client) Init(ctx context.Context, name, target string) (Result, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	response, err := httpClient.Do(request)
+	clientCopy := *httpClient
+	clientCopy.Jar = nil
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := clientCopy.Do(request)
 	if err != nil {
 		return Result{}, errors.New("template download failed; request a fresh download link and retry")
 	}
@@ -97,7 +103,7 @@ func (c Client) Init(ctx context.Context, name, target string) (Result, error) {
 	defer os.Remove(file.Name())
 	defer file.Close()
 	hash := sha256.New()
-	size, err := io.Copy(io.MultiWriter(file, hash), response.Body)
+	size, err := CopyBounded(ctx, io.MultiWriter(file, hash), response.Body, descriptor.ZIPSize)
 	if err != nil {
 		return Result{}, errors.New("template download was interrupted")
 	}
