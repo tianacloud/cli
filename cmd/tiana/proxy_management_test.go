@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -296,7 +297,7 @@ func TestLoginStatusAndTemplateDownloadThroughAllProxy(t *testing.T) {
 				t.Fatalf("unknown publication lost identity: code=%d output=%s diagnostics=%s", code, &unknownOutput, &unknownDiagnostics)
 			}
 			t.Cleanup(func() { os.Remove(unknown.Data.Archive) })
-			if info, err := os.Stat(unknown.Data.Archive); err != nil || info.Mode().Perm() != 0600 {
+			if info, err := os.Stat(unknown.Data.Archive); err != nil || !info.Mode().IsRegular() || runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 				t.Fatal("unknown publication lost private archive", err)
 			}
 			if receivedPublishID.Load().(string) != unknown.Data.PublishID {
