@@ -1,6 +1,6 @@
 # 统一出站代理开发与验收记录
 
-状态：SDK v1.0.1 已发布，CLI 远程 pin 已更新；本地检查、七平台构建、本地 npm 新鲜安装和隔离网络访问真实服务验收已通过。CLI macOS/Windows 原生 CI 尚待提交任务分支后运行；CLI/npm 尚未发布。
+状态：SDK v1.0.1 已发布，CLI 远程 pin 已更新；本地检查、七平台构建、本地 npm 新鲜安装和隔离网络访问真实服务验收已通过。CLI PR #9 的实现提交已通过 Linux/macOS/Windows 原生 CI 及 Go 1.25/stable race/vet；CLI/npm 尚未发布。
 
 ## 源码、版本与交付边界
 
@@ -28,6 +28,7 @@
 | 浏览器与通知终端 | Playwright Chromium 的登录、受限资源、模块/hash route、刷新恢复、HttpOnly、退出；CLI update-check PTY 通过 | bootstrap/browser fixture；浏览器自身网络不由 CLI 代理接管 |
 | 工程检查 | 远程 pin 下完整 race/vet、module verify、格式、公共源码与 PEM/hex 正反回归、安全卸载；SDK source-tools/consumer smoke 通过 | GOWORK=off、GOFLAGS 空、-mod=readonly |
 | 构建与包 | 七平台构建、24 个 Node packaging/launcher tests、八个 npm tarball、完整性、新鲜本地安装、Linux bundle 通过；七个二进制 build info 均确认两个 SDK v1.0.1 且无替换 | 临时版本 1.0.5-proxy.1，不是 npm 发行；交叉编译与原生运行区分 |
+| CLI 原生 CI | 实现提交 `80ae24990acbc2a1aafdb7c151b5cda2e841d5d3` 的 Linux/macOS/Windows 原生测试、vet、launcher/installation，以及 Go 1.25/stable race 检查全部通过 | push 与 PR 两组 workflow 均成功；真实服务验收仍仅在 Linux namespace 执行 |
 
 ## 新建隔离环境与真实服务验收
 
@@ -90,9 +91,11 @@ node --test packaging/*.test.mjs
 ## 制品及平台证据边界
 
 - SDK v1.0.1 tag 的 [Go CI](https://github.com/tianacloud/sdk-go/actions/runs/40281576963) 和 [macOS/Windows CI](https://github.com/tianacloud/sdk-go/actions/runs/40281576905) 全部成功。
+- CLI 实现提交 `80ae249` 的 PR [Public CLI](https://github.com/tianacloud/cli/actions/runs/40289854607)、[Native CLI platforms](https://github.com/tianacloud/cli/actions/runs/40289854833)，以及 push [Public CLI](https://github.com/tianacloud/cli/actions/runs/40289847538)、[Native CLI platforms](https://github.com/tianacloud/cli/actions/runs/40289847433) 全部成功。后续仅更新验收文档时，最新检查以 PR #9 当前 HEAD 为准。
+- 首次 Windows CI 发现新增回归测试误用 Unix `0600` 位；修正后三平台均检查保留普通文件，Unix 另检查 `0600`。HTTP/SOCKS5 的未知发布身份、archive 保留及原 ID 回执查询场景继续运行，未跳过。
 - Turso 官方 v1.0.32 Linux x86_64 archive SHA-256：`c35acbcad8e2e7a32580fe380adc4658d3032ddc56d25396b9b123aa4a704107`；解出 binary：`ee56beef9b888ecfb9537ce19badb6bccc33e13ea78763ef2f51ef8d4454684f`。新增官方制品抓取测试已通过；旧 fixture 的 `257ef10bf753477f0fc6cd0754e346aade78bd3614fa8e71fb7eb8b3df4ef31f` 仍独立保留，不放宽摘要断言。
 - App 参考提交 `392e21fce0ebba0ab818acad3465f42be712960d` 未修改，SQLite 3.53.4 native build ID 为 `aabf712ce09cce89357592ae7b478508084c28b19ba4b0ac5de28d62aea51fad`。
-- CLI 当前仅 Linux 实际运行；macOS/Windows 的 CLI 原生测试须将本次工作区提交到任务分支后运行现有 CI。七平台交叉构建不等于这些平台代理运行验收。
+- CLI 已在 Linux/macOS/Windows 原生 CI 运行代理 fixture；真实公网服务验收在 Linux 隔离网络完成。七平台交叉构建不等于另外四个目标的原生运行或云端验收。
 - npm 本地新鲜安装已通过；公开 npm 发布、系统安装及生产部署不在本次已执行范围。
 
 ## 回滚
