@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/testutil/proxypeer"
 )
 
 type flushWriter struct{ http.ResponseWriter }
@@ -40,6 +42,12 @@ func (w flushWriter) Write(p []byte) (int, error) {
 // The fixture exercises real TLS 1.3/H2 regular CONNECT and real Git. It is
 // explicitly not a deployed Gateway/Control/Agent acceptance test.
 func TestNativeGitOverConnect(t *testing.T) {
+	for _, route := range []string{"direct", "http", "socks5h"} {
+		t.Run(route, func(t *testing.T) { testNativeGitOverConnect(t, route) })
+	}
+}
+
+func testNativeGitOverConnect(t *testing.T, route string) {
 	binary := os.Getenv("TEST_GIT_REMOTE")
 	if binary == "" {
 		t.Skip("build Go package and set TEST_GIT_REMOTE and TEST_TIANA_CLI")
@@ -103,7 +111,7 @@ func TestNativeGitOverConnect(t *testing.T) {
 	}
 	baseEnv := []string{}
 	for _, v := range os.Environ() {
-		if !strings.HasPrefix(v, "TIANA_") && !strings.HasPrefix(v, "GIT_") {
+		if !strings.HasPrefix(v, "TIANA_") && !strings.HasPrefix(v, "GIT_") && !strings.Contains(strings.ToLower(strings.SplitN(v, "=", 2)[0]), "proxy") {
 			baseEnv = append(baseEnv, v)
 		}
 	}
@@ -157,9 +165,32 @@ func TestNativeGitOverConnect(t *testing.T) {
 		if prefix == nil {
 			prefix = <-first
 		}
-		cmd := exec.CommandContext(r.Context(), "git", "daemon", "--inetd", "--log-destination=stderr", "--export-all", "--strict-paths", "--enable=receive-pack", "--base-path="+dir, repository)
+		// Consume the daemon service-selection pkt-line, then run the real Git
+		// service directly. Minimal Git distributions may omit git-daemon.
+		input := io.MultiReader(bytes.NewReader(prefix), r.Body)
+		var size [4]byte
+		if _, err := io.ReadFull(input, size[:]); err != nil {
+			t.Error(err)
+			return
+		}
+		n, err := strconv.ParseUint(string(size[:]), 16, 16)
+		if err != nil || n < 5 || n > 4096 {
+			t.Error("invalid Git service packet")
+			return
+		}
+		packet := make([]byte, int(n)-4)
+		if _, err := io.ReadFull(input, packet); err != nil {
+			t.Error(err)
+			return
+		}
+		service, path, _ := strings.Cut(string(packet), " ")
+		if (service != "git-upload-pack" && service != "git-receive-pack") || !strings.HasPrefix(path, "/repo.git\x00") {
+			t.Error("unexpected Git service")
+			return
+		}
+		cmd := exec.CommandContext(r.Context(), "git", strings.TrimPrefix(service, "git-"), repository)
 		cmd.Env = baseEnv
-		cmd.Stdin = io.MultiReader(bytes.NewReader(prefix), r.Body)
+		cmd.Stdin = input
 		cmd.Stdout = flushWriter{w}
 		var daemonLog bytes.Buffer
 		cmd.Stderr = &daemonLog
@@ -185,7 +216,29 @@ func TestNativeGitOverConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env := append(append([]string{}, baseEnv...), "TIANA_API_ORIGIN=https://mgr.example.test", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+server.Listener.Addr().String(), "GIT_TERMINAL_PROMPT=0")
+	address := server.Listener.Addr().String()
+	if route != "direct" {
+		var peer *proxypeer.Proxy
+		if route == "socks5h" {
+			peer = proxypeer.SOCKS(t, address, false)
+		} else {
+			peer = proxypeer.HTTP(t, address, false)
+		}
+		baseEnv = append(baseEnv, "ALL_PROXY="+peer.URL)
+		address = net.JoinHostPort(hostname, strings.Split(address, ":")[1])
+		t.Cleanup(func() {
+			requests := peer.Requests()
+			if len(requests) == 0 {
+				t.Error("Git did not use proxy")
+			}
+			for _, r := range requests {
+				if r.Address != address || r.Authorization != "" || r.Username != "" {
+					t.Error("proxy destination or credential isolation")
+				}
+			}
+		})
+	}
+	env := append(append([]string{}, baseEnv...), "TIANA_API_ORIGIN=https://mgr.example.test", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "TIANA_INSTANCE_TOKENS_FILE="+localStore, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TIANA_CA_FILE="+ca, "TIANA_GATEWAY_ADDRESS="+address, "GIT_TERMINAL_PROMPT=0")
 	url := "tiana://" + hostname + ":" + strings.Split(server.Listener.Addr().String(), ":")[1] + "/repo.git"
 	must := func(args ...string) string {
 		t.Helper()

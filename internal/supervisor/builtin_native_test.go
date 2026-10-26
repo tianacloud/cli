@@ -13,6 +13,8 @@ import (
 	"os/exec"
 
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/netconfig"
+	"github.com/tianacloud/cli/internal/testutil/proxypeer"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +23,12 @@ import (
 type compiledBuiltinTestLauncher struct{ path string }
 
 func (l compiledBuiltinTestLauncher) Launch(ctx context.Context, source CredentialSource) (HelperClient, error) {
-	return launchHelperCommand(ctx, exec.CommandContext(ctx, l.path, BuiltinHelperArgument), source, nil)
+	command := exec.CommandContext(ctx, l.path, BuiltinHelperArgument)
+	command.Env = netconfig.HelperEnvironment(ctx, helperEnvironment(os.Environ(), source))
+	if port, ok := ctx.Value(helperNetworkPortKey{}).(string); ok {
+		command.Env = append(command.Env, helperNetworkPortEnvironment+"="+port)
+	}
+	return launchHelperCommand(ctx, command, source, nil)
 }
 
 // Optional native acceptance uses a real CLI helper and real Turso against a
@@ -37,6 +44,12 @@ func TestBuiltinActualTurso(t *testing.T) {
 }
 
 func testBuiltinActualTurso(t *testing.T, local bool) {
+	for _, route := range []string{"direct", "http", "socks5h"} {
+		t.Run(route, func(t *testing.T) { testBuiltinActualTursoRoute(t, local, route) })
+	}
+}
+
+func testBuiltinActualTursoRoute(t *testing.T, local bool, route string) {
 	cliPath, nativePath := os.Getenv("TIANA_TEST_BUILTIN_CLI"), os.Getenv("TIANA_TEST_NATIVE_TURSO")
 	if cliPath == "" || nativePath == "" {
 		t.Skip("set TIANA_TEST_BUILTIN_CLI and TIANA_TEST_NATIVE_TURSO for native acceptance")
@@ -87,6 +100,24 @@ func testBuiltinActualTurso(t *testing.T, local bool) {
 			w.(http.Flusher).Flush()
 		}
 	})
+	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"} {
+		t.Setenv(name, "")
+	}
+	if route != "direct" {
+		var peer *proxypeer.Proxy
+		if route == "socks5h" {
+			peer = proxypeer.SOCKS(t, cfg.GatewayAddress, false)
+		} else {
+			peer = proxypeer.HTTP(t, cfg.GatewayAddress, false)
+		}
+		t.Setenv("ALL_PROXY", peer.URL)
+		cfg.GatewayAddress = cfg.Endpoint + ":443"
+		t.Cleanup(func() {
+			if len(peer.Requests()) == 0 {
+				t.Error("native Turso helper bypassed proxy")
+			}
+		})
+	}
 	if local {
 		if err := os.Unsetenv("TIANA_TOKEN"); err != nil {
 			t.Fatal(err)

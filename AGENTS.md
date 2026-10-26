@@ -193,7 +193,7 @@ normalize DNS case/default 443. INSTANCE/branch conflict with direct mode. Origi
 hostname stays SNI/CONNECT authority; TCP overrides never change logical identity.
 
 Native Git uses verified TLS 1.3/H2 CONNECT and a pre-200 barrier. One invocation
-dials once: no replay/proxy/fallback. Preserve cancellation, flow control, half-close,
+establishes its selected direct/proxy route once: no replay or fallback. Preserve cancellation, flow control, half-close,
 opaque bytes and native exit status. The launcher executes its sibling CLI rather
 than searching PATH. Failed/unknown pushes require remote inspection before retry.
 
@@ -403,3 +403,44 @@ platform packages and main use exact version 1.0.2. Prefer the existing GitHub
 release.yml trusted-publisher flow, preserving exact tarballs and registry
 integrity verification. Independently validate remote fresh installation and
 actual SQL parse-error session behavior. No system-wide installation is implied.
+
+## Unified outbound proxy design scope
+
+The first release includes HTTP/HTTPS proxies, SOCKS5 and ALL_PROXY;
+PAC, WPAD and OS GUI proxy discovery are excluded. The design and validation
+contract is `docs/unified-outbound-proxy-spec.md`. Use one explicit
+SDK network policy across all CLI egress, using the standard HTTP Transport and
+the pinned x/net SOCKS5 and NO_PROXY implementations. Preserve target TLS identity,
+credential separation, no direct fallback after proxy failure and no mutation
+replay. Only the Go helper receives the proxy snapshot; its native Turso child
+continues to connect locally with routing variables filtered. Verification must
+cover every channel through SOCKS5 with only ALL_PROXY, plus proxy precedence,
+bypass, DNS, cancellation and credential isolation. Rollback restores prior
+network behavior without migrating local state and loses the added proxy paths.
+Proxy selection is loopback/NO_PROXY, scheme-specific proxy, ALL_PROXY, then
+direct. Both socks5 and socks5h use proxy-side target DNS. Environment settings
+are snapshotted per invocation; SDK constructors never read them implicitly.
+Keep helper contract 3 unchanged. Rust SDK is reference-only for this task.
+Gateway Config.Port is the logical network port (empty means 443), while
+DialAddress is physical and Gateway CONNECT authority remains Endpoint:443.
+The supervisor passes the parsed logical port only to the Go helper through
+TIANA_INTERNAL_HELPER_NETWORK_PORT; the SDK reads no environment and native
+children filter all TIANA_ variables. This preserves contract 3 and correct
+port-qualified NO_PROXY matching without a new control frame. Verify non-443
+routes and native environment filtering. Rollback removes this private field
+together with Network injection. Legacy Process/Embedded helper launchers,
+including pointers, reject a selected proxy before credential access or launch;
+NO_PROXY and literal physical loopback still permit their existing direct path.
+
+Core sdk-go is pinned to the immutable remote v1.0.1 proxy release; SQLite SDK
+remains v1.0.1. Verify GOWORK=off, readonly modules and generated checksums with
+no workspace/local replace, including independent consumers and packaged build
+metadata. Linux proxy acceptance uses an unprivileged loopback-only network
+namespace and private Unix bridges to host HTTP CONNECT/SOCKS5 proxies; target
+TLS remains end to end. The harness limits active connections and copy buffers,
+does not change system networking and removes only its own temporary endpoints.
+Live publication tests are opt-in and require an exact task-owned Web identity;
+default tests do not access real stores. Receipt-loss injection discards a real
+completed response at the fetch adapter, not a physical deployed-network fault.
+Preserve publish identity/archive until receipt and serving checksums confirm
+the outcome. Report fixture, live-service, cross-build and native CI separately.

@@ -28,6 +28,7 @@ class UninstallSafetyTests(unittest.TestCase):
             self.prefix / "libexec/tiana/tiana-helper",
             self.prefix / "libexec/tiana/tiana-helper.manifest.json",
             self.prefix / "share/tiana/gateway-wildcard.der",
+            self.prefix / "share/tiana/runtime.json",
         ]
         for path in self.files:
             path.write_text("synthetic installed file\n")

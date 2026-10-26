@@ -167,6 +167,9 @@ func (c Client) InitShare(ctx context.Context, link, target string) (Result, err
 	client := http.Client{Timeout: 30 * time.Second}
 	if c.DownloadHTTP != nil {
 		client = *c.DownloadHTTP
+	} else {
+		client = *c.Auth.FileHTTPClient()
+		client.Timeout = 30 * time.Second
 	}
 	client.Jar = nil
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

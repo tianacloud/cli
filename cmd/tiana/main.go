@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/releaseasset"
 	"github.com/tianacloud/cli/internal/supervisor"
 	"github.com/tianacloud/cli/internal/updatecheck"
@@ -30,7 +32,11 @@ var (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == updateWorkerArgument {
-		(updatecheck.Checker{}).Check(context.Background(), map[string]string{updatecheck.CLIPackage: version}, updatecheck.Options{Fetch: true})
+		trust, err := clientconfig.Load(os.Getenv("TIANA_CA_FILE"))
+		if err == nil {
+			ctx := clientconfig.WithTrust(context.Background(), trust)
+			(updatecheck.Checker{}).Check(ctx, map[string]string{updatecheck.CLIPackage: version}, updatecheck.Options{Fetch: true})
+		}
 		return
 	}
 	if len(args) == 1 && args[0] == supervisor.BuiltinHelperArgument {
@@ -152,6 +158,10 @@ func runLogout(ctx context.Context, output, errorOutput io.Writer) int {
 }
 
 func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (*authclient.Client, error) {
+	transport, err := netconfig.NewTransport(ctx)
+	if err != nil {
+		return nil, err
+	}
 	origin, err := authclient.ResolveOrigin(ctx)
 	if err != nil {
 		return nil, err
@@ -160,7 +170,7 @@ func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (
 	if err != nil {
 		return nil, err
 	}
-	config := authclient.Config{Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive}
+	config := authclient.Config{Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive, HTTPClient: &http.Client{Transport: transport}}
 	config.OnRequestID = func(id string) { requestdiag.Write(ctx, "mgr", id) }
 	if trust := clientconfig.FromContext(ctx); trust != nil {
 		config.RootCAs = trust.Roots

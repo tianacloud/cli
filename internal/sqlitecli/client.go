@@ -53,7 +53,7 @@ func (c *Client) newSession() {
 	c.session, c.initErr = tianasqlite.NewSession(config)
 }
 func SDKConfig(endpoint, port string, token *tiana.Token, roots *x509.CertPool, timeout time.Duration) tianasqlite.Config {
-	return tianasqlite.Config{Gateway: tiana.Config{Endpoint: endpoint, Token: token, RootCAs: roots,
+	return tianasqlite.Config{Gateway: tiana.Config{Endpoint: endpoint, Port: port, Token: token, RootCAs: roots,
 		DialAddress: net.JoinHostPort(endpoint, port), ConnectTimeout: timeout, ResponseTimeout: timeout, MaxStreams: 1}, RequestTimeout: timeout}
 }
 func (c *Client) Close() {
@@ -155,6 +155,8 @@ func connectFailure(err error) *Error {
 	var sdkErr *tiana.Error
 	if errors.As(err, &sdkErr) {
 		switch sdkErr.Kind {
+		case tiana.Proxy:
+			return failure("CONNECT_PROXY", "Proxy connection failed; verify HTTPS_PROXY/ALL_PROXY and proxy authentication; SQL was not sent", 3)
 		case tiana.TLS:
 			return failure("CONNECT_TLS", "TLS handshake or certificate verification failed; verify --ca-file and endpoint hostname", 3)
 		case tiana.Gateway:

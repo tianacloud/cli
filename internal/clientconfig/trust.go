@@ -17,7 +17,9 @@ import (
 var stagingCA []byte
 
 type Trust struct {
-	IsDefault    bool
+	IsDefault bool
+	// CAFile preserves the selected local path for the bounded update worker.
+	CAFile       string
 	Roots        *x509.CertPool
 	Certificates [][]byte
 }
@@ -50,7 +52,7 @@ func Load(path string) (*Trust, error) {
 	if err != nil {
 		roots = x509.NewCertPool()
 	}
-	t := &Trust{Roots: roots, IsDefault: path == ""}
+	t := &Trust{Roots: roots, IsDefault: path == "", CAFile: path}
 	if path == "" && len(data) == 0 {
 		return t, nil
 	}

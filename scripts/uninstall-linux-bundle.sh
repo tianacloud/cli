@@ -57,7 +57,8 @@ for path in \
     "$prefix/bin/git-remote-tiana" \
     "$prefix/libexec/tiana/tiana-helper" \
     "$prefix/libexec/tiana/tiana-helper.manifest.json" \
-    "$prefix/share/tiana/gateway-wildcard.der"
+    "$prefix/share/tiana/gateway-wildcard.der" \
+    "$prefix/share/tiana/runtime.json"
 do
     if [ -L "$path" ]; then
         echo "refusing to remove symlink: $path" >&2
@@ -70,7 +71,8 @@ rm -f -- \
     "$prefix/bin/git-remote-tiana" \
     "$prefix/libexec/tiana/tiana-helper" \
     "$prefix/libexec/tiana/tiana-helper.manifest.json" \
-    "$prefix/share/tiana/gateway-wildcard.der"
+    "$prefix/share/tiana/gateway-wildcard.der" \
+    "$prefix/share/tiana/runtime.json"
 rmdir -- "$prefix/libexec/tiana" 2>/dev/null || true
 rmdir -- "$prefix/share/tiana" 2>/dev/null || true
 printf 'removed the Tiana CLI files from %s; this operation is not recoverable by the script\n' "$prefix"

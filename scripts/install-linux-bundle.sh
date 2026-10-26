@@ -41,6 +41,14 @@ bundle_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
     sha256sum -c SHA256SUMS
 )
 
+has_helper=false
+if [ -f "$bundle_dir/libexec/tiana/tiana-helper" ] && [ -f "$bundle_dir/libexec/tiana/tiana-helper.manifest.json" ]; then
+    has_helper=true
+elif [ -e "$bundle_dir/libexec/tiana/tiana-helper" ] || [ -e "$bundle_dir/libexec/tiana/tiana-helper.manifest.json" ]; then
+    echo "incomplete legacy helper bundle" >&2
+    exit 1
+fi
+
 for path in "$prefix/bin" "$prefix/libexec" "$prefix/libexec/tiana" "$prefix/share" "$prefix/share/tiana"; do
     if [ ! -e "$path" ]; then
         install -d -o root -g root -m 0755 "$path"
@@ -53,18 +61,29 @@ tmp_manifest="$prefix/libexec/tiana/.tiana-helper.manifest.json.$$"
 tmp_cli="$prefix/bin/.tiana.$$"
 tmp_git="$prefix/bin/.git-remote-tiana.$$"
 tmp_ca="$prefix/share/tiana/.gateway-wildcard.der.$$"
-trap 'rm -f -- "$tmp_helper" "$tmp_manifest" "$tmp_cli" "$tmp_git" "$tmp_ca"' EXIT HUP INT TERM
+tmp_runtime="$prefix/share/tiana/.runtime.json.$$"
+trap 'rm -f -- "$tmp_helper" "$tmp_manifest" "$tmp_cli" "$tmp_git" "$tmp_ca" "$tmp_runtime"' EXIT HUP INT TERM
 
-install -o root -g root -m 0555 "$bundle_dir/libexec/tiana/tiana-helper" "$tmp_helper"
-install -o root -g root -m 0444 "$bundle_dir/libexec/tiana/tiana-helper.manifest.json" "$tmp_manifest"
+if [ "$has_helper" = true ]; then
+    install -o root -g root -m 0555 "$bundle_dir/libexec/tiana/tiana-helper" "$tmp_helper"
+    install -o root -g root -m 0444 "$bundle_dir/libexec/tiana/tiana-helper.manifest.json" "$tmp_manifest"
+fi
+if [ -f "$bundle_dir/share/tiana/runtime.json" ]; then
+    install -o root -g root -m 0444 "$bundle_dir/share/tiana/runtime.json" "$tmp_runtime"
+fi
 install -o root -g root -m 0555 "$bundle_dir/bin/tiana" "$tmp_cli"
 install -o root -g root -m 0555 "$bundle_dir/bin/git-remote-tiana" "$tmp_git"
 if [ -f "$bundle_dir/share/tiana/gateway-wildcard.der" ]; then
     install -o root -g root -m 0444 "$bundle_dir/share/tiana/gateway-wildcard.der" "$tmp_ca"
 fi
 
-mv -f -- "$tmp_helper" "$prefix/libexec/tiana/tiana-helper"
-mv -f -- "$tmp_manifest" "$prefix/libexec/tiana/tiana-helper.manifest.json"
+if [ "$has_helper" = true ]; then
+    mv -f -- "$tmp_helper" "$prefix/libexec/tiana/tiana-helper"
+    mv -f -- "$tmp_manifest" "$prefix/libexec/tiana/tiana-helper.manifest.json"
+fi
+if [ -f "$tmp_runtime" ]; then
+    mv -f -- "$tmp_runtime" "$prefix/share/tiana/runtime.json"
+fi
 if [ -f "$tmp_ca" ]; then
     mv -f -- "$tmp_ca" "$prefix/share/tiana/gateway-wildcard.der"
 fi

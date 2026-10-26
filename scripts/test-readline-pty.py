@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise the actual readline Shell in a PTY; no credentials or network.
+"""Exercise the actual readline Shell in a PTY using synthetic local peers.
 
 Build: go test -mod=readonly -c -o <test-binary> ./internal/sqlitecli
 Run: python3 scripts/test-readline-pty.py <test-binary>
+Optional: TIANA_TEST_SQLITE_PROXY=http or socks5h routes SQL recovery through a
+local proxy. No deployed service or real credential is used.
 """
 import fcntl
 import os

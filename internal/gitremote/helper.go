@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
 )
 
@@ -48,6 +50,8 @@ func parseRepository(raw string) (supervisor.Endpoint, error) {
 // Run owns input for this one-shot command. Closing it unblocks negotiation or
 // upload on cancellation/remote EOF; main exits after this command returns.
 func Run(ctx context.Context, args []string, input io.ReadCloser, output io.Writer) error {
+	ctx = netconfig.WithEnvironment(ctx, os.Environ())
+	defer netconfig.Close(ctx)
 	if len(args) < 1 || len(args) > 2 {
 		return errors.New("usage: tiana git remote-helper <remote> [tiana://<endpoint>[:port]/repo.git]")
 	}

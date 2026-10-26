@@ -76,7 +76,8 @@ func (c Client) Init(ctx context.Context, name, target string) (Result, error) {
 	}
 	httpClient := c.DownloadHTTP
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = c.Auth.FileHTTPClient()
+		httpClient.Timeout = 30 * time.Second
 	}
 	clientCopy := *httpClient
 	clientCopy.Jar = nil

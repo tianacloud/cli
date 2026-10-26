@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,8 +16,8 @@ import (
 
 	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
-	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/fileclient"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -85,9 +84,9 @@ func runFiles(ctx context.Context, cmd *cli.Command, input io.Reader, output, di
 	if credential.User.ID == "" || credential.User.TenantID == "" {
 		return fail(authclient.ErrAuthenticationRequired)
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if trust := clientconfig.FromContext(ctx); trust != nil {
-		transport.TLSClientConfig = &tls.Config{RootCAs: trust.Roots, MinVersion: tls.VersionTLS12}
+	transport, err := netconfig.NewTransport(ctx)
+	if err != nil {
+		return fail(err)
 	}
 	defer transport.CloseIdleConnections()
 	client := &fileclient.Client{HTTP: &http.Client{Transport: transport}, Request: func(call context.Context, method, path string, body, result any) error {

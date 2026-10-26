@@ -73,7 +73,9 @@ func launchHelperCommand(
 	command.Stdin = toChildRead
 	command.Stdout = fromChildWrite
 	command.Stderr = diagnostics.Writer(contextOrBackground(ctx))
-	command.Env = helperEnvironment(os.Environ(), source)
+	if command.Env == nil {
+		command.Env = helperEnvironment(os.Environ(), source)
+	}
 	configureHelperProcess(command)
 	if err := command.Start(); err != nil {
 		cleanup()

@@ -178,6 +178,41 @@ staging Console adds `internal/clientconfig/staging-root.crt` to system trust.
 The same invocation trust reaches management, Git, SQLite, Web and native helpers.
 Put global options before the subcommand, especially when using `connect`.
 
+### Outbound proxies
+
+All CLI network channels use the same invocation-scoped environment proxy
+settings, including management/login, Web publication/status, SQLite, Git,
+connect, file/template transfers and update checks:
+
+```sh
+export ALL_PROXY=socks5h://127.0.0.1:1080
+export NO_PROXY=localhost,127.0.0.1,::1
+tiana status
+```
+
+`HTTP_PROXY` and `HTTPS_PROXY` override `ALL_PROXY` for their respective target
+URL schemes. Lowercase variants are accepted; the first nonempty uppercase
+value wins. HTTP_PROXY alone does not proxy HTTPS. Values may use `http://`,
+`https://`, `socks5://` or `socks5h://`; an HTTPS_PROXY value may point to an HTTP
+or SOCKS proxy. Missing ports use 80, 443 or 1080 respectively. Both SOCKS
+spellings send the target hostname to the proxy for DNS resolution. SOCKS5
+supports TCP with no authentication or URL username/password authentication.
+
+NO_PROXY and logical loopback targets bypass proxies. An explicit physical
+loopback Gateway override also connects directly; the proxy's own address being
+loopback does not bypass it. Other NO_PROXY matches use the logical target.
+Invalid nonempty proxy configuration fails before network writes, and proxy
+failure never falls back to direct or replays a write. No proxy settings are
+saved with accounts, pending commands or publication receipts.
+
+Target TLS identity and certificate verification remain enabled. HTTPS proxy
+certificates are also verified; the invocation's CA settings apply to proxy
+trust. With `connect -- turso ...`, Turso connects only to the local Go helper;
+the helper receives proxy settings and performs the remote connection. Turso
+does not inherit proxy routing variables or proxy credentials. Browser traffic
+uses the browser's own configuration. PAC, WPAD, GUI proxy discovery, SOCKS4,
+UDP and interactive/system proxy authentication are unsupported.
+
 Sign out with:
 
 ```sh
