@@ -57,7 +57,8 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 	}
 	defer clear(credential)
 	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network}
-	if origin.Port() != "" && origin.Port() != "443" && config.DialAddress == "" {
+	// Proxy selection uses the logical port even with a physical dial override.
+	if origin.Port() != "" && origin.Port() != "443" {
 		config.Port = origin.Port()
 	}
 	if trust := clientconfig.FromContext(ctx); trust != nil {
