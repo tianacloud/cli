@@ -11,7 +11,7 @@ usage() {
 target_os=$1
 target_arch=$2
 output=$3
-version=${TIANA_RELEASE_VERSION:-1.0.1}
+version=${TIANA_RELEASE_VERSION:-1.0.6}
 insecure_tls=${TIANA_INSECURE_TLS:-false}
 go_bin=${GO_BIN:-go}
 

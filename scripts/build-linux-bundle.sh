@@ -15,7 +15,7 @@ esac
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd -P)
-version=${TIANA_RELEASE_VERSION:-1.0.1}
+version=${TIANA_RELEASE_VERSION:-1.0.6}
 insecure_tls=${TIANA_INSECURE_TLS:-false}
 go_bin=${GO_BIN:-go}
 output=$1

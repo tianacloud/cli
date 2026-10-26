@@ -1,6 +1,6 @@
 {
   "name": "@tianacloud/cli",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "license": "Apache-2.0",
   "description": "Tiana CLI for account login, SQLite, Git and application publication",
   "repository": {
@@ -35,12 +35,12 @@
     "riscv64"
   ],
   "optionalDependencies": {
-    "@tianacloud/cli-darwin-x64": "1.0.5",
-    "@tianacloud/cli-darwin-arm64": "1.0.5",
-    "@tianacloud/cli-linux-x64": "1.0.5",
-    "@tianacloud/cli-linux-arm64": "1.0.5",
-    "@tianacloud/cli-linux-riscv64": "1.0.5",
-    "@tianacloud/cli-win32-x64": "1.0.5",
-    "@tianacloud/cli-win32-arm64": "1.0.5"
+    "@tianacloud/cli-darwin-x64": "1.0.6",
+    "@tianacloud/cli-darwin-arm64": "1.0.6",
+    "@tianacloud/cli-linux-x64": "1.0.6",
+    "@tianacloud/cli-linux-arm64": "1.0.6",
+    "@tianacloud/cli-linux-riscv64": "1.0.6",
+    "@tianacloud/cli-win32-x64": "1.0.6",
+    "@tianacloud/cli-win32-arm64": "1.0.6"
   }
 }

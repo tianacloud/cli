@@ -3,8 +3,10 @@
 The default release entry is `.github/workflows/release.yml`. Update
 `packaging/npm/package.json` and its lockfile to the chosen version, then push
 its `vVERSION` source tag. The workflow tests Linux/macOS/Windows, compiles seven
-native Go targets, packs eight npm tarballs and publishes those artifacts directly
-to npm. Prerelease versions use `next`; stable versions use `latest`.
+native Go targets, packs eight npm tarballs and retains them for release. Tag
+pushes do not publish to npm. When npm publication is separately authorized,
+manual dispatch with `dry_run=false` enables that job. Prerelease versions use
+`next`; stable versions use `latest`.
 
 The main package has seven exact-version optional dependencies. npm selects the
 native package by operating system and CPU. Each platform package includes its
@@ -84,6 +86,11 @@ receive build/archive verification until they have native acceptance coverage.
 
 ## Publication and recovery
 
+GitHub Releases and npm publication are separate delivery steps. A GitHub-only
+release uses the matching immutable tag and verified build artifacts. Retain the
+exact eight npm tarballs and `npm-release.json` so later npm publication can reuse
+them unchanged; creating the GitHub Release does not authorize npm publication.
+
 The workflow preserves the exact tarballs in `cli-npm-release`. It verifies all
 existing exact npm versions, publishes seven platform packages and reads back their
 integrity, then publishes the main package. Identical existing packages are reused;
@@ -140,3 +147,18 @@ object before uploading. Requires the deployed MGR file-storage APIs.
 Use `tiana file list/get/get-url/put/delete` for tenant file storage. Help,
 recovery instructions and Skills 1.0.5 examples use the singular command name.
 Existing scripts invoking `tiana files` must switch to `tiana file`.
+
+## 1.0.6 unified outbound proxies
+
+All CLI-owned outbound channels share invocation-scoped HTTP/HTTPS CONNECT,
+SOCKS5/socks5h, ALL_PROXY and NO_PROXY settings. Port-qualified bypass rules use
+the logical Endpoint port even with a physical Gateway override. Target TLS,
+credential separation, one route attempt and existing mutation recovery remain
+unchanged. PAC, WPAD and OS GUI proxy discovery are outside this release.
+
+Core sdk-go and sdk-go-sqlite both use published v1.0.1 pins. The Go connect helper
+receives the proxy snapshot; native children retain their local connection route
+and filtered environment. The helper contract remains 3. All package versions,
+source defaults and release script defaults are 1.0.6; explicit version overrides
+remain supported. Rollback selects a previous immutable CLI release and loses the
+new proxy paths, without migrating local state.

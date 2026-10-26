@@ -444,3 +444,15 @@ default tests do not access real stores. Receipt-loss injection discards a real
 completed response at the fetch adapter, not a physical deployed-network fault.
 Preserve publish identity/archive until receipt and serving checksums confirm
 the outcome. Report fixture, live-service, cross-build and native CI separately.
+
+## CLI 1.0.6 release boundaries
+
+Source/default build versions, the main npm package and its seven exact optional
+dependencies are 1.0.6. Both SDK pins remain published v1.0.1. A source tag must
+match the package version and stay immutable. Tag-push release workflows test and
+retain artifacts; npm publication requires separately authorized manual dispatch
+with dry_run=false. GitHub Release publication does not grant npm authorization.
+Retain the original eight tarballs/integrity index for later publication/retry.
+Verify native platform tests, artifact installations and uploaded checksums.
+Rollback selects an older version; never rewrite a source tag or replace release
+artifacts to recover a failed publication.
