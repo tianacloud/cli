@@ -4,7 +4,7 @@
 
 ## 源码、版本与交付边界
 
-- CLI：`feat/unified-outbound-proxy`，基于 `42e5c4be368f63fa3957ae293e2d41d4ab7a8d84`，工作区保留本次完整实现。
+- CLI：[PR #9](https://github.com/tianacloud/cli/pull/9)，分支 `feat/unified-outbound-proxy`，基于 `42e5c4be368f63fa3957ae293e2d41d4ab7a8d84`；完整实现已提交并推送。
 - sdk-go：[PR #1](https://github.com/tianacloud/sdk-go/pull/1) 已 rebase/merge；不可变 [v1.0.1](https://github.com/tianacloud/sdk-go/tree/v1.0.1) 指向 `240e10f1f2a76ad77a76a5d38a4c4a23f7f1127e`，annotated tag 对象为 `bd0ea48f8621e209535f4a86e08b5524a77ac9c3`。
 - CLI 的 go.mod/go.sum 使用远程 sdk-go v1.0.1 和 sdk-go-sqlite v1.0.1。核心 SDK 模块校验和为 `h1:H6CTqTAvCOa7zE3Ds6DgeSVsYNdkFIIKsQ9KbqqByqU=`。Go 生成并整理校验和；产品没有 replace、vendor 或 workspace 依赖。
 - 采用空模块缓存、公开 Go proxy 与 sumdb 的独立消费者实际下载两个 SDK，构造 Gateway/fetch/SQLite/auth 客户端；build info 的版本均为 v1.0.1、Replace 为 nil，module verify 通过。开发阶段的仓库外临时 modfile 已不用于正式验收。
@@ -51,6 +51,7 @@ CLI（namespace：只有 lo、无公网路由）
 - 两种代理各执行一次真实 Web PUT，实际完成 App/OSS 上传后，在 fetch 适配器边界丢弃客户端回执以模拟响应丢失。随后使用原 publish_id 查询真实回执，验证 archive 保留、无第二次 PUT，确认 running、remote_sha256/serving_sha256 匹配，再通过原生 channel 0 GET/HEAD 校验实际资源。
 - 上述响应丢失是明确的客户端适配器故障模型，没有 MITM，也没有宣称向已部署网络注入了物理断链。原有网络断链/未知结果 fixture 另行覆盖。
 - 本地 npm 新鲜安装后的 launcher 再次通过真实 MGR、SQLite 和 Web 状态查询。所有本次临时文件及三个云端实例已按原 ID 清理，实例用量恢复到验收前的 36；不触碰用户原有资源。
+- 代理服务已关闭并清理自己的 socket；最终计数为 HTTP 56、SOCKS5 44 次连接，代理端失败为 0。无代理失败对照不会进入代理计数。
 
 环境重现示例（两个终端，已有账号由 CLI/SDK 使用默认凭据存储）：
 
