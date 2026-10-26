@@ -449,10 +449,13 @@ the outcome. Report fixture, live-service, cross-build and native CI separately.
 
 Source/default build versions, the main npm package and its seven exact optional
 dependencies are 1.0.6. Both SDK pins remain published v1.0.1. A source tag must
-match the package version and stay immutable. Tag-push release workflows test and
-retain artifacts; npm publication requires separately authorized manual dispatch
-with dry_run=false. GitHub Release publication does not grant npm authorization.
-Retain the original eight tarballs/integrity index for later publication/retry.
+match the package version and stay immutable. Tag-push release workflows
+automatically test, build and publish npm packages. Account for that publication
+when authorizing a tag push. Manual dispatch retains dry_run; optional
+artifact_run_id reuses the original eight tarballs/integrity index without
+rebuilding. Require a successful release run in this repository at the selected
+source tag's commit, verify integrities and repeat artifact installation checks.
+Retain the original eight tarballs/integrity index for publication/retry.
 Verify native platform tests, artifact installations and uploaded checksums.
 Rollback selects an older version; never rewrite a source tag or replace release
 artifacts to recover a failed publication.

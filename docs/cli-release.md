@@ -3,10 +3,9 @@
 The default release entry is `.github/workflows/release.yml`. Update
 `packaging/npm/package.json` and its lockfile to the chosen version, then push
 its `vVERSION` source tag. The workflow tests Linux/macOS/Windows, compiles seven
-native Go targets, packs eight npm tarballs and retains them for release. Tag
-pushes do not publish to npm. When npm publication is separately authorized,
-manual dispatch with `dry_run=false` enables that job. Prerelease versions use
-`next`; stable versions use `latest`.
+native Go targets, packs eight npm tarballs and automatically publishes those
+artifacts to npm. Prerelease versions use `next`; stable versions use `latest`.
+Manual dispatch retains the existing `dry_run` option for checks and recovery.
 
 The main package has seven exact-version optional dependencies. npm selects the
 native package by operating system and CPU. Each platform package includes its
@@ -86,10 +85,17 @@ receive build/archive verification until they have native acceptance coverage.
 
 ## Publication and recovery
 
-GitHub Releases and npm publication are separate delivery steps. A GitHub-only
-release uses the matching immutable tag and verified build artifacts. Retain the
-exact eight npm tarballs and `npm-release.json` so later npm publication can reuse
-them unchanged; creating the GitHub Release does not authorize npm publication.
+Tag pushes automatically test, build and publish to npm. GitHub Release assets
+and published npm versions remain immutable. Retain the exact eight tarballs and
+`npm-release.json` for any interrupted or deferred publication.
+
+To publish an existing verified set without rebuilding it, manually dispatch
+`Release CLI` with the original tag, `dry_run=false` and `artifact_run_id` set to
+the successful original release run. The workflow requires the same repository,
+release workflow and source commit, verifies all eight package integrities and
+repeats native artifact installation checks before publishing. Leave that input
+empty for the normal build path. For 1.0.6, the retained original run is
+`40295347181`; its tarballs are also preserved on the GitHub Release.
 
 The workflow preserves the exact tarballs in `cli-npm-release`. It verifies all
 existing exact npm versions, publishes seven platform packages and reads back their
