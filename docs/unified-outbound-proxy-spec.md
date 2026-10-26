@@ -362,13 +362,13 @@ CLI 另外执行 Node packaging/launcher fixtures、helper 协议和进程 fixtu
 
 回滚选择旧 CLI 和 SDK 固定版本，不回退 schema 或迁移账号文件。回滚会失去新增通道的代理能力，禁公网机器可能再次无法使用这些通道；不可通过删除 pending 或重发未知写入“修复”。
 
-已确认的范围和待审核的设计约束：
+本次实现的范围和审核重点：
 
 1. 已确认首版包含 HTTP/HTTPS 代理、SOCKS5、ALL_PROXY；不加入 PAC。SOCKS4／UDP、GUI 代理、WPAD、系统认证不在范围内。
-2. 待审核代理选择、校验、认证边界、DNS、超时及错误映射；SDK 使用显式 Network Policy，nil 保持旧行为，CLI 才读取环境。
-3. 待审核 NO_PROXY 使用逻辑目标、显式物理 loopback 覆盖始终直连的规则。
-4. 待审核 Go helper 用受控环境快照传递四组代理设置，保持 contract 3；原生 Turso 子进程不继承。
-5. 待审核统一采用 Go 内置 helper、收敛遗留 Rust 打包入口的交付范围；旧嵌入产物不能静默忽略代理，Rust SDK 不恢复 helper。
+2. 代理选择、校验、认证边界、DNS、超时及错误映射；SDK 使用显式 Network Policy，nil 保持旧行为，CLI 才读取环境。
+3. NO_PROXY 使用逻辑目标、显式物理 loopback 覆盖始终直连。
+4. Go helper 用受控环境快照传递四组代理设置，保持 contract 3；原生 Turso 子进程不继承。
+5. 统一采用 Go 内置 helper、收敛遗留 Rust 打包入口；旧嵌入产物不能静默忽略代理，Rust SDK 不恢复 helper。
 6. SDK 先发布新不可变版本，CLI 后更新远程依赖；SQLite SDK 先验证透传，不预先改版本或实现。提交、发布及部署仍需独立授权。
 
 ## 9. 依赖选型与实现边界
