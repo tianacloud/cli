@@ -17,7 +17,7 @@ case "$kernel:$machine" in
     *) echo "unsupported release host: $kernel/$machine" >&2; exit 1 ;;
 esac
 
-version=${TIANA_RELEASE_VERSION:-1.0.2}
+version=${TIANA_RELEASE_VERSION:-1.0.6}
 insecure_tls=${TIANA_INSECURE_TLS:-false}
 mkdir -p "$repo_dir/dist"
 output="$repo_dir/dist/tiana-cli-$target_os-$target_arch-$version"

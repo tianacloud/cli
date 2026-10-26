@@ -13,6 +13,10 @@ on:
         description: Build and verify artifacts without publishing
         type: boolean
         default: true
+      artifact_run_id:
+        description: Reuse cli-npm-release from a successful release run at the same source commit
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -32,6 +36,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     env:
       GOPRIVATE: github.com/tianacloud/sdk-go,github.com/tianacloud/sdk-go-sqlite
       GOWORK: 'off'
@@ -64,6 +71,7 @@ jobs:
             const channel=version.split("+")[0].includes("-")?"next":"latest";
             appendFileSync(process.env.GITHUB_OUTPUT,`version=${version}\nchannel=${channel}\n`);'
       - name: Download private SDK dependencies
+        if: ${{ !inputs.artifact_run_id }}
         env:
           SDK_READ_TOKEN: ${{ secrets.SDK_READ_TOKEN }}
           GIT_TERMINAL_PROMPT: '0'
@@ -99,6 +107,7 @@ jobs:
           python3 scripts/test_public_source.py
           python3 scripts/check-public-source.py
       - name: Compile seven targets and pack eight npm artifacts
+        if: ${{ !inputs.artifact_run_id }}
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -106,6 +115,36 @@ jobs:
             node scripts/build-platform.mjs "$target" dist/assets "$RELEASE_VERSION"
           done
           node scripts/package-cli.mjs dist/assets dist/npm-release "$RELEASE_VERSION"
+      - name: Validate original release run
+        if: ${{ inputs.artifact_run_id }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          const id = process.env.ARTIFACT_RUN_ID;
+          if (!/^[1-9][0-9]*$/.test(id)) throw new Error('Invalid artifact run ID');
+          const repo = process.env.GITHUB_REPOSITORY;
+          const run = JSON.parse(execFileSync('gh', ['api', `repos/${repo}/actions/runs/${id}`], {encoding: 'utf8'}));
+          const source = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
+          if (run.status !== 'completed' || run.conclusion !== 'success' || run.head_sha !== source || run.head_repository?.full_name !== repo || run.path !== '.github/workflows/release.yml') {
+            throw new Error('Original release run must be successful and match the source tag');
+          }
+          JS
+      - name: Reuse original npm artifacts
+        if: ${{ inputs.artifact_run_id }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cli-npm-release
+          path: dist/npm-release
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.artifact_run_id }}
+      - name: Verify exact npm artifacts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node --input-type=module -e 'import {readNpmRelease} from "./scripts/publish-cli.mjs"; readNpmRelease("dist/npm-release", process.env.RELEASE_VERSION);'
       - name: Preserve exact npm release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

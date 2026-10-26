@@ -3,8 +3,9 @@
 The default release entry is `.github/workflows/release.yml`. Update
 `packaging/npm/package.json` and its lockfile to the chosen version, then push
 its `vVERSION` source tag. The workflow tests Linux/macOS/Windows, compiles seven
-native Go targets, packs eight npm tarballs and publishes those artifacts directly
-to npm. Prerelease versions use `next`; stable versions use `latest`.
+native Go targets, packs eight npm tarballs and automatically publishes those
+artifacts to npm. Prerelease versions use `next`; stable versions use `latest`.
+Manual dispatch retains the existing `dry_run` option for checks and recovery.
 
 The main package has seven exact-version optional dependencies. npm selects the
 native package by operating system and CPU. Each platform package includes its
@@ -84,6 +85,18 @@ receive build/archive verification until they have native acceptance coverage.
 
 ## Publication and recovery
 
+Tag pushes automatically test, build and publish to npm. GitHub Release assets
+and published npm versions remain immutable. Retain the exact eight tarballs and
+`npm-release.json` for any interrupted or deferred publication.
+
+To publish an existing verified set without rebuilding it, manually dispatch
+`Release CLI` with the original tag, `dry_run=false` and `artifact_run_id` set to
+the successful original release run. The workflow requires the same repository,
+release workflow and source commit, verifies all eight package integrities and
+repeats native artifact installation checks before publishing. Leave that input
+empty for the normal build path. For 1.0.6, the retained original run is
+`40295347181`; its tarballs are also preserved on the GitHub Release.
+
 The workflow preserves the exact tarballs in `cli-npm-release`. It verifies all
 existing exact npm versions, publishes seven platform packages and reads back their
 integrity, then publishes the main package. Identical existing packages are reused;
@@ -140,3 +153,18 @@ object before uploading. Requires the deployed MGR file-storage APIs.
 Use `tiana file list/get/get-url/put/delete` for tenant file storage. Help,
 recovery instructions and Skills 1.0.5 examples use the singular command name.
 Existing scripts invoking `tiana files` must switch to `tiana file`.
+
+## 1.0.6 unified outbound proxies
+
+All CLI-owned outbound channels share invocation-scoped HTTP/HTTPS CONNECT,
+SOCKS5/socks5h, ALL_PROXY and NO_PROXY settings. Port-qualified bypass rules use
+the logical Endpoint port even with a physical Gateway override. Target TLS,
+credential separation, one route attempt and existing mutation recovery remain
+unchanged. PAC, WPAD and OS GUI proxy discovery are outside this release.
+
+Core sdk-go and sdk-go-sqlite both use published v1.0.1 pins. The Go connect helper
+receives the proxy snapshot; native children retain their local connection route
+and filtered environment. The helper contract remains 3. All package versions,
+source defaults and release script defaults are 1.0.6; explicit version overrides
+remain supported. Rollback selects a previous immutable CLI release and loses the
+new proxy paths, without migrating local state.
