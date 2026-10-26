@@ -15,6 +15,7 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,6 +31,12 @@ func newWebServeCommand(output, diagnostics io.Writer) *cli.Command {
 			return statusError(1)
 		}
 		config := authclient.Config{Origin: managementOrigin}
+		transport, err := netconfig.NewTransport(ctx)
+		if err != nil {
+			writeCommandError(diagnostics, err)
+			return statusError(2)
+		}
+		config.HTTPClient = &http.Client{Transport: transport, Timeout: 25 * time.Second}
 		if trust := clientconfig.FromContext(ctx); trust != nil {
 			config.RootCAs = trust.Roots
 		}

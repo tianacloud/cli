@@ -14,6 +14,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/sqlitecli"
 	tiana "github.com/tianacloud/sdk-go"
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
@@ -150,6 +151,11 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 	if trust := clientconfig.FromContext(ctx); trust != nil {
 		roots = trust.Roots
 	}
+	network, networkErr := netconfig.Policy(ctx)
+	if networkErr != nil {
+		fmt.Fprintln(diagnostics, "tiana:", networkErr)
+		return 2
+	}
 	var outputFile *os.File
 	if o.output != "" {
 		outputFile, err = sqlitecli.CreateOutput(o.output)
@@ -197,6 +203,7 @@ func executeSQLite(ctx context.Context, o sqliteOptions, input io.Reader, output
 
 	if config == nil {
 		resolved := sqlitecli.SDKConfig(endpoint, port, token, roots, o.timeout)
+		resolved.Gateway.Network = network
 		config = &resolved
 	}
 	client := sqlitecli.NewClient(*config, o.timeout)

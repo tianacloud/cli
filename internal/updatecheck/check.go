@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tianacloud/cli/internal/netconfig"
+
 	"github.com/tianacloud/cli/internal/localfile"
 	"github.com/tianacloud/cli/internal/localstate"
 	"golang.org/x/mod/semver"
@@ -63,6 +65,8 @@ func DefaultPath() (string, error) {
 	return filepath.Join(root, "update-state.json"), nil
 }
 func (c Checker) Check(ctx context.Context, versions map[string]string, options Options) Result {
+	ctx = netconfig.WithEnvironment(ctx, os.Environ())
+	defer netconfig.Close(ctx)
 	result := Result{CheckStatus: "unavailable", Updates: []Update{}}
 	now := time.Now()
 	if c.Now != nil {
@@ -186,7 +190,11 @@ func (c Checker) latest(ctx context.Context, name string) (string, error) {
 	}
 	client := c.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Second}
+		transport, err := netconfig.NewTransport(ctx)
+		if err != nil {
+			return "", err
+		}
+		client = &http.Client{Transport: transport, Timeout: 2 * time.Second}
 	}
 	response, err := client.Do(request)
 	if err != nil {

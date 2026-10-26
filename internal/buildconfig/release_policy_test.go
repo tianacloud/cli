@@ -53,7 +53,7 @@ func TestReleaseScriptsDefaultToVerifiedTLS(t *testing.T) {
 				t.Setenv("TMPDIR", root)
 				args := []string{script, filepath.Join(root, "bundle.tar.gz")}
 				if name == "build-single-binary.sh" {
-					args = []string{script, "linux", "amd64", helper, filepath.Join(root, "tiana")}
+					args = []string{script, "linux", "amd64", filepath.Join(root, "tiana")}
 				}
 				output, err := exec.Command("sh", args...).CombinedOutput()
 				if err == nil {

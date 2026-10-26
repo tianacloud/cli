@@ -13,6 +13,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/localstate"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/sdk-go/fetch"
 )
 
@@ -23,6 +24,10 @@ type PublicationReceipt struct {
 }
 
 func (r Runner) runServerless(ctx context.Context, o Options) Result {
+	network, networkErr := netconfig.Policy(ctx)
+	if networkErr != nil {
+		return Failure(inputError(networkErr.Error()))
+	}
 	bound, e := r.Bind(ctx)
 	if e != nil {
 		return Failure(e)
@@ -51,7 +56,7 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		return Failure(&Error{Code: "WEB_CREDENTIAL_UNAVAILABLE", Message: "Cannot resolve Web data credential", NextAction: "Check TIANA_TOKEN/TIANA_TOKEN_FILE or the current account login", ExitCode: 5})
 	}
 	defer clear(credential)
-	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS")}
+	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network}
 	if origin.Port() != "" && origin.Port() != "443" && config.DialAddress == "" {
 		config.Port = origin.Port()
 	}

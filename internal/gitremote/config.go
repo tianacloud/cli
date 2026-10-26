@@ -13,13 +13,16 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 
 	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
+	"github.com/tianacloud/sdk-go/outbound"
 )
 
 type config struct {
 	address string
 	tls     *tls.Config
 	token   *supervisor.SecretToken
+	network *outbound.Policy
 }
 
 func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (config, error) {
@@ -42,6 +45,11 @@ func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (co
 		c.tls.RootCAs = trust.Roots
 	}
 
+	var err error
+	c.network, err = netconfig.PolicyWithRoots(ctx, c.tls.RootCAs)
+	if err != nil {
+		return c, err
+	}
 	value, err := authclient.ConnectionCredential(ctx)
 	if err != nil {
 		return c, err

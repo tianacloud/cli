@@ -14,6 +14,7 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/sqlitecli"
 	"github.com/tianacloud/cli/internal/updatecheck"
 	"github.com/urfave/cli/v3"
@@ -40,6 +41,8 @@ func runCLI(ctx context.Context, args []string, input io.Reader, output, diagnos
 }
 
 func runCLIWithSQL(ctx context.Context, args []string, input io.Reader, output, diagnostics io.Writer, sqlAction sqlCommandAction) int {
+	ctx = netconfig.WithEnvironment(ctx, os.Environ())
+	defer netconfig.Close(ctx)
 	var requestIDs bytes.Buffer
 	if os.Getenv("TIANA_DIAGNOSTICS") == "1" {
 		ctx = requestdiag.WithWriter(ctx, diagnostics)

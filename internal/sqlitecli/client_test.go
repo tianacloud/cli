@@ -7,10 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tianacloud/cli/internal/netconfig"
+	"github.com/tianacloud/cli/internal/testutil/proxypeer"
 )
 
 type peerRequest struct {
@@ -68,6 +72,31 @@ func peerClient(t *testing.T, handle func(peerRequest, int) string) (*Client, *a
 			}
 		}
 	}, false)
+	// Optional acceptance runs the existing script, shell and recovery cases
+	// through an actual proxy, rather than a separate mock session adapter.
+	if route := os.Getenv("TIANA_TEST_SQLITE_PROXY"); route != "" {
+		var peer *proxypeer.Proxy
+		switch route {
+		case "http":
+			peer = proxypeer.HTTP(t, config.Gateway.DialAddress, false)
+		case "socks5h":
+			peer = proxypeer.SOCKS(t, config.Gateway.DialAddress, false)
+		default:
+			t.Fatal("unsupported test proxy route")
+		}
+		ctx := netconfig.WithEnvironment(t.Context(), []string{"ALL_PROXY=" + peer.URL})
+		var err error
+		config.Gateway.Network, err = netconfig.Policy(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		config.Gateway.DialAddress = config.Gateway.Endpoint + ":443"
+		t.Cleanup(func() {
+			if count.Load() > 0 && len(peer.Requests()) == 0 {
+				t.Error("SQLite regression traffic bypassed the required proxy")
+			}
+		})
+	}
 	client := NewClient(config, time.Second)
 	t.Cleanup(client.Close)
 	return client, count

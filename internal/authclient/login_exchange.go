@@ -49,6 +49,9 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, transaction Auth
 	if c.config.HTTPClient != nil {
 		client = *c.config.HTTPClient
 	}
+	if client.Timeout == 0 {
+		client.Timeout = 25 * time.Second
+	}
 	if c.config.RootCAs != nil || c.config.InsecureTLS {
 		base := client.Transport
 		if base == nil {

@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 	"io"
 	"net"
 	"os"
@@ -16,6 +15,10 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/tianacloud/cli/internal/testutil/proxypeer"
+	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
+	"github.com/tianacloud/sdk-go/outbound"
 )
 
 // Opt-in black-box test against the actual app_sqlite library in a test-only
@@ -161,5 +164,78 @@ func TestRealAppInteractiveExpiry(t *testing.T) {
 	}
 	if e := c.Finish(context.Background(), nil); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestRealAppParseErrorTransactionThroughProxy(t *testing.T) {
+	for _, route := range []string{"direct", "http", "socks5h"} {
+		t.Run(route, func(t *testing.T) {
+			config := realAppConfig(t, time.Minute)
+			if route != "direct" {
+				var peer *proxypeer.Proxy
+				if route == "http" {
+					peer = proxypeer.HTTP(t, config.Gateway.DialAddress, false)
+				} else {
+					peer = proxypeer.SOCKS(t, config.Gateway.DialAddress, false)
+				}
+				policy, err := outbound.New(outbound.Config{AllProxy: peer.URL})
+				if err != nil {
+					t.Fatal(err)
+				}
+				config.Gateway.Network = policy
+				config.Gateway.DialAddress = net.JoinHostPort(config.Gateway.Endpoint, "443")
+				t.Cleanup(func() {
+					if len(peer.Requests()) == 0 {
+						t.Error("real App traffic did not traverse the proxy")
+					}
+				})
+			}
+			client := NewClient(config, 2*time.Second)
+			t.Cleanup(client.Close)
+			execute := func(sql string) *Result {
+				t.Helper()
+				result, err := client.Execute(context.Background(), sql, false)
+				if err != nil {
+					t.Fatal(sql, err)
+				}
+				return result
+			}
+			execute("CREATE TABLE continuity(x INTEGER)")
+			execute("CREATE TEMP TABLE same_session(x INTEGER)")
+			execute("INSERT INTO same_session VALUES(7)")
+			for _, finish := range []string{"ROLLBACK", "COMMIT"} {
+				execute("BEGIN")
+				execute("INSERT INTO continuity VALUES(1)")
+				_, err := client.Execute(context.Background(), "SELEC 1", false)
+				if err == nil || err.Code != "SQL_PARSE_ERROR" || err.Outcome == "unknown" {
+					t.Fatalf("expected known SQL parse error: %v", err)
+				}
+				if auto, known := client.Autocommit(); !known || auto {
+					t.Fatal("parse error lost the active transaction")
+				}
+				if result := execute("SELECT x FROM same_session"); displayValue(result.Rows[0][0]) != "7" {
+					t.Fatal("parse error lost the original session")
+				}
+				execute("INSERT INTO continuity VALUES(2)")
+				execute(finish)
+				if finish == "ROLLBACK" {
+					if result := execute("SELECT count(*) FROM continuity"); displayValue(result.Rows[0][0]) != "0" {
+						t.Fatal("parse error broke explicit rollback")
+					}
+				}
+			}
+			if err := client.Finish(context.Background(), nil); err != nil {
+				t.Fatal(err)
+			}
+			reader := NewClient(config, 2*time.Second)
+			defer reader.Close()
+			result, failure := reader.Execute(context.Background(), "SELECT sum(x), count(*) FROM continuity", true)
+			if failure != nil {
+				t.Fatal(failure)
+			}
+			if displayValue(result.Rows[0][0]) != "3" || displayValue(result.Rows[0][1]) != "2" {
+				t.Fatal("committed transaction contents changed", result.Rows)
+			}
+		})
 	}
 }

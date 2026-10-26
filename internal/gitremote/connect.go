@@ -16,6 +16,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/supervisor"
+	"github.com/tianacloud/sdk-go/outbound"
 )
 
 type httpTunnel struct {
@@ -66,12 +67,16 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (result tunnel, err 
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
 	dialCtx, stop := context.WithTimeout(ctx, 10*time.Second)
-	raw, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", config.address)
+	raw, err := config.network.DialTunnel(dialCtx, outbound.Target{URL: &url.URL{Scheme: "https", Host: net.JoinHostPort(repo.Hostname(), repo.Port())}, DialAddress: config.address})
 	if err != nil {
 		stop()
 		cancel()
 		reader.Close()
 		writer.Close()
+		var proxyError *outbound.Error
+		if errors.As(err, &proxyError) {
+			return nil, proxyError
+		}
 		var dnsError *net.DNSError
 		if errors.As(err, &dnsError) {
 			return nil, errors.New("Gateway DNS resolution failed")
@@ -94,7 +99,7 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (result tunnel, err 
 	var dialed atomic.Bool
 	transport := &http.Transport{
 		ForceAttemptHTTP2: true, DisableCompression: true, MaxResponseHeaderBytes: 16 * 1024,
-		// Own exactly one pre-established TLS connection. No proxy, second dial,
+		// Own exactly one pre-established TLS connection. No second proxy, dial,
 		// HTTP/1 fallback, or pool shared with another operation.
 		DialTLSContext: func(context.Context, string, string) (net.Conn, error) {
 			if dialed.Swap(true) {

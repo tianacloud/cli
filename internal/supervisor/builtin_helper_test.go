@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/tianacloud/cli/internal/netconfig"
 )
 
 func builtinTestConfig() HelperConfig {
@@ -28,7 +30,12 @@ func builtinTestPeer(t *testing.T) (*ProcessHelper, <-chan error) {
 func builtinTestPeerContext(t *testing.T, ctx context.Context) (*ProcessHelper, <-chan error) {
 	t.Helper()
 	if path := os.Getenv("TIANA_TEST_BUILTIN_CLI"); path != "" {
-		helper, err := launchHelperCommand(ctx, exec.Command(path, BuiltinHelperArgument), DefaultCredentialSource(), nil)
+		command := exec.Command(path, BuiltinHelperArgument)
+		command.Env = netconfig.HelperEnvironment(ctx, helperEnvironment(os.Environ(), DefaultCredentialSource()))
+		if port, ok := ctx.Value(helperNetworkPortKey{}).(string); ok {
+			command.Env = append(command.Env, helperNetworkPortEnvironment+"="+port)
+		}
+		helper, err := launchHelperCommand(ctx, command, DefaultCredentialSource(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

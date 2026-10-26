@@ -10,7 +10,7 @@ Git normally invokes the packaged `git-remote-tiana` launcher. This POSIX script
 executes the **same-directory** `tiana git remote-helper`, preserving arguments,
 stdin/stdout/stderr, signals and exit status. It never searches PATH for another
 tiana. No Rust Git binary, SDK Git source checkout or embedded Git payload is
-required. Existing SQLD support retains its own private Rust helper.
+required. Native SQLD connect uses the CLI's built-in Go helper.
 
 ## Build and install
 
@@ -31,7 +31,7 @@ also includes Git; copy `scripts/git-remote-tiana` beside that executable.
 The existing complete CLI build includes the launcher beside its output:
 
 ```sh
-scripts/build-single-binary.sh darwin arm64 /path/to/private-sqld-helper \
+scripts/build-single-binary.sh darwin arm64 \
   "$PWD/dist/complete/tiana"
 ```
 
@@ -53,6 +53,9 @@ plain HTTPS selects Git's normal HTTP transport instead.
 | `TIANA_API_ORIGIN` | Management origin inherited from the launcher, selecting the account session. No MGR request is made. |
 | `TIANA_CA_FILE` | Deployment CA PEM, regular file, at most 64 KiB / 8 certificates. |
 | `TIANA_GATEWAY_ADDRESS` | Optional physical host:port override; preserves Endpoint identity. |
+| `HTTPS_PROXY` / `https_proxy` | Optional HTTP/HTTPS CONNECT or SOCKS5 proxy for Git's TLS target. |
+| `ALL_PROXY` / `all_proxy` | Proxy fallback when HTTPS_PROXY is unset; supports http, https, socks5 and socks5h. |
+| `NO_PROXY` / `no_proxy` | Logical target bypass rules; loopback always connects directly. |
 
 When neither explicit source is set, read the current management origin's
 access token from the default `credentials.json` under `$XDG_CONFIG_HOME/tiana`
@@ -78,6 +81,9 @@ The launcher and sibling `tiana` must both be on the installed Git helper path.
 is mandatory for Git, including builds with the legacy SQLD development TLS flag.
 System trust roots plus the optional CA are used. TCP uses the published port or
 override; SNI uses Endpoint hostname; CONNECT authority uses hostname:443.
+The selected proxy establishes one outer tunnel before that target TLS session.
+Both SOCKS schemes resolve target DNS at the proxy. No fallback or retry is added,
+and proxy credentials never enter the inner Gateway or Git stream.
 
 ## Protocol and validation
 
@@ -99,7 +105,7 @@ TEST_TIANA_CLI="$PWD/dist/git-package/tiana" go test -v ./internal/gitremote/con
 ```
 
 The fixture uses real Git and a local TLS/H2 CONNECT server plus git-daemon. It
-covers operations, 1 MiB object integrity across flow-control windows, credentials,
+covers direct, HTTP CONNECT and SOCKS5 routes, 1 MiB object integrity across flow-control windows, credentials,
 TLS, cancellation and failed streams without replay. It does not assert deployed
 Control/Gateway/Agent/app_git acceptance. See [validation record](VALIDATION.md).
 

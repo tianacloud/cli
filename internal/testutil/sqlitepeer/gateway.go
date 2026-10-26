@@ -24,7 +24,7 @@ const Token = "tia_0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 const Endpoint = "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"
 
-func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool) (tianasqlite.Config, *atomic.Int32) {
+func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool, certificate ...*[]byte) (tianasqlite.Config, *atomic.Int32) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -41,6 +41,9 @@ func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool) (tiana
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(cert)
+	for _, out := range certificate {
+		*out = append([]byte(nil), der...)
+	}
 	count := &atomic.Int32{}
 	type connectionKey struct{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

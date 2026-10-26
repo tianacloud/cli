@@ -25,6 +25,10 @@ const (
 	// executable. The archive digest is provenance-only; the binary itself is
 	// an injected test input and is never checked into the repo.
 	realTursoBinarySHA256 = "257ef10bf753477f0fc6cd0754e346aade78bd3614fa8e71fb7eb8b3df4ef31f"
+	// Official Linux x86_64 release archive SHA-256:
+	// c35acbcad8e2e7a32580fe380adc4658d3032ddc56d25396b9b123aa4a704107.
+	// This separately pinned artifact does not replace the legacy input above.
+	officialTursoBinarySHA256 = "ee56beef9b888ecfb9537ce19badb6bccc33e13ea78763ef2f51ef8d4454684f"
 )
 
 func TestRealTursoV1032PositionalLocatorCaptures(t *testing.T) {
@@ -40,6 +44,27 @@ func TestRealTursoV1032PositionalLocatorCaptures(t *testing.T) {
 	if actual := hex.EncodeToString(digest[:]); actual != realTursoBinarySHA256 {
 		t.Fatalf("Turso binary digest=%s, want frozen v1.0.32 binary digest %s", actual, realTursoBinarySHA256)
 	}
+	assertTursoPositionalLocatorCaptures(t, path)
+}
+
+func TestOfficialTursoV1032PositionalLocatorCaptures(t *testing.T) {
+	path := os.Getenv("TIANA_TEST_NATIVE_TURSO")
+	if path == "" {
+		t.Skip("set TIANA_TEST_NATIVE_TURSO to the official Linux x86_64 Turso v1.0.32 binary")
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(contents)
+	if hex.EncodeToString(digest[:]) != officialTursoBinarySHA256 {
+		t.Fatal("official Turso binary does not match the independently pinned digest")
+	}
+	assertTursoPositionalLocatorCaptures(t, path)
+}
+
+func assertTursoPositionalLocatorCaptures(t *testing.T, path string) {
+	t.Helper()
 	versionOutput, err := exec.Command(path, "--version").CombinedOutput()
 	if err != nil {
 		t.Fatalf("Turso --version: %v (%s)", err, strings.TrimSpace(string(versionOutput)))

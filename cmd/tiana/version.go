@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/tianacloud/cli/internal/apppublish"
+	"github.com/tianacloud/cli/internal/clientconfig"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
 	"github.com/tianacloud/cli/internal/updatecheck"
 	"github.com/urfave/cli/v3"
@@ -105,6 +107,17 @@ func passiveUpdate(ctx context.Context, args []string, input io.Reader, output, 
 		return
 	}
 	worker := exec.Command(executable, updateWorkerArgument)
+	worker.Env = netconfig.HelperEnvironment(ctx, os.Environ())
+	if trust := clientconfig.FromContext(ctx); trust != nil && trust.CAFile != "" {
+		filtered := worker.Env[:0]
+		for _, entry := range worker.Env {
+			name, _, _ := strings.Cut(entry, "=")
+			if !strings.EqualFold(name, "TIANA_CA_FILE") {
+				filtered = append(filtered, entry)
+			}
+		}
+		worker.Env = append(filtered, "TIANA_CA_FILE="+trust.CAFile)
+	}
 	if worker.Start() == nil {
 		_ = worker.Process.Release()
 	}

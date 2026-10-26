@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/tianacloud/cli/internal/diagnostics"
+	"github.com/tianacloud/cli/internal/netconfig"
 	tiana "github.com/tianacloud/sdk-go"
 )
 
@@ -20,6 +21,10 @@ const BuiltinHelperArgument = "__tiana_builtin_helper"
 // BuiltinHelperLauncher re-executes the CLI itself, never a PATH-resolved helper.
 // Credentials still cross only the existing private framed control pipes.
 type BuiltinHelperLauncher struct{}
+
+type helperNetworkPortKey struct{}
+
+const helperNetworkPortEnvironment = "TIANA_INTERNAL_HELPER_NETWORK_PORT"
 
 func (BuiltinHelperLauncher) Launch(ctx context.Context, source CredentialSource) (HelperClient, error) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
@@ -32,7 +37,12 @@ func (BuiltinHelperLauncher) Launch(ctx context.Context, source CredentialSource
 	if runtime.GOOS == "linux" {
 		executable = "/proc/self/exe"
 	}
-	return launchHelperCommand(ctx, exec.CommandContext(ctx, executable, BuiltinHelperArgument), source, nil)
+	command := exec.CommandContext(ctx, executable, BuiltinHelperArgument)
+	command.Env = netconfig.HelperEnvironment(ctx, helperEnvironment(os.Environ(), source))
+	if port, ok := ctx.Value(helperNetworkPortKey{}).(string); ok {
+		command.Env = append(command.Env, helperNetworkPortEnvironment+"="+port)
+	}
+	return launchHelperCommand(ctx, command, source, nil)
 }
 
 type builtinFrame struct {
@@ -76,6 +86,7 @@ func writeBuiltinFrame(w io.Writer, kind controlKind, payload []byte) error {
 // ServeBuiltinHelper runs the contract-3 server inside the private child process.
 // Closing its parent control pipe or context always tears down the data plane.
 func ServeBuiltinHelper(parent context.Context, in io.ReadCloser, out io.WriteCloser) error {
+	parent = netconfig.WithEnvironment(parent, os.Environ())
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stopIO := context.AfterFunc(ctx, func() { in.Close(); out.Close() })
@@ -180,7 +191,15 @@ func ServeBuiltinHelper(parent context.Context, in io.ReadCloser, out io.WriteCl
 	if err != nil {
 		return reject()
 	}
-	client, err := tiana.NewClient(tiana.Config{Endpoint: config.Endpoint, Token: token, RootCAs: roots, DialAddress: config.GatewayAddress, MaxStreams: builtinSessionLimit, OnRequestID: func(id string) { diagnostics.Write(ctx, "connect", id) }})
+	network, err := netconfig.PolicyWithRoots(ctx, roots)
+	if err != nil {
+		return reject()
+	}
+	port, _ := ctx.Value(helperNetworkPortKey{}).(string)
+	if port == "" {
+		port = os.Getenv(helperNetworkPortEnvironment)
+	}
+	client, err := tiana.NewClient(tiana.Config{Endpoint: config.Endpoint, Port: port, Token: token, RootCAs: roots, DialAddress: config.GatewayAddress, Network: network, MaxStreams: builtinSessionLimit, OnRequestID: func(id string) { diagnostics.Write(ctx, "connect", id) }})
 	if err != nil {
 		return reject()
 	}

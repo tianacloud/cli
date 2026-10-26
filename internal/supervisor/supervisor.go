@@ -6,7 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
+
+	"github.com/tianacloud/cli/internal/netconfig"
 	"os/exec"
 	"time"
 )
@@ -40,6 +44,7 @@ func NewSupervisor(launcher HelperLauncher) *Supervisor {
 // caller's security policy accepts the actual BOUND capability. It returns the
 // native exit status when a child was successfully started.
 func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, error) {
+	ctx = netconfig.WithEnvironment(ctx, os.Environ())
 	if s == nil || s.Launcher == nil || len(options.NativeArgv) == 0 {
 		return 1, ErrEmptyNativeClient
 	}
@@ -65,6 +70,24 @@ func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, erro
 	if err != nil {
 		return 1, err
 	}
+	network, err := netconfig.Policy(ctx)
+	if err != nil {
+		return 1, err
+	}
+	switch s.Launcher.(type) {
+	case *EmbeddedHelperLauncher, ProcessHelperLauncher, *ProcessHelperLauncher:
+		physical, _, _ := net.SplitHostPort(gatewayTrust.Address)
+		ip := net.ParseIP(physical)
+		if physical != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			selected, err := network.ProxyForURL(&url.URL{Scheme: "https", Host: net.JoinHostPort(endpoint.Hostname(), endpoint.Port())})
+			if err != nil {
+				return 1, err
+			}
+			if selected != nil {
+				return 1, errors.New("selected external helper does not support proxy routing; use a CLI built with the Go helper")
+			}
+		}
+	}
 	stdin, stderr := s.IO.Stdin, s.IO.Stderr
 	if stdin == nil {
 		stdin = os.Stdin
@@ -83,6 +106,7 @@ func (s *Supervisor) Run(ctx context.Context, options ConnectOptions) (int, erro
 		}
 	}
 	defer destroyToken()
+	ctx = context.WithValue(ctx, helperNetworkPortKey{}, endpoint.Port())
 	helper, err := s.Launcher.Launch(ctx, options.Credential)
 	if err != nil {
 		return 1, err

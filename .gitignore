@@ -12,3 +12,6 @@ coverage.*
 
 __pycache__/
 *.py[cod]
+
+# Local document review state
+*.review.json
