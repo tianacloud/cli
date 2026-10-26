@@ -30,6 +30,10 @@
 | 构建与包 | 七平台构建、24 个 Node packaging/launcher tests、八个 npm tarball、完整性、新鲜本地安装、Linux bundle 通过；七个二进制 build info 均确认两个 SDK v1.0.1 且无替换 | 临时版本 1.0.5-proxy.1，不是 npm 发行；交叉编译与原生运行区分 |
 | CLI 原生 CI | 实现提交 `80ae24990acbc2a1aafdb7c151b5cda2e841d5d3` 的 Linux/macOS/Windows 原生测试、vet、launcher/installation，以及 Go 1.25/stable race 检查全部通过 | push 与 PR 两组 workflow 均成功；真实服务验收仍仅在 Linux namespace 执行 |
 
+PR 审查发现并修复 Web 同时指定非默认逻辑端口与物理 Gateway 覆盖时丢失逻辑端口的问题。新增 `TestServerlessProxyBypassUsesLogicalPortWithPhysicalOverride`：仅设置 HTTP 或 SOCKS5 ALL_PROXY，分别验证 NO_PROXY 匹配逻辑端口、默认 443 和物理端口的六个场景。原实现的逻辑端口及默认端口四项失败，修复后全部通过；物理覆盖地址始终保留。该回归检查 CLI 传给 fetch 的配置和真实 SDK 策略选择，不访问公网。最新提交的平台检查以 PR #9 当前 HEAD 为准。
+
+该修复的完整 race（`-p 1`）、vet、模块校验、公共源码及 PEM/hex 回归、24 项 Node 测试、安全卸载回归及七平台构建通过。首次并行 race 中既有的 150 毫秒 `TestInteractiveRecoverySharesDeadline` 失败；该用例独立连续 5 次及降低包并发后的全量检查均通过，未修改其超时或恢复语义。
+
 ## 新建隔离环境与真实服务验收
 
 新增 [scripts/proxy-sandbox.py](../scripts/proxy-sandbox.py)，在 Linux 无特权 user/network namespace 中执行 CLI。该 namespace 只有 loopback、IPv4 路由表为空，不能建立外部 TCP；代理服务运行在宿主网络，通过 owner-only Unix socket 和 namespace 内的 loopback bridge 到达。
