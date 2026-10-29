@@ -11,12 +11,76 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/tianacloud/cli/internal/authclient"
 )
+
+func TestShareStatusPreservesPublicFileInventoryWithoutAddingLegacyCapabilities(t *testing.T) {
+	for _, mode := range []string{"legacy", "files", "large_version"} {
+		t.Run(mode, func(t *testing.T) {
+			filesEnabled := mode != "legacy"
+			version := uint64(3)
+			if mode == "large_version" {
+				version = ^uint64(0)
+			}
+			digest := strings.Repeat("a", 64)
+			mgr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" || r.URL.Path != "/api/v1/web-projects/a1b2c3d4e5f6/share-template" {
+					t.Error("status changed its read-only product route")
+					w.WriteHeader(404)
+					return
+				}
+				metadata := map[string]any{"name": "notes"}
+				manifest := map[string]any{"metadata": metadata}
+				share := map[string]any{"web_id": "a1b2c3d4e5f6", "package_id": 7, "manifest": manifest, "ignored": "private-object-key"}
+				if filesEnabled {
+					share["version"], share["material_version"] = version, digest
+					metadata["file_seeds"] = "template-files"
+					manifest["format_version"], manifest["requires"] = 2, []string{"template_files_v1"}
+					manifest["file_manifest_sha256"] = digest
+					manifest["files"] = map[string]any{"version": 1, "root": "template-assets/", "entries": []any{map[string]any{"path": "documents/guide.txt", "size": 3, "sha256": digest, "content_type": "text/plain", "ignored": "private-object-key"}}}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"share": share})
+			}))
+			defer mgr.Close()
+			store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
+			if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+				t.Fatal(err)
+			}
+			auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			status, err := (Client{Auth: auth}).ShareStatus(t.Context(), "a1b2c3d4e5f6")
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(status)
+			if err != nil || strings.Contains(string(encoded), "private-object-key") {
+				t.Fatal("status leaked nonpublic inventory fields", err)
+			}
+			if filesEnabled {
+				manifest := status.Share.Manifest
+				if uint64(status.Share.Version) != version || status.Share.MaterialVersion != digest || manifest.Metadata.FileSeeds != "template-files" || manifest.FormatVersion != 2 || manifest.FileManifestSHA256 != digest || len(manifest.Requires) != 1 || manifest.Requires[0] != "template_files_v1" || manifest.Files == nil || manifest.Files.Version != 1 || manifest.Files.Root != "template-assets/" || len(manifest.Files.Entries) != 1 || manifest.Files.Entries[0] != (TemplateFileEntry{Path: "documents/guide.txt", Size: 3, SHA256: digest, ContentType: "text/plain"}) {
+					t.Fatal("new material identity or public file inventory was lost")
+				}
+				if !strings.Contains(string(encoded), `"version":"`+strconv.FormatUint(version, 10)+`"`) {
+					t.Fatal("publication version lost decimal-string precision")
+				}
+			} else {
+				for _, field := range []string{"material_version", "format_version", "requires", "file_seeds", "files", "version"} {
+					if strings.Contains(string(encoded), `"`+field+`":`) {
+						t.Fatal("legacy response acquired an unverified capability")
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestSharedSourceDownloadAndBounds(t *testing.T) {
 	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes"}`, "app.js": "demo"})

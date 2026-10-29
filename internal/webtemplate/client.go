@@ -22,6 +22,7 @@ type Variable struct {
 	Files       []string `json:"files"`
 }
 type Template struct {
+	FileSeeds   string     `json:"file_seeds,omitempty"`
 	Name        string     `json:"name"`
 	DisplayName string     `json:"display_name"`
 	Description string     `json:"description"`

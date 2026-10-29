@@ -675,6 +675,11 @@ tiana web init-template ledger --dir ./my-ledger --json
 
 CLI 从当前登录环境的 MGR 取得 15 分钟下载签名，校验 ZIP 的大小与 SHA-256，原样解压到指定的新目录。读取根部 metadata.json 和 README 后，Agent 按声明的文件替换变量、初始化 SQLite，再完成 Git、构建和 Web 发布。CLI 按模板名称调用，不需要模板版本参数。
 
+模板含外置素材时，还须按[模板素材文件](docs/template-files.md)准备当前应用的文件目录。
+`init-template` 和 `init-share-template` 保留 `template-files/` 原始字节；下载源码不会
+创建应用或上传素材。Console 的模板安装在目标环境启用完整素材能力后由服务端复制
+独立素材，两条路径都使用 `template-assets/<相对路径>`，无需改用作者的文件链接。
+
 四个 Skills 与 CLI 使用统一更新记录。主动检查可执行：
 
 ```sh
@@ -699,6 +704,12 @@ tiana file get docs/report.pdf ./report.pdf
 tiana file get-url docs/report.pdf
 tiana file delete docs/report.pdf
 ```
+
+For an application's installed template file, include its actual Web ID, for
+example `tiana file get WEB_ID/template-assets/images/cover.webp ./cover.webp`.
+Application code and its database store `template-assets/images/cover.webp`;
+`context.files` supplies the application scope. See
+[template material preparation and verification](docs/template-files.md).
 
 `list` returns one directory page. `put --overwrite` explicitly deletes the
 existing file before uploading; a failed replacement cannot recover that file.

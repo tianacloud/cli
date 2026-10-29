@@ -334,6 +334,21 @@ variable substitution and database initialization. Public template requests use
 account auth; signed object reads use an independent HTTP client. Never persist
 or print the signed URL. CLI has no template version selector.
 
+Template source initialization preserves declared `template-files/` bytes and
+does not install them. Ordinary source-driven publication explicitly prepares
+the newly created Web's `<id>/template-assets/` tenant-file directory once;
+application/SQL references omit the Web ID. Console's server installation uses
+independent package materials only after its capability is enabled. Document
+both source choices, clean-build exclusion, fixed-version recovery and no-file
+behavior without inventing CLI installation/recovery commands. A Web update is
+not permission to overwrite user-edited or deleted initial files. Share status
+preserves publication/material versions and the public file manifest for review;
+the publication version prints as a lossless decimal string, while manifest
+version/counts and bounded file sizes retain their package-format types.
+absent legacy fields remain absent and object-storage references are not exposed.
+No protocol,
+credential, dependency or npm version changes accompany this guidance.
+
 npm delivery uses an exact-version main package and seven os/cpu optional native
 packages. The launcher resolves the installed package and preserves native I/O,
 arguments, signals and exit status. Release Actions build source, retain eight

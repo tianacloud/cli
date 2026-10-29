@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,14 +22,40 @@ import (
 const maxInstallZIP = 32 << 20
 const maxSourceZIP = 16 << 20
 
+// Publication versions are decoded losslessly from MGR integers and printed as
+// decimal strings, including values above JavaScript's safe integer range.
+type publicationVersion uint64
+
+func (v publicationVersion) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(strconv.FormatUint(uint64(v), 10))), nil
+}
+
+type TemplateFileEntry struct {
+	Path        string `json:"path"`
+	Size        int64  `json:"size"`
+	SHA256      string `json:"sha256"`
+	ContentType string `json:"content_type"`
+}
+type TemplateFileManifest struct {
+	Version int                 `json:"version"`
+	Root    string              `json:"root"`
+	Entries []TemplateFileEntry `json:"entries"`
+}
+
 type Share struct {
-	WebID        string `json:"web_id"`
-	PackageID    uint64 `json:"package_id"`
-	URL          string `json:"url"`
-	HasSource    bool   `json:"has_source"`
-	InstallCount uint64 `json:"install_count"`
-	Manifest     struct {
-		Metadata Template `json:"metadata"`
+	Version         publicationVersion `json:"version,omitempty"`
+	MaterialVersion string             `json:"material_version,omitempty"`
+	WebID           string             `json:"web_id"`
+	PackageID       uint64             `json:"package_id"`
+	URL             string             `json:"url"`
+	HasSource       bool               `json:"has_source"`
+	InstallCount    uint64             `json:"install_count"`
+	Manifest        struct {
+		Metadata           Template              `json:"metadata"`
+		FormatVersion      int                   `json:"format_version,omitempty"`
+		FileManifestSHA256 string                `json:"file_manifest_sha256,omitempty"`
+		Requires           []string              `json:"requires,omitempty"`
+		Files              *TemplateFileManifest `json:"files,omitempty"`
 	} `json:"manifest"`
 }
 type ShareJob struct {
