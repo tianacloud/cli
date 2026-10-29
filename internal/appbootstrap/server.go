@@ -209,7 +209,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(p, "_tiana/sdk/") && (r.Method == "GET" || r.Method == "HEAD") {
 		name := strings.TrimPrefix(p, "_tiana/sdk/")
-		if name != "files.js" && name != "auth.js" && name != "diagnostics.js" {
+		if name != "files.js" && name != "auth.js" && name != "diagnostics.js" && name != "functions.js" {
 			http.NotFound(w, r)
 			return
 		}
@@ -230,7 +230,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]bool{"local_preview": true})
 		return
 	}
-	if r.Method == http.MethodPost {
+	if r.Method == http.MethodPost && p != "_tiana/function-connection" {
 		// None of these actions accept input. A browser cannot select another resource.
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1))
 		if err != nil || len(body) != 0 {
@@ -268,6 +268,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case p == "_tiana/app" && r.Method == http.MethodGet:
 		s.json(w, 200, s.config.Build.Manifest)
+	case p == "_tiana/function-connection" && r.Method == http.MethodPost:
+		s.functionConnection(w, r, identity)
 	case p == "_tiana/connection" && r.Method == http.MethodPost:
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 		defer cancel()

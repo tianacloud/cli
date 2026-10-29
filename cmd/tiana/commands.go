@@ -183,13 +183,14 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
 				}},
 			newGitCommand(input, output, diagnostics),
+			newFunctionCommand(input, output, diagnostics),
 			newWebCommand(input, output, diagnostics),
 			newFilesCommand(input, output, diagnostics),
 		},
 	}
 	for _, command := range root.Commands {
 		switch command.Name {
-		case "web", "sqlite", "git", "file":
+		case "web", "sqlite", "git", "file", "function":
 			command.Category = "Products"
 		}
 	}
@@ -231,6 +232,9 @@ func configureCommandErrors(cmd *cli.Command) {
 	}
 	cmd.Before = func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 		for _, flag := range cmd.Flags {
+			if _, repeated := flag.(*cli.StringSliceFlag); repeated {
+				continue
+			}
 			if counter, ok := flag.(cli.Countable); ok && counter.Count() > 1 {
 				return ctx, argumentFailure(ctx, cmd, "an option was provided more than once")
 			}

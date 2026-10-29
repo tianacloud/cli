@@ -37,10 +37,10 @@ only when TIANA_API_ORIGIN selects staging; otherwise use system roots. Extra
 roots are added to system trust. Preserve verified TLS in source and packaging builds.
 Environment origin overrides permit HTTP only for loopback development.
 
-Products are `web`, `sqlite`, `git` and `file`. Tenant file commands use
+Products are `web`, `function`, `sqlite`, `git` and `file`. Tenant file commands use
 `tiana file` with `list`, `get`, `get-url`, `put` and `delete` subcommands.
 Removed `apps`, `whoami`, `verify-install`, SQLite Token commands and `branches` spellings have no compatibility aliases.
-Instance create requires one nonblank NAME and fixed engine `sqlite` or `git`;
+Instance create requires one nonblank NAME and a product-selected engine;
 removed engine/display-name flags fail before state/network work. Descriptions
 are verbatim valid UTF-8, <=2048 bytes for both instances and Web (Web description projects instance notes).
 
@@ -58,6 +58,17 @@ the engine column; engine decoding and product filtering remain required. Escape
 descriptions at presentation only. No API, JSON output or persistence migration;
 missing descriptions display empty. Test HTTP readback, pagination and terminal
 controls. Rollback changes table columns only.
+
+## Function management
+
+Function source, build recovery, configuration replacement and Web bindings are
+documented in [README Function backends](README.md#function-backends); consult
+that section when changing `function` or `web functions`. Source reads/saves are
+relative to `/functions/<function_id>/` on main. Preserve other shared-repository
+files and compare the saved base commit. Function lists and build history expose
+one requested page. Build logs are plain-text HTTP responses. Verify management
+commands and normal local-preview bootstrap against a Web with multiple bound
+functions. Removing the CLI surface does not remove the server-side resources.
 
 ## Authentication and private local state
 

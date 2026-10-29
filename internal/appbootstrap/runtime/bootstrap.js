@@ -1,3 +1,4 @@
+import {createTianaFunctions} from './sdk/functions.js';
 import {createTianaFiles} from './sdk/files.js';
 const base = new URL('../', import.meta.url);
 const dataElement = document.querySelector('#tiana-bootstrap-data');
@@ -16,7 +17,7 @@ button{font:inherit;cursor:pointer;margin-left:16px;pointer-events:auto}
 </style><section role="status" aria-live="polite"><span>正在加载…</span></section>`;
 document.body.append(loadingHost);
 
-async function request(path, method = 'GET', payload) {
+async function request(path, method = 'GET', payload, signal) {
   const url = new URL('_tiana/' + path, base);
   const requestId = 'req-' + crypto.randomUUID();
   const headers = {'X-Tiana-Bootstrap': '1', 'X-Request-ID': requestId};
@@ -29,7 +30,7 @@ async function request(path, method = 'GET', payload) {
 
   }
   try {
-    const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, signal: AbortSignal.timeout(12000), body: payload ? JSON.stringify(payload) : undefined});
+    const response = await fetch(url, {method, credentials:'same-origin', cache:'no-store', headers, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12000)]) : AbortSignal.timeout(12000), body: payload ? JSON.stringify(payload) : undefined});
     return {response, requestId, data: response.status === 204 ? null : await response.json()};
   } catch (cause) {
     throw Object.assign(new Error('应用请求失败，请重试。', {cause}), {requestId});
@@ -86,7 +87,16 @@ async function loadApplication() {
   });
   await files.ready();
   window.addEventListener('pagehide', () => files.dispose(), {once: true});
-  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, files, async connection() {
+  const functionOptions = {connection: async (instanceId, {signal}) => {
+    const {response, data, requestId} = await request('function-connection', 'POST', {instance_id: instanceId}, signal);
+    if (!response.ok) throw Object.assign(new Error('函数授权未完成，请检查绑定或重新登录。'), {requestId});
+    return data;
+  }};
+  let functionClient = createTianaFunctions(functionOptions);
+  const functions = Object.freeze({fetch: (instanceId, path, init) => functionClient.fetch(instanceId, path, init)});
+  window.addEventListener('pagehide', () => functionClient.dispose());
+  window.addEventListener('pageshow', event => { if (event.persisted) functionClient = createTianaFunctions(functionOptions); });
+  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, files, functions, async connection() {
     if (credential && credentialExpiresAt > Date.now() + 30000) return credential;
     if (!pendingConnection) {
       pendingConnection = (async () => {

@@ -15,7 +15,7 @@ import (
 )
 
 func TestCreateQueuedJobReceiptAndRecovery(t *testing.T) {
-	for _, product := range []string{"git", "sqlite"} {
+	for _, product := range []string{"git", "sqlite", "function"} {
 		for _, mode := range []string{"fresh", "stdout-failure", "json-stdout-failure", "old-rejected-receipt"} {
 			t.Run(product+"/"+mode, func(t *testing.T) {
 				posts := 0
@@ -49,6 +49,9 @@ func TestCreateQueuedJobReceiptAndRecovery(t *testing.T) {
 					key := "git.create"
 					if product == "sqlite" {
 						key = "db.create"
+					}
+					if product == "function" {
+						key = "function.create"
 					}
 					if err := store.Save(authclient.PendingCommand{Command: key, Args: []string{"create", "demo"}, Origin: server.URL, UserID: "usr_cli", IdempotencyKey: "already-created"}); err != nil {
 						t.Fatal(err)

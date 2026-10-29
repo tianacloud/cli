@@ -55,7 +55,7 @@ func TestWebCommandReplacesApps(t *testing.T) {
 			names = append(names, fields[0])
 		}
 	}
-	if strings.Join(names, ",") != "sqlite,git,web,file" {
+	if strings.Join(names, ",") != "sqlite,git,function,web,file" {
 		t.Fatalf("wrong products: %v", names)
 	}
 }

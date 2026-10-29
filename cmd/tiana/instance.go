@@ -43,6 +43,8 @@ func reportUnfinishedOperation(errorOutput io.Writer, path string, pending authc
 		fmt.Fprintf(errorOutput, "Finish the Web operation with:\n  tiana web %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "git.create":
 		fmt.Fprintf(errorOutput, "Finish the Git operation with:\n  tiana git %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
+	case "function.create":
+		fmt.Fprintf(errorOutput, "Finish the Function operation with:\n  tiana function %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	case "db.create":
 		fmt.Fprintf(errorOutput, "Finish the SQLite operation with:\n  tiana sqlite %s\n", safeDisplay(quoteCommandArgs(pending.Args)))
 	default:

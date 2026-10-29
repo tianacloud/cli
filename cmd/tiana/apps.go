@@ -50,6 +50,7 @@ func newWebCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 		newWebServeCommand(output, diagnostics),
 		newWebListCommand(input, output, diagnostics),
 		newWebDeleteCommand(input, output, diagnostics),
+		newWebFunctionsCommand(output, diagnostics),
 		{Name: "create", Usage: "Create a Web application with a server-generated ID", ArgsUsage: "NAME", Flags: createFlags, Action: action},
 		{Name: "publish", Usage: "Package a directory and upload through the Web control channel", ArgsUsage: "ID", Description: "Overwrites the single current archive; returns after confirmed S3 upload while activation continues.", Flags: publishFlags, Action: action},
 		{Name: "status", Usage: "Inspect current content or publication activation", ArgsUsage: "ID", Flags: statusFlags, Action: action},

@@ -55,12 +55,13 @@ func NewWithConfig(config Config) (*Client, error) {
 }
 
 type CreateInstanceRequest struct {
-	RequestID   string                 `json:"request_id"`
-	DisplayName string                 `json:"display_name"`
-	Labels      map[string]string      `json:"labels,omitempty"`
-	Notes       string                 `json:"notes,omitempty"`
-	Engine      string                 `json:"engine"`
-	Config      map[string]interface{} `json:"config"`
+	GitInstanceID string                 `json:"git_instance_id,omitempty"`
+	RequestID     string                 `json:"request_id"`
+	DisplayName   string                 `json:"display_name"`
+	Labels        map[string]string      `json:"labels,omitempty"`
+	Notes         string                 `json:"notes,omitempty"`
+	Engine        string                 `json:"engine"`
+	Config        map[string]interface{} `json:"config"`
 }
 
 func NewIdempotencyKey() (string, error) {

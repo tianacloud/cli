@@ -45,6 +45,9 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 	if scope.engine == "git" {
 		key = "git.create"
 	}
+	if scope.engine == "function" {
+		key = "function.create"
+	}
 	client, err := newAuthClient(ctx, errorOutput, options.nonInteractive || options.json)
 	if err != nil {
 		writeCommandError(errorOutput, err)

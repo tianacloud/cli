@@ -719,3 +719,61 @@ loopback broker fixes operations to that WebApp's directory, streams downloads
 using a server-side file grant and keeps them same-origin for the browser.
 Uploads still go directly to OSS. File credentials are separate from database
 connection credentials.
+
+### Function backends
+
+The Function feature branch adds `tiana function` with the same account and origin
+selection as other products. Run its help on the installed CLI before use.
+
+```sh
+tiana function list --page 1 --json
+tiana function create orders --git-instance-id GIT_ID --wait --json
+tiana function show FUNCTION_ID --json
+tiana function source list FUNCTION_ID --json
+tiana function source read FUNCTION_ID main.go --commit COMMIT > main.go
+tiana function source save FUNCTION_ID --base-commit COMMIT --file main.go=main.go --file go.mod=go.mod --json
+tiana function publish FUNCTION_ID --commit COMMIT --wait --json
+tiana function builds FUNCTION_ID --json
+tiana function logs FUNCTION_ID --build SUBMISSION_ID --json
+tiana function parameters get FUNCTION_ID --json
+tiana function parameters set FUNCTION_ID --file parameters.json --json
+tiana function cors get FUNCTION_ID --json
+tiana function cors set FUNCTION_ID --file cors.json --json
+tiana function switch FUNCTION_ID --json
+```
+
+Creation without `--git-instance-id` creates a source Git. An existing Git can be
+shared with Web and other Functions. Source operations always use `/functions/<function_id>/`, for both automatic and
+existing Git repositories. The first save creates that Function directory. Paths are
+relative to that source root; saves update only listed files and compare the main
+commit. Use `--base-commit empty` only for a genuinely empty Git. Native Git handles
+binary files, deletions and shared module files outside the Function directory.
+
+Saving does not compile. Publication builds the saved commit and takes effect at
+the next cold wake. `switch` drains current requests and sleeps without the normal
+idle cooldown. The next request starts the published version. A commit already
+published returns `already_published`. Keep the printed request ID and commit;
+recover an uncertain submission with those exact `--request-id` and `--commit`
+values. Builds are paginated with `--before SEQUENCE`; Function lists use `--page`.
+`logs --json` returns the build log as `data.text` and the server's discarded-byte
+count as `data.dropped_bytes`.
+
+Parameters and CORS `set` replace their whole JSON objects. Parameter files can
+contain private database credentials; keep them outside Git with restricted file
+permissions. `disable` / `enable` control access. `delete --force --wait` deletes
+the function and artifacts while retaining its source Git.
+
+Bind backend access to a Web using the current revision:
+
+```sh
+tiana web functions get WEB_ID --json
+tiana web functions set WEB_ID --function-id FUNCTION_ID --expected-revision REVISION --json
+tiana web serve WEB_ID --dir dist
+```
+
+Repeat `--function-id` for multiple functions; omit it to clear the list. The
+frontend calls `context.functions.fetch(FUNCTION_ID, '/orders', init)`. Local
+preview supports the same call using the selected CLI account. Hosted sharing
+uses Site authorization and must be tested separately with another account.
+For private backends, keep SQLite Endpoint/Token in Function parameters and leave
+the Web's database binding empty.

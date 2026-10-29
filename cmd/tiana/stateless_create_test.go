@@ -16,7 +16,7 @@ import (
 )
 
 func TestCreateReturnsReceiptWithoutTokenOrPolling(t *testing.T) {
-	for _, product := range []string{"sqlite", "git"} {
+	for _, product := range []string{"sqlite", "git", "function"} {
 		t.Run(product, func(t *testing.T) {
 			creates := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +57,7 @@ type failedReceiptWriter struct{}
 func (failedReceiptWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestAsyncCreationRecoveryAndConflictingIntent(t *testing.T) {
-	for _, product := range []string{"sqlite", "git"} {
+	for _, product := range []string{"sqlite", "git", "function"} {
 		for _, mode := range []string{"unknown", "output-failure", "other-account", "pending-conflict"} {
 			t.Run(product+"/"+mode, func(t *testing.T) {
 				writes, reads := 0, 0
@@ -94,6 +94,9 @@ func TestAsyncCreationRecoveryAndConflictingIntent(t *testing.T) {
 				key := "db.create"
 				if product == "git" {
 					key = "git.create"
+				}
+				if product == "function" {
+					key = "function.create"
 				}
 				blocked := mode == "other-account" || mode == "pending-conflict"
 				var before []byte
