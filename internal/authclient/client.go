@@ -55,6 +55,7 @@ func NewWithConfig(config Config) (*Client, error) {
 }
 
 type CreateInstanceRequest struct {
+	SourceDir     string                 `json:"source_dir,omitempty"`
 	GitInstanceID string                 `json:"git_instance_id,omitempty"`
 	RequestID     string                 `json:"request_id"`
 	DisplayName   string                 `json:"display_name"`

@@ -25,20 +25,21 @@ func sourceResponse(status int, body string) (*fetch.Response, error) {
 
 func TestSharedSourceSelectionAndSave(t *testing.T) {
 	for _, tc := range []struct {
-		name, folder       string
-		rootGo             bool
-		wantRoot           string
-		initial, wantError bool
+		name, folder, sourceDir string
+		rootGo                  bool
+		wantRoot                string
+		initial, wantError      bool
 	}{
-		{"function directory", "directory", true, "functions/fn-demo", false, false},
-		{"new function in Go repository", "missing", true, "functions/fn-demo", true, false},
-		{"frontend repository", "missing", false, "functions/fn-demo", true, false},
-		{"new owned repository", "empty", false, "functions/fn-demo", true, false},
-		{"invalid directory", "file", true, "", false, true},
+		{"root module", "directory", "", true, "", false, false},
+		{"function directory", "directory", "services/订单 API", true, "services/订单 API", false, false},
+		{"new function in Go repository", "missing", "services/订单 API", true, "services/订单 API", true, false},
+		{"frontend repository", "missing", "services/订单 API", false, "services/订单 API", true, false},
+		{"new owned repository", "empty", "services/订单 API", false, "services/订单 API", true, false},
+		{"invalid directory", "file", "services/订单 API", true, "", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var saved map[string]any
-			s := &Source{functionID: "fn-demo", transport: testSourceTransport{do: func(request fetch.Request) (*fetch.Response, error) {
+			s := &Source{sourceDir: tc.sourceDir, transport: testSourceTransport{do: func(request fetch.Request) (*fetch.Response, error) {
 				u, _ := url.Parse(request.PathQuery)
 				if request.Method == "POST" {
 					if err := json.NewDecoder(request.Body).Decode(&saved); err != nil {
@@ -52,7 +53,7 @@ func TestSharedSourceSelectionAndSave(t *testing.T) {
 					}
 					return sourceResponse(200, "package main")
 				}
-				if u.Query().Get("path") == "functions/fn-demo" {
+				if u.Query().Get("path") == "services/订单 API" {
 					if u.Query().Get("commit") != "old-commit" {
 						t.Errorf("directory read was not pinned: %s", u)
 					}
@@ -113,7 +114,7 @@ func TestSourceSaveReportsConcurrentCommit(t *testing.T) {
 	s := &Source{transport: testSourceTransport{do: func(fetch.Request) (*fetch.Response, error) {
 		return sourceResponse(409, `{"error":{"code":"SOURCE_CHANGED"}}`)
 	}}}
-	_, err := s.Save(t.Context(), SourceView{Commit: "old", Root: "functions/fn-demo"}, map[string]string{"main.go": "package main"}, "orders-api")
+	_, err := s.Save(t.Context(), SourceView{Commit: "old", Root: "services/订单 API"}, map[string]string{"main.go": "package main"}, "orders-api")
 	if err == nil || !strings.Contains(err.Error(), "reconcile") {
 		t.Fatalf("error=%v", err)
 	}

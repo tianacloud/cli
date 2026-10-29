@@ -69,6 +69,7 @@ func (c *Client) Resolve(ctx context.Context, reference string) (authclient.Inst
 }
 
 type Details struct {
+	SourceDir            string `json:"source_dir"`
 	InstanceID           string `json:"instance_id"`
 	GitInstanceID        string `json:"git_instance_id"`
 	GitCreatedByFunction bool   `json:"git_created_by_function"`

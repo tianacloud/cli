@@ -23,11 +23,15 @@ type sourceTransport interface {
 	Close()
 }
 type Source struct {
-	transport  sourceTransport
-	functionID string
+	transport sourceTransport
+	sourceDir string
 }
 
 func (c *Client) Source(ctx context.Context, id string) (*Source, error) {
+	details, err := c.Details(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	var grant struct {
 		Hostname string `json:"hostname"`
 		Origin   string `json:"origin"`
@@ -52,7 +56,7 @@ func (c *Client) Source(ctx context.Context, id string) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{transport: transport, functionID: id}, nil
+	return &Source{transport: transport, sourceDir: strings.TrimPrefix(details.SourceDir, "/")}, nil
 }
 
 func (s *Source) Close() { s.transport.Close() }
@@ -140,7 +144,7 @@ func (s *Source) Select(ctx context.Context, commit string) (SourceView, error) 
 		return SourceView{}, err
 	}
 	sample := func() SourceView {
-		directory := "functions/" + s.functionID
+		directory := s.sourceDir
 		return SourceView{Commit: root.Commit, Root: directory, Sample: true, Entries: []Entry{}}
 	}
 	if root.Empty {
@@ -149,9 +153,12 @@ func (s *Source) Select(ctx context.Context, commit string) (SourceView, error) 
 	if root.Commit == "" {
 		return SourceView{}, errors.New("Git response has no resolved commit")
 	}
-	folder, err := s.Tree(ctx, root.Commit, "functions/"+s.functionID, 0)
+	if s.sourceDir == "" {
+		return SourceView{Commit: root.Commit, Root: "", Entries: root.Entries, NextOffset: root.NextOffset}, nil
+	}
+	folder, err := s.Tree(ctx, root.Commit, s.sourceDir, 0)
 	if err == nil {
-		return SourceView{Commit: root.Commit, Root: "functions/" + s.functionID, Entries: folder.Entries, NextOffset: folder.NextOffset}, nil
+		return SourceView{Commit: root.Commit, Root: s.sourceDir, Entries: folder.Entries, NextOffset: folder.NextOffset}, nil
 	}
 	var missing *SourceError
 	if !errors.As(err, &missing) || missing.Status != 404 {

@@ -743,11 +743,12 @@ tiana function switch FUNCTION_ID --json
 ```
 
 Creation without `--git-instance-id` creates a source Git. An existing Git can be
-shared with Web and other Functions. Source operations always use `/functions/<function_id>/`, for both automatic and
-existing Git repositories. The first save creates that Function directory. Paths are
-relative to that source root; saves update only listed files and compare the main
-commit. Use `--base-commit empty` only for a genuinely empty Git. Native Git handles
-binary files, deletions and shared module files outside the Function directory.
+shared with Web and other Functions. Source operations use the service's persisted `source_dir`. Creation accepts
+`--source-dir /services/orders`; omit it for `/functions/<name>/`, or use `/`
+for repository root. Chinese names and spaces are preserved. Each directory has
+its own `go.mod`. Renaming the service leaves its directory fixed. Multiple
+services may share one directory and publish independently. Saves modify only
+the specified files and use `Save source of <current service name>`.
 
 Saving does not compile. Publication builds the saved commit and takes effect at
 the next cold wake. `switch` drains current requests and sleeps without the normal

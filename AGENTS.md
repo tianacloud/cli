@@ -64,7 +64,7 @@ controls. Rollback changes table columns only.
 Function source, build recovery, configuration replacement and Web bindings are
 documented in [README Function backends](README.md#function-backends); consult
 that section when changing `function` or `web functions`. Source reads/saves are
-relative to `/functions/<function_id>/` on main. Preserve other shared-repository
+relative to the persisted `source_dir` on main. Preserve other shared-repository
 files and compare the saved base commit. Function lists and build history expose
 one requested page. Build logs are plain-text HTTP responses. Verify management
 commands and normal local-preview bootstrap against a Web with multiple bound

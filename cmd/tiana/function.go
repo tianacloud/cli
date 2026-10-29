@@ -159,11 +159,11 @@ func newFunctionCommand(input io.Reader, output, diagnostics io.Writer) *cli.Com
 }
 
 func newFunctionCreateCommand(output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "create", Usage: "Create a Go function", ArgsUsage: "NAME", Flags: []cli.Flag{createWaitOption(), createMessageOption(), functionJSONFlag(), &cli.StringFlag{Name: "git-instance-id", Usage: "Existing Git instance ID; omit to create a source repository"}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+	return &cli.Command{Name: "create", Usage: "Create a Go function", ArgsUsage: "NAME", Flags: []cli.Flag{createWaitOption(), createMessageOption(), functionJSONFlag(), &cli.StringFlag{Name: "git-instance-id", Usage: "Existing Git instance ID; omit to create a source repository"}, &cli.StringFlag{Name: "source-dir", Usage: "Source directory in Git; defaults to /functions/<name>/; use / for repository root"}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 		if cmd.NArg() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 			return argumentFailure(ctx, cmd, "one function name is required")
 		}
-		options := createOptions{json: cmd.Bool("json"), wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: cmd.Args().First(), Notes: cmd.String("message"), Engine: "function", GitInstanceID: cmd.String("git-instance-id"), Config: map[string]interface{}{}}}
+		options := createOptions{json: cmd.Bool("json"), wait: cmd.Bool("wait"), input: authclient.CreateInstanceRequest{DisplayName: cmd.Args().First(), Notes: cmd.String("message"), Engine: "function", GitInstanceID: cmd.String("git-instance-id"), SourceDir: cmd.String("source-dir"), Config: map[string]interface{}{}}}
 		return statusError(executeInstanceCreate(ctx, options, leafArguments(cmd), output, diagnostics, functionScope))
 	}}
 }
