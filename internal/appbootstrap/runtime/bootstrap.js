@@ -89,7 +89,7 @@ async function loadApplication() {
   window.addEventListener('pagehide', () => files.dispose(), {once: true});
   const functionOptions = {connection: async (instanceId, {signal}) => {
     const {response, data, requestId} = await request('function-connection', 'POST', {instance_id: instanceId}, signal);
-    if (!response.ok) throw Object.assign(new Error('函数授权未完成，请检查绑定或重新登录。'), {requestId});
+    if (!response.ok) throw Object.assign(new Error('后端服务授权未完成，请检查绑定或重新登录。'), {requestId});
     return data;
   }};
   let functionClient = createTianaFunctions(functionOptions);
