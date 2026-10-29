@@ -16,7 +16,8 @@ import (
 )
 
 func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *testing.T) {
-	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes"}`, "README.md": "source"})
+	seed := strings.Repeat("original binary\x00material\n", 1024)
+	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes","file_seeds":"template-files"}`, "README.md": "source", "template-files/documents/guide.bin": seed})
 	digest := sha256.Sum256(data)
 	lists := 0
 	object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +72,9 @@ func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *test
 	}
 	if _, err = os.Stat(filepath.Join(target, "README.md")); err != nil {
 		t.Fatal(err)
+	}
+	if actual, err := os.ReadFile(filepath.Join(target, "template-files/documents/guide.bin")); err != nil || string(actual) != seed {
+		t.Fatal("declared material changed during source initialization", err)
 	}
 }
 

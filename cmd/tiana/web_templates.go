@@ -48,7 +48,7 @@ func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
 		}},
-		{Name: "withdraw-share-template", Usage: "Withdraw the current template and queue material cleanup", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "withdraw-share-template", Usage: "Withdraw the current template from new installations", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
 				return argumentFailure(ctx, cmd, "Provide WEB_ID")
 			}
@@ -62,7 +62,7 @@ func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(map[string]any{"cleanup_job_id": id}), cmd.Bool("json"), output, diagnostics))
 		}},
-		{Name: "init-share-template", Usage: "Download shared source into a new project directory", ArgsUsage: "LINK", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "init-share-template", Usage: "Download shared source into a new project directory", Description: "Preserves source bytes, including declared template-files. Prepare those files in the new Web application's directory before ordinary Web publication; this command only downloads source.", ArgsUsage: "LINK", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || cmd.String("dir") == "" {
 				return argumentFailure(ctx, cmd, "Provide LINK and --dir for a new project")
 			}
@@ -90,7 +90,7 @@ func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(page), cmd.Bool("json"), output, diagnostics))
 		}},
-		{Name: "init-template", Usage: "Download and extract a Web template into a new directory", ArgsUsage: "NAME", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "init-template", Usage: "Download and extract a Web template into a new directory", Description: "Preserves source bytes, including declared template-files. Prepare those files in the new Web application's directory before ordinary Web publication; Console template installation is a separate server workflow.", ArgsUsage: "NAME", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || cmd.String("dir") == "" {
 				return argumentFailure(ctx, cmd, "Provide a template NAME and --dir for a new project")
 			}
