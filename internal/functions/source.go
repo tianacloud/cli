@@ -180,7 +180,7 @@ func (s *Source) Read(ctx context.Context, view SourceView, relative string) ([]
 	return s.request(ctx, "GET", "/v1/file?"+q.Encode(), nil)
 }
 
-func (s *Source) Save(ctx context.Context, view SourceView, files map[string]string) (string, error) {
+func (s *Source) Save(ctx context.Context, view SourceView, files map[string]string, name string) (string, error) {
 	changes := map[string]string{}
 	for name, content := range files {
 		file, err := SourcePath(view.Root, name)
@@ -193,7 +193,7 @@ func (s *Source) Save(ctx context.Context, view SourceView, files map[string]str
 	if view.Commit != "" {
 		base = view.Commit
 	}
-	body, err := json.Marshal(map[string]any{"base_commit": base, "files": changes})
+	body, err := json.Marshal(map[string]any{"base_commit": base, "files": changes, "message": "Save source of " + name})
 	if err != nil {
 		return "", err
 	}

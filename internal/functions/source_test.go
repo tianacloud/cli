@@ -83,9 +83,12 @@ func TestSharedSourceSelectionAndSave(t *testing.T) {
 			if err != nil || view.Root != tc.wantRoot || view.Sample != tc.initial {
 				t.Fatalf("view=%+v error=%v", view, err)
 			}
-			commit, err := s.Save(t.Context(), view, map[string]string{"handler.go": "package main"})
+			commit, err := s.Save(t.Context(), view, map[string]string{"handler.go": "package main"}, "订单服务")
 			if err != nil || commit != "new-commit" {
 				t.Fatalf("save=%s %v", commit, err)
+			}
+			if saved["message"] != "Save source of 订单服务" {
+				t.Fatalf("message=%v", saved["message"])
 			}
 			changes := saved["files"].(map[string]any)
 			wantPath := "handler.go"
@@ -110,7 +113,7 @@ func TestSourceSaveReportsConcurrentCommit(t *testing.T) {
 	s := &Source{transport: testSourceTransport{do: func(fetch.Request) (*fetch.Response, error) {
 		return sourceResponse(409, `{"error":{"code":"SOURCE_CHANGED"}}`)
 	}}}
-	_, err := s.Save(t.Context(), SourceView{Commit: "old", Root: "functions/fn-demo"}, map[string]string{"main.go": "package main"})
+	_, err := s.Save(t.Context(), SourceView{Commit: "old", Root: "functions/fn-demo"}, map[string]string{"main.go": "package main"}, "orders-api")
 	if err == nil || !strings.Contains(err.Error(), "reconcile") {
 		t.Fatalf("error=%v", err)
 	}

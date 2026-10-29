@@ -112,7 +112,7 @@ func newFunctionSourceCommand(output, diagnostics io.Writer) *cli.Command {
 					if cmd.String("base-commit") == "empty" && view.Commit != "" {
 						return apppublish.Result{}, errors.New("repository already has a commit; read main and use its commit before saving")
 					}
-					commit, err := source.Save(ctx, view, files)
+					commit, err := source.Save(ctx, view, files, instance.DisplayName)
 					return apppublish.Success(map[string]string{"commit": commit, "root": view.Root}), err
 				}
 			})
