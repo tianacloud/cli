@@ -122,7 +122,7 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
     state.update(scenario=scenario, requests=[], reached=threading.Event(), release=threading.Event())
     credential_path = root/'config'/'tiana'/'credentials.json'
     credential_path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    if command != "login" and scenario not in ["signed-out", "json-rejected"]:
+    if command != "login" and scenario != "signed-out":
         credential = {"access_token": secret_values[0], "refresh_token": secret_values[1],
                       "token_type": "Bearer", "expires_at": "2099-01-01T00:00:00Z",
                       "user": {"user_id": "fixture-user", "tenant_id": "test-tenant"}}
@@ -132,7 +132,9 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
     env.update(TIANA_API_ORIGIN=origin, XDG_CONFIG_HOME=str(root/'config'), TIANA_CA_FILE=str(certificate))
     if diagnostic:
         env["TIANA_DIAGNOSTICS"] = "1"
-    argv = [str(binary), command] + (["--json"] if scenario == "json-rejected" else [])
+    argv = [str(binary), command] + (["--json"] if scenario == "json-success" else [])
+    if command == "login":
+        argv.append("--no-open")
     process = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         if scenario.startswith("pipe-"):
@@ -153,7 +155,7 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
             process.wait()
     requests = list(state["requests"])
     failures = []
-    if scenario in ["signed-out", "json-rejected"]:
+    if scenario == "signed-out":
         expected_stages = []
     elif command == "login":
         expected_stages = ["create", "poll", "exchange"]
@@ -165,7 +167,7 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
             expected_stages = ["create", "poll", "poll", "exchange"]
         elif scenario in ["denied", "expired", "completed", "unknown", "empty-status", "approved-no-code"]:
             expected_stages = ["create", "poll"]
-        elif "-" in scenario:
+        elif scenario.startswith(("create-", "poll-", "exchange-")):
             expected_stages = expected_stages[:expected_stages.index(scenario.split("-")[0]) + 1]
     elif command == "status":
         expected_stages = ["whoami", "quota"]
@@ -195,11 +197,11 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
         failures.append("local-only command invented ID")
     if any(value in stdout + stderr for value in secret_values):
         failures.append("synthetic secret in output")
-    if scenario in ["signed-out", "json-rejected"] and requests:
+    if scenario == "signed-out" and requests:
         failures.append("local-only outcome made a request")
-    if scenario not in ["signed-out", "json-rejected"] and not requests:
+    if scenario != "signed-out" and not requests:
         failures.append("expected network boundary not reached")
-    if command == "logout" and scenario != "json-rejected" and credential_path.exists():
+    if command == "logout" and credential_path.exists():
         failures.append("logout retained local credential")
     if command == "login" and want == 0 and not credential_path.exists():
         failures.append("successful login did not save credential")
@@ -207,15 +209,22 @@ def check(command, scenario, diagnostic, root, origin, certificate, want):
         failures.append("failed login saved credential")
     if scenario == "pipe-after-exchange" and not credential_path.exists():
         failures.append("output failure removed issued credential")
-    if command == "status" and want == 0 and "RESOURCE" not in stdout:
+    if command == "status" and want == 0 and scenario != "json-success" and "RESOURCE" not in stdout:
         failures.append("status omitted quota")
     if command == "status" and scenario.startswith("quota-") and "Quota: unavailable" not in stdout:
         failures.append("status quota failure omitted unavailable result")
     if command == "status" and scenario == "signed-out" and "Not signed in" not in stdout:
         failures.append("signed-out status missing")
+    if scenario == "json-success":
+        try:
+            result = json.loads(stdout)
+            if result["status"] != "succeeded" or result["data"]["logged_in"] != (command != "logout"):
+                failures.append("JSON result did not confirm the session outcome")
+        except (ValueError, KeyError, TypeError):
+            failures.append("stdout is not one structured session result")
     rows.append({"command": command, "scenario": scenario, "diagnostics": diagnostic,
                  "diagnostics_environment": "1" if diagnostic else "unset",
-                 "requested_json": scenario == "json-rejected", "exit": process.returncode,
+                 "requested_json": scenario == "json-success", "exit": process.returncode,
                  "requests": requests, "stdout_sha256": hashlib.sha256(stdout.encode()).hexdigest(),
                  "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(), "failures": failures})
     args.output.write_text(json.dumps({"in_progress": True, "rows": rows}, indent=2) + "\n")
@@ -266,7 +275,7 @@ with tempfile.TemporaryDirectory(prefix="tiana-session-diag-") as temporary:
                 cases.append(("logout", scenario, 0))
             for fault in ["http", "disconnect", "cancel"]:
                 cases.append(("logout", "logout-" + fault, 130 if fault == "cancel" else 1))
-            cases += [(command, "json-rejected", 2) for command in ["login", "status", "logout"]]
+            cases += [(command, "json-success", 0) for command in ["login", "status", "logout"]]
             for command, scenario, want in cases:
                 with tempfile.TemporaryDirectory(dir=root) as case:
                     check(command, scenario, diagnostic, Path(case), f"https://127.0.0.1:{server.server_port}", root / "ca.pem", want)

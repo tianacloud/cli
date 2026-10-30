@@ -274,12 +274,27 @@ and rely on durable deleting state plus idempotent OSS deletion after restart.
 never infer tenant or usage from detail counts. Preserve decimal-string uint64 and
 Unix-millisecond precision, zero vs unknown, blocked/reason and partial failures.
 Missing login or unavailable quota exits 1; retrieved blockage itself exits 0.
+`status --auth-only` is a separate local credential-expiry check: no network,
+refresh, quota, lock-file or update-check writes. Missing/expired credentials are
+successful checks with logged_in=false; unreadable/corrupt state remains an error.
+It does not verify server revocation or refreshability. Keep ordinary status and
+its WorkBuddy `Quota period:` match unchanged.
 Print available account details and quota, omitting User ID/Management/Tenant lines.
 Use exact bounded math for three rows, one-decimal percentage and 20-cell bars;
 preserve tiny/nonzero/below/above-limit distinctions and cap only bar width.
 
 `TIANA_DIAGNOSTICS=1` exposes request identities on stderr without secrets, SQL
 results or Git protocol bytes. No request ID exists for purely local failures.
+
+Blocking `login` opens the default browser unless `--no-open`; it still prints
+the SDK verification URL and only succeeds after the SDK persists credentials.
+Blocking `login --json` sends SDK progress to stderr and one final envelope to
+stdout. The CLI observes the pinned SDK's complete URI line for browser launch;
+the SDK continues to own transaction polling, exchange and account persistence.
+Split start/resume keeps its existing behavior. Verify browser launch/no-open,
+delayed approval, errors and cancellation, plus the real-process WorkBuddy fixture
+and plain/JSON status tests. Rollback removes the additive flags/browser behavior
+and requires reverting Doubao's configuration; credential formats do not change.
 
 ## Verification and delivery
 
@@ -445,10 +460,10 @@ completed response at the fetch adapter, not a physical deployed-network fault.
 Preserve publish identity/archive until receipt and serving checksums confirm
 the outcome. Report fixture, live-service, cross-build and native CI separately.
 
-## CLI 1.0.6 release boundaries
+## CLI 1.0.7 release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.6. Both SDK pins remain published v1.0.1. A source tag must
+dependencies are 1.0.7. Both SDK pins remain published v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication
 when authorizing a tag push. Manual dispatch retains dry_run; optional

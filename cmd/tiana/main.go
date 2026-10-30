@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	version = "1.0.6"
+	version = "1.0.7"
 	// SQLite's pinned SDK still uses a build-selected physical Gateway port.
 	gatewayPort = "443"
 )
@@ -112,27 +112,6 @@ func runConnect(ctx context.Context, args []string, output, diagnostics io.Write
 		}
 	}
 	return status
-}
-
-func runLogin(ctx context.Context, output, errorOutput io.Writer) int {
-	loginContext, cancel := context.WithCancel(ctx)
-	defer cancel()
-	progress := &loginProgressWriter{Writer: output, cancel: cancel}
-	client, err := newAuthClient(loginContext, progress, false)
-	if err != nil {
-		fmt.Fprintln(errorOutput, "tiana:", safeDisplay(err.Error()))
-		return 1
-	}
-	_, err = client.Login(loginContext)
-	if progress.err != nil {
-		writeCommandError(errorOutput, progress.err)
-		return 1
-	}
-	if err != nil {
-		writeCommandError(errorOutput, err)
-		return 1
-	}
-	return 0
 }
 
 func runLogout(ctx context.Context, output, errorOutput io.Writer) int {

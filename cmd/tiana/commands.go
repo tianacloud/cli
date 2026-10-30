@@ -174,7 +174,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			newVersionCommand(output, diagnostics, updatecheck.Checker{}),
 			newLoginCommand(output, diagnostics),
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: noArgs(runLogout)},
-			{Name: "status", Usage: "Show login status and tenant quota", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status.", Action: noArgs(runStatus)},
+			newStatusCommand(output, diagnostics),
 
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
 			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
