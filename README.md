@@ -745,7 +745,8 @@ tiana function switch FUNCTION_ID --json
 Creation without `--git-instance-id` creates a source Git. An existing Git can be
 shared with Web and other Functions. Source operations use the service's persisted `source_dir`. Creation accepts
 `--source-dir /services/orders`; omit it for `/functions/<name>/`, or use `/`
-for repository root. Chinese names and spaces are preserved. Each directory has
+for repository root. The generated default preserves Chinese characters and replaces
+spaces in the name with underscores. Explicit directories preserve spaces. Each directory has
 a main package; its `go.mod` may be in a parent directory within the repository.
 Multiple entry directories may share one module and produce separate binaries. Renaming the service leaves its directory fixed. Multiple
 services may share one directory and publish independently. Saves modify only
