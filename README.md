@@ -746,7 +746,8 @@ Creation without `--git-instance-id` creates a source Git. An existing Git can b
 shared with Web and other Functions. Source operations use the service's persisted `source_dir`. Creation accepts
 `--source-dir /services/orders`; omit it for `/functions/<name>/`, or use `/`
 for repository root. Chinese names and spaces are preserved. Each directory has
-its own `go.mod`. Renaming the service leaves its directory fixed. Multiple
+a main package; its `go.mod` may be in a parent directory within the repository.
+Multiple entry directories may share one module and produce separate binaries. Renaming the service leaves its directory fixed. Multiple
 services may share one directory and publish independently. Saves modify only
 the specified files and use `Save source of <current service name>`.
 
