@@ -38,7 +38,7 @@ func (s *Server) functionConnection(w http.ResponseWriter, r *http.Request, iden
 		Token      string `json:"token"`
 		ExpiresAt  int64  `json:"expires_at"`
 	}
-	if err := identity.FileRequest(ctx, "POST", "/api/v1/functions/"+url.PathEscape(body.InstanceID)+"/connection", struct{}{}, &connection); err != nil {
+	if err := identity.FileRequest(ctx, "POST", "/api/v1/functions/"+url.PathEscape(body.InstanceID)+"/connection", map[string]string{"web_id": s.config.Build.Manifest.WebID}, &connection); err != nil {
 		s.failure(w, 403, "FUNCTION_ACCESS_UNAVAILABLE")
 		return
 	}

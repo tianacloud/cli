@@ -720,7 +720,11 @@ using a server-side file grant and keeps them same-origin for the browser.
 Uploads still go directly to OSS. File credentials are separate from database
 connection credentials.
 
-### Function backends
+#Local Web preview exposes the authenticated account as `context.user.id` and
+`context.user.tenantId`, matching the caller fields available to hosted modules.
+The values come from the preview login session.
+
+## Function backends
 
 The Function feature branch adds `tiana function` with the same account and origin
 selection as other products. Run its help on the installed CLI before use.
@@ -739,7 +743,6 @@ tiana function parameters get FUNCTION_ID --json
 tiana function parameters set FUNCTION_ID --file parameters.json --json
 tiana function cors get FUNCTION_ID --json
 tiana function cors set FUNCTION_ID --file cors.json --json
-tiana function switch FUNCTION_ID --json
 ```
 
 Creation without `--git-instance-id` creates a source Git. An existing Git can be
@@ -753,15 +756,17 @@ services may share one directory and publish independently. Saves modify only
 the specified files and use `Save source of <current service name>`.
 
 Saving does not compile. Publication builds the saved commit and takes effect at
-the next cold wake. `switch` drains current requests and sleeps without the normal
-idle cooldown. The next request starts the published version. A commit already
+the next cold wake. A commit already
 published returns `already_published`. Keep the printed request ID and commit;
 recover an uncertain submission with those exact `--request-id` and `--commit`
 values. Builds are paginated with `--before SEQUENCE`; Function lists use `--page`.
 `logs --json` returns the build log as `data.text` and the server's discarded-byte
 count as `data.dropped_bytes`.
 
-Parameters and CORS `set` replace their whole JSON objects. Parameter files can
+Parameters and CORS `set` replace their whole JSON objects. Parameter values use
+`{"MESSAGE":{"kind":"plain","value":"Hello"}}`.
+Sleep modes are `all` (default, wait for HTTP and jobs), `http` (wait for HTTP),
+and `none` (interrupt immediately); all skip the idle cooldown. Parameter files can
 contain private database credentials; keep them outside Git with restricted file
 permissions. `disable` / `enable` control access. `delete --force --wait` deletes
 the function and artifacts while retaining its source Git.

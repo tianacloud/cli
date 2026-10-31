@@ -84,7 +84,7 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 		if e != nil || instance.Engine != "web" || instance.ID != resourceID[0] {
 			return Identity{}, errors.New("Web project authorization unavailable")
 		}
-		return Identity{ID: user.ID, Label: user.ID, FileRequest: fileRequest, FileHTTP: fileHTTP, Connection: func(context.Context) (Connection, error) {
+		return Identity{ID: user.ID, TenantID: user.TenantID, Label: user.ID, FileRequest: fileRequest, FileHTTP: fileHTTP, Connection: func(context.Context) (Connection, error) {
 			return Connection{}, errors.New("Web project has no database binding")
 		}}, nil
 	}
@@ -202,7 +202,7 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 	if label == "" {
 		label = user.ID
 	}
-	return Identity{ID: user.ID, Label: label, Connection: resolve, FileRequest: fileRequest, FileHTTP: fileHTTP}, nil
+	return Identity{ID: user.ID, TenantID: user.TenantID, Label: label, Connection: resolve, FileRequest: fileRequest, FileHTTP: fileHTTP}, nil
 }
 
 type previewFlight struct {

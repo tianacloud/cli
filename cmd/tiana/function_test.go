@@ -101,7 +101,7 @@ func TestFunctionLogsReadsTextResponse(t *testing.T) {
 
 func TestFunctionParametersReplacement(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "parameters.json")
-	if err := os.WriteFile(file, []byte(`{"MESSAGE":"hello","SQLITE_ENDPOINT":"db.example.test"}`), 0600); err != nil {
+	if err := os.WriteFile(file, []byte(`{"MESSAGE":{"kind":"plain","value":"hello"},"SQLITE_ENDPOINT":{"kind":"plain","value":"db.example.test"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	puts := 0
@@ -112,12 +112,15 @@ func TestFunctionParametersReplacement(t *testing.T) {
 		case "PUT /api/v1/functions/fn-demo/parameters":
 			puts++
 			var body struct {
-				Parameters map[string]string `json:"parameters"`
+				Parameters map[string]struct {
+					Kind  string `json:"kind"`
+					Value string `json:"value"`
+				} `json:"parameters"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Parameters["MESSAGE"] != "hello" {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Parameters["MESSAGE"].Value != "hello" {
 				t.Errorf("wrong replacement: %+v %v", body, err)
 			}
-			w.Write([]byte(`{"parameters":{"MESSAGE":"hello"},"application":"applied"}`))
+			w.Write([]byte(`{"parameters":{"MESSAGE":{"kind":"plain","value":"hello"}},"application":"applied"}`))
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL)
 			w.WriteHeader(404)

@@ -38,6 +38,7 @@ type Identity struct {
 	FileHTTP    *http.Client
 	Files       *fileclient.Client
 	ID, Label   string
+	TenantID    string
 	Connection  func(context.Context) (Connection, error)
 }
 type LoginFlow struct {
@@ -255,7 +256,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "pending":
 			s.json(w, 202, map[string]string{"state": "pending"})
 		case "ready":
-			s.json(w, 200, map[string]any{"state": "ready", "user": map[string]string{"id": identity.ID, "label": identity.Label}, "web_id": s.config.Build.Manifest.WebID})
+			isAppOwner := false
+			if identity.FileRequest != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+				defer cancel()
+				var project struct {
+					OwnerID string `json:"owner_id"`
+				}
+				if err := identity.FileRequest(ctx, "GET", "/api/v1/web-projects/"+url.PathEscape(s.config.Build.Manifest.WebID), nil, &project); err != nil {
+					s.failure(w, 503, "WEB_UNAVAILABLE")
+					return
+				}
+				isAppOwner = project.OwnerID != "" && identity.ID == project.OwnerID
+			}
+			s.json(w, 200, map[string]any{"state": "ready", "user": map[string]string{"id": identity.ID, "label": identity.Label}, "web_id": s.config.Build.Manifest.WebID, "is_app_owner": isAppOwner})
 		default:
 			s.failure(w, 401, "LOGIN_REQUIRED")
 		}
@@ -439,10 +453,13 @@ func (s *Server) failure(w http.ResponseWriter, status int, code string) {
 }
 
 func (s *Server) applicationDocument(w http.ResponseWriter, r *http.Request) {
+	identity, _ := s.identity(r)
 	descriptor := struct {
 		Manifest
-		LocalPreview bool `json:"local_preview"`
-	}{s.config.Build.Manifest, true}
+		LocalPreview bool   `json:"local_preview"`
+		UserID       string `json:"user_id"`
+		UserTenantID string `json:"user_tenant_id"`
+	}{s.config.Build.Manifest, true, identity.ID, identity.TenantID}
 	data, err := json.Marshal(descriptor)
 	if err != nil {
 		s.failure(w, 500, "WEB_UNAVAILABLE")

@@ -28,6 +28,8 @@ try {
  await page.reload();
  await page.waitForFunction(()=>document.querySelector('#app').textContent==='Browser ledger');
  assert.equal(await page.locator('#tiana-loading').count(),0);
+ assert.equal(await page.locator('#app').getAttribute('data-user'),'fixture-owner');
+ assert.equal(await page.locator('#app').getAttribute('data-tenant'),'fixture-tenant');
  await page.route('**/assets/app.css',route=>route.abort());
  await page.reload();
  await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
@@ -115,6 +117,8 @@ try {
  await page.goto(launch.url);
  await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
  assert.equal(await page.evaluate(()=>window.tiana.auth.getAccessToken()),'fixture-saved-access');
+ assert.equal(await page.locator('#app').getAttribute('data-user'),'saved-owner');
+ assert.equal(await page.locator('#app').getAttribute('data-tenant'),'saved-tenant');
  assert.equal(new URL(page.url()).hash,'');
  assert.equal(await page.locator('#tiana-sign-in').count(),0);
  const stranger=await browser.newContext();

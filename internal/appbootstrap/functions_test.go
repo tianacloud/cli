@@ -27,6 +27,9 @@ func TestPreviewFunctionUsesCurrentBindingAndAccount(t *testing.T) {
 		if method != "POST" || path != "/api/v1/functions/fn-api/connection" {
 			t.Errorf("unexpected call: %s %s", method, path)
 		}
+		if value, ok := body.(map[string]string); !ok || value["web_id"] != "billing" {
+			t.Fatal("preview must bind the originating Web")
+		}
 		return json.Unmarshal([]byte(`{"instance_id":"fn-api","origin":"https://function.example.test","token":"function-user-token","expires_at":2000000000}`), result)
 	}}}
 	call := func() *httptest.ResponseRecorder {
@@ -50,5 +53,25 @@ func TestPreviewFunctionUsesCurrentBindingAndAccount(t *testing.T) {
 	sdk := previewRequest(s, "GET", "/web/billing/_tiana/sdk/functions.js", nil)
 	if sdk.Code != 200 || !strings.Contains(sdk.Body.String(), "createTianaFunctions") {
 		t.Fatal("Function SDK not served")
+	}
+}
+
+func TestPreviewSessionAppCreator(t *testing.T) {
+	for _, owner := range []string{"owner", "another-creator"} {
+		s := previewFixture(t, nil)
+		s.sessions["creator-preview"] = &session{state: "ready", cancel: func() {}, expires: time.Now().Add(time.Hour), identity: Identity{ID: "owner", FileRequest: func(_ context.Context, method, path string, _, result any) error {
+			if method != "GET" || path != "/api/v1/web-projects/billing" {
+				t.Fatal("unexpected creator lookup")
+			}
+			data, _ := json.Marshal(map[string]string{"owner_id": owner})
+			return json.Unmarshal(data, result)
+		}}}
+		response := previewRequest(s, "GET", "/web/billing/_tiana/session", &http.Cookie{Name: s.cookie, Value: "creator-preview"})
+		var body struct {
+			IsAppOwner *bool `json:"is_app_owner"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != 200 || body.IsAppOwner == nil || *body.IsAppOwner != (owner == "owner") {
+			t.Fatal("wrong preview creator flag")
+		}
 	}
 }

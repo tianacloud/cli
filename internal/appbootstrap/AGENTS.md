@@ -89,3 +89,12 @@ an isolated file grant header, while uploads go directly to OSS. Public SDK
 modules are embedded from the same pinned serverless-js build as Web; keep
 both bootstrap copies and their SDK provenance aligned. Existing project ID
 is available before publication, so unpublished local preview has a stable scope.
+
+## Preview caller context
+
+Preview Bootstrap exposes `context.user.id` and `context.user.tenantId` from the
+already authorized preview identity. Render these fields into the runtime
+HTML descriptor; neither is an application source constant or a data credential.
+Both saved CLI login and explicit Console login preserve the same caller fields.
+Verify that the mounted application receives the corresponding identity for both
+login paths, together with the existing provider and session browser checks.

@@ -41,7 +41,7 @@ func functionCommand(name, usage string, flags []cli.Flag, output, diagnostics i
 func runFunctionCommand(ctx context.Context, cmd *cli.Command, output, diagnostics io.Writer, action func(*functions.Client) (apppublish.Result, error)) error {
 	var err error
 	switch cmd.Name {
-	case "set", "save", "publish", "delete", "enable", "disable", "switch", "update":
+	case "set", "save", "publish", "delete", "enable", "disable", "update":
 		var release func()
 		release, err = lockFunctionMutation(ctx, diagnostics)
 		if err == nil {
@@ -149,11 +149,6 @@ func newFunctionCommand(input io.Reader, output, diagnostics io.Writer) *cli.Com
 		newFunctionConfigCommand("cors", output, diagnostics),
 		newFunctionEnabledCommand(true, output, diagnostics),
 		newFunctionEnabledCommand(false, output, diagnostics),
-		functionCommand("switch", "Drain the running version; the next wake uses the latest release", nil, output, diagnostics, func(ctx context.Context, _ *cli.Command, c *functions.Client, i authclient.Instance) (apppublish.Result, error) {
-			var result any
-			err := c.Request(ctx, "POST", functions.Path(i.ID)+"/sleep", map[string]any{}, &result)
-			return apppublish.Result{Status: "accepted", Data: result}, err
-		}),
 		newFunctionDeleteCommand(input, output, diagnostics),
 	}}
 }
@@ -175,7 +170,7 @@ func newFunctionConfigCommand(kind string, output, diagnostics io.Writer) *cli.C
 			err := c.Request(ctx, "GET", functions.Path(i.ID)+"/"+kind, nil, &result)
 			return apppublish.Success(result), err
 		}),
-		functionCommand("set", "Replace "+kind+" from a JSON file", []cli.Flag{&cli.StringFlag{Name: "file", Required: true, Usage: "JSON object: parameter name/value map or CORS origins/methods/headers/expose_headers"}}, output, diagnostics, func(ctx context.Context, cmd *cli.Command, c *functions.Client, i authclient.Instance) (apppublish.Result, error) {
+		functionCommand("set", "Replace "+kind+" from a JSON file", []cli.Flag{&cli.StringFlag{Name: "file", Required: true, Usage: "JSON object: parameter map {name:{kind:plain,value:string}} or CORS origins/methods/headers/expose_headers"}}, output, diagnostics, func(ctx context.Context, cmd *cli.Command, c *functions.Client, i authclient.Instance) (apppublish.Result, error) {
 			raw, err := os.ReadFile(cmd.String("file"))
 			if err != nil {
 				return apppublish.Result{}, fmt.Errorf("read configuration file: %w", err)

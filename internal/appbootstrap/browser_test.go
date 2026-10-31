@@ -26,7 +26,7 @@ func TestBootstrapBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(dir, "assets", "chunk.js"), []byte(`export const label='Browser ledger';`), 0600)
-	os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte(`import {label} from './chunk.js'; export async function mount(root,context){ const c=await context.connection(); const gate=await fetch('/_fixture/mount',{cache:'no-store'}); if(!gate.ok){root.dataset.failedMount='1';throw new Error('transient mount failure')} if(root.dataset.failedMount)throw new Error('dirty document was reused'); root.textContent=label; root.dataset.instance=c.instance_id; root.dataset.route=location.hash; }`), 0600)
+	os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte(`import {label} from './chunk.js'; export async function mount(root,context){ const c=await context.connection(); const gate=await fetch('/_fixture/mount',{cache:'no-store'}); if(!gate.ok){root.dataset.failedMount='1';throw new Error('transient mount failure')} if(root.dataset.failedMount)throw new Error('dirty document was reused'); root.textContent=label; root.dataset.instance=c.instance_id; root.dataset.user=context.user.id; root.dataset.tenant=context.user.tenantId; root.dataset.route=location.hash; }`), 0600)
 	build, err := LoadBuild(dir, fixtureDescriptor())
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestBootstrapBrowser(t *testing.T) {
 			case <-ctx.Done():
 				return Identity{}, ctx.Err()
 			}
-			return Identity{ID: "fixture-owner", Label: "Fixture", Connection: func(context.Context) (Connection, error) {
+			return Identity{ID: "fixture-owner", TenantID: "fixture-tenant", Label: "Fixture", Connection: func(context.Context) (Connection, error) {
 				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-access-token", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)}, nil
 			}}, nil
 		}}, nil
@@ -61,7 +61,7 @@ func TestBootstrapBrowser(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/_fixture/launch":
-			link, err := handler.AuthorizeLocalAccount(Identity{ID: "saved-owner", Connection: func(context.Context) (Connection, error) {
+			link, err := handler.AuthorizeLocalAccount(Identity{ID: "saved-owner", TenantID: "saved-tenant", Connection: func(context.Context) (Connection, error) {
 				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-saved-access", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339Nano)}, nil
 			}})
 			if err != nil {

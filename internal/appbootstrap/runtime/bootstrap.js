@@ -96,7 +96,7 @@ async function loadApplication() {
   const functions = Object.freeze({fetch: (instanceId, path, init) => functionClient.fetch(instanceId, path, init)});
   window.addEventListener('pagehide', () => functionClient.dispose());
   window.addEventListener('pageshow', event => { if (event.persisted) functionClient = createTianaFunctions(functionOptions); });
-  const context = Object.freeze({appId: manifest.web_id, localPreview, auth, files, functions, async connection() {
+  const context = Object.freeze({appId: manifest.web_id, user: Object.freeze({id: manifest.user_id, tenantId: manifest.user_tenant_id}), localPreview, auth, files, functions, async connection() {
     if (credential && credentialExpiresAt > Date.now() + 30000) return credential;
     if (!pendingConnection) {
       pendingConnection = (async () => {
