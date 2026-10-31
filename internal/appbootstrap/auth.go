@@ -60,6 +60,13 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 	if err != nil || user.ID == "" {
 		return Identity{}, errors.New("Console identity unavailable")
 	}
+	label := user.DisplayName
+	if label == "" {
+		label = user.Username
+	}
+	if label == "" {
+		label = user.ID
+	}
 	var operationMu sync.Mutex
 	var stopped error
 	fileRequest := fileclient.Request(func(call context.Context, method, path string, body, result any) error {
@@ -84,7 +91,7 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 		if e != nil || instance.Engine != "web" || instance.ID != resourceID[0] {
 			return Identity{}, errors.New("Web project authorization unavailable")
 		}
-		return Identity{ID: user.ID, TenantID: user.TenantID, Label: user.ID, FileRequest: fileRequest, FileHTTP: fileHTTP, Connection: func(context.Context) (Connection, error) {
+		return Identity{ID: user.ID, TenantID: user.TenantID, Label: label, Username: user.Username, DisplayName: user.DisplayName, FileRequest: fileRequest, FileHTTP: fileHTTP, Connection: func(context.Context) (Connection, error) {
 			return Connection{}, errors.New("Web project has no database binding")
 		}}, nil
 	}
@@ -195,14 +202,7 @@ func accountIdentity(ctx context.Context, client *authclient.Client, instanceID 
 	if _, err = resolve(ctx); err != nil {
 		return Identity{}, err
 	}
-	label := user.DisplayName
-	if label == "" {
-		label = user.Username
-	}
-	if label == "" {
-		label = user.ID
-	}
-	return Identity{ID: user.ID, TenantID: user.TenantID, Label: label, Connection: resolve, FileRequest: fileRequest, FileHTTP: fileHTTP}, nil
+	return Identity{ID: user.ID, TenantID: user.TenantID, Label: label, Username: user.Username, DisplayName: user.DisplayName, Connection: resolve, FileRequest: fileRequest, FileHTTP: fileHTTP}, nil
 }
 
 type previewFlight struct {

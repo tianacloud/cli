@@ -98,3 +98,12 @@ HTML descriptor; neither is an application source constant or a data credential.
 Both saved CLI login and explicit Console login preserve the same caller fields.
 Verify that the mounted application receives the corresponding identity for both
 login paths, together with the existing provider and session browser checks.
+
+
+Preview `_tiana/session` returns the hosted Site's public user field names:
+user_id, username and display_name, with status SESSION_ACTIVE. Both saved-account
+and Console-login identities obtain these values from the SDK's verified Whoami
+result, including Web apps without a database binding. The runtime context keeps
+its existing id/tenantId shape. Validate profile defaults and identity through a
+real CLI preview; local session state remains in memory and changing this response
+adds no persistent data migration.

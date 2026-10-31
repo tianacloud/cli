@@ -34,12 +34,13 @@ type Connection struct {
 	ExpiresAt  string `json:"expires_at"`
 }
 type Identity struct {
-	FileRequest fileclient.Request
-	FileHTTP    *http.Client
-	Files       *fileclient.Client
-	ID, Label   string
-	TenantID    string
-	Connection  func(context.Context) (Connection, error)
+	FileRequest           fileclient.Request
+	FileHTTP              *http.Client
+	Files                 *fileclient.Client
+	ID, Label             string
+	Username, DisplayName string
+	TenantID              string
+	Connection            func(context.Context) (Connection, error)
 }
 type LoginFlow struct {
 	VerificationURL string
@@ -269,7 +270,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				isAppOwner = project.OwnerID != "" && identity.ID == project.OwnerID
 			}
-			s.json(w, 200, map[string]any{"state": "ready", "user": map[string]string{"id": identity.ID, "label": identity.Label}, "web_id": s.config.Build.Manifest.WebID, "is_app_owner": isAppOwner})
+			s.json(w, 200, map[string]any{"status": "SESSION_ACTIVE", "user": map[string]string{"user_id": identity.ID, "username": identity.Username, "display_name": identity.DisplayName}, "tenant_id": identity.TenantID, "web_id": s.config.Build.Manifest.WebID, "is_app_owner": isAppOwner})
 		default:
 			s.failure(w, 401, "LOGIN_REQUIRED")
 		}

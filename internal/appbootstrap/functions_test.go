@@ -59,7 +59,7 @@ func TestPreviewFunctionUsesCurrentBindingAndAccount(t *testing.T) {
 func TestPreviewSessionAppCreator(t *testing.T) {
 	for _, owner := range []string{"owner", "another-creator"} {
 		s := previewFixture(t, nil)
-		s.sessions["creator-preview"] = &session{state: "ready", cancel: func() {}, expires: time.Now().Add(time.Hour), identity: Identity{ID: "owner", FileRequest: func(_ context.Context, method, path string, _, result any) error {
+		s.sessions["creator-preview"] = &session{state: "ready", cancel: func() {}, expires: time.Now().Add(time.Hour), identity: Identity{ID: "owner", TenantID: "tenant", Username: "account-name", DisplayName: "Display Name", FileRequest: func(_ context.Context, method, path string, _, result any) error {
 			if method != "GET" || path != "/api/v1/web-projects/billing" {
 				t.Fatal("unexpected creator lookup")
 			}
@@ -68,10 +68,19 @@ func TestPreviewSessionAppCreator(t *testing.T) {
 		}}}
 		response := previewRequest(s, "GET", "/web/billing/_tiana/session", &http.Cookie{Name: s.cookie, Value: "creator-preview"})
 		var body struct {
-			IsAppOwner *bool `json:"is_app_owner"`
+			IsAppOwner *bool  `json:"is_app_owner"`
+			Status     string `json:"status"`
+			User       struct {
+				ID          string `json:"user_id"`
+				Username    string `json:"username"`
+				DisplayName string `json:"display_name"`
+			} `json:"user"`
 		}
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != 200 || body.IsAppOwner == nil || *body.IsAppOwner != (owner == "owner") {
 			t.Fatal("wrong preview creator flag")
+		}
+		if body.Status != "SESSION_ACTIVE" || body.User.ID != "owner" || body.User.Username != "account-name" || body.User.DisplayName != "Display Name" {
+			t.Fatalf("preview session user: %+v", body)
 		}
 	}
 }
