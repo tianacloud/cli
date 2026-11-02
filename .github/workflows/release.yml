@@ -228,5 +228,7 @@ jobs:
           prefix="$(mktemp -d "$RUNNER_TEMP/tiana-npm-install.XXXXXX")"
           npm install --prefix "$prefix" --cache "$prefix/cache" --include=optional --ignore-scripts --registry=https://registry.npmjs.org/ "@tianacloud/cli@$RELEASE_VERSION"
           node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" version
+          node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" function --help
+          node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" web functions --help
           node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" web list-template --help
           node "$prefix/node_modules/@tianacloud/cli/bin/tiana.mjs" web init-template --help
