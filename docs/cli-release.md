@@ -168,3 +168,31 @@ and filtered environment. The helper contract remains 3. All package versions,
 source defaults and release script defaults are 1.0.6; explicit version overrides
 remain supported. Rollback selects a previous immutable CLI release and loses the
 new proxy paths, without migrating local state.
+
+## 1.0.7 browser authorization and local auth status
+
+Blocking `login` opens the default browser, while `--no-open` preserves host-owned
+URL handling. `login --json` keeps progress on stderr and emits one final result
+only after authorization and credential persistence complete. Split start/resume
+login remains available to Skills.
+
+`status --auth-only --json` checks local access-token expiry without network,
+refresh, quota lookup or local writes. Missing/expired credentials return false;
+corrupt or unreadable state returns an error. Ordinary status and WorkBuddy's
+quota matching remain unchanged. Credentials and SDK pins do not change.
+
+The main npm package and seven exact native dependencies use 1.0.7. Rollback
+selects a previous immutable version and requires removing the new auth-only
+command from connector configuration.
+
+## 1.0.8 backend workflows and account preview
+
+Publishes the current main-branch Function management, source editing, build,
+parameter and CORS commands, Web backend bindings and local backend preview.
+Local preview uses the hosted App-owner identity contract and template material
+inventory is exposed without reseeding existing user files. The release also
+preserves the 1.0.7 connector login, auth-only status and version-command fixes.
+
+The main package and seven native optional dependencies use 1.0.8. Source/build
+defaults match that version; SDK pins remain v1.0.1 and the helper contract remains
+3. Publication does not deploy MGR, hosted Web or backend services.

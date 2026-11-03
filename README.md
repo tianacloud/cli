@@ -129,8 +129,17 @@ for VPN and browser requirements. Example addresses below are placeholders.
 The CLI has no management configuration-file option. Connection parameters
 after `connect --` belong to the native client and are passed through unchanged.
 
-`login` prints a URL and waits for browser approval; you can open the URL on
-another device when working over SSH. `status` shows available account details
+`login` prints a URL, attempts to open the default browser, and waits for browser
+approval and credential persistence before exiting successfully. Use `--no-open`
+over SSH or when a connector opens the printed URL. Browser launch failure leaves
+the same URL available for manual approval and does not restart authorization.
+`login --json` also waits; its URL and progress go to stderr and stdout contains
+only the final `status/data/error` result, with `data.logged_in=true` on success.
+`--no-open` also applies to JSON login. Cancellation exits 130; JSON login uses
+the existing `AUTH_DENIED` / `AUTH_EXPIRED` errors (exit 5), without changing the
+plain login or split login exit codes.
+
+`status` shows available account details
 and compute, storage and instance quota usage and limits, with a percentage and
 20-cell progress bar:
 
@@ -147,6 +156,22 @@ values just below/above the limit use `>99.9%`/`>100.0%` to avoid rounding away
 that distinction. Missing usage appears as `unknown`. A zero limit remains `0`
 with `n/a` percentage; unknown or undefined percentages show `-` for the bar.
 If login or quota is unavailable, the command exits nonzero.
+
+Connectors that only need a local credential check can use:
+
+```sh
+tiana status --auth-only --json
+```
+
+This checks the selected origin's saved access-token expiry without network I/O,
+token refresh, quota lookup or local writes. Valid unexpired local credentials
+return `data.logged_in=true`; missing or expired credentials return false. Both
+are successful checks (exit 0). Read/corruption errors return a failed result and
+nonzero exit, without a guessed login state. This does not verify server revocation;
+an expired access token returns false even if its refresh token may still work.
+Use ordinary `status` for remote account verification, refresh and quota.
+Match `"logged_in"\s*:\s*true\b` together with exit 0, not a bare state substring.
+WorkBuddy continues to use `login --no-open`, ordinary `status` and `Quota period:`.
 
 For a chat agent, start without blocking and resume after browser approval:
 

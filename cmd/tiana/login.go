@@ -8,8 +8,10 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/localstate"
 	"github.com/urfave/cli/v3"
@@ -17,8 +19,10 @@ import (
 
 type loginProgressWriter struct {
 	io.Writer
-	cancel context.CancelFunc
-	err    error
+	cancel      context.CancelFunc
+	err         error
+	openBrowser func(string)
+	line        string
 }
 
 func (w *loginProgressWriter) Write(p []byte) (int, error) {
@@ -32,6 +36,23 @@ func (w *loginProgressWriter) Write(p []byte) (int, error) {
 	if err != nil {
 		w.err = err
 		w.cancel()
+	} else if w.openBrowser != nil {
+		// The pinned SDK emits the validated verification URI on its own line.
+		// Observe that presentation event without changing its login transaction.
+		w.line += string(p)
+		for w.openBrowser != nil {
+			line, rest, complete := strings.Cut(w.line, "\n")
+			if !complete {
+				break
+			}
+			w.line = rest
+			if strings.HasPrefix(line, "https://") || strings.HasPrefix(line, "http://") {
+				open := w.openBrowser
+				w.openBrowser = nil
+				w.line = ""
+				open(line)
+			}
+		}
 	}
 	return n, err
 }
@@ -40,14 +61,14 @@ func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "login", Usage: "Sign in through a browser", Flags: []cli.Flag{
 		&cli.BoolFlag{Name: "start", Usage: "Return a reusable browser sign-in link without waiting"},
 		&cli.BoolFlag{Name: "resume", Usage: "Check browser approval once and save the account session"},
-		&cli.BoolFlag{Name: "json", Usage: "Emit structured login progress"},
+		&cli.BoolFlag{Name: "json", Usage: "Emit a structured login result; blocking progress goes to stderr"},
 		&cli.BoolFlag{Name: "no-open", Usage: "Print the login link without opening a browser"},
 	}, Action: func(ctx context.Context, cmd *cli.Command) error {
-		if cmd.NArg() != 0 || (cmd.Bool("start") && cmd.Bool("resume")) || (cmd.Bool("json") && !cmd.Bool("start") && !cmd.Bool("resume")) {
-			return argumentFailure(ctx, cmd, "choose --start or --resume for JSON login")
+		if cmd.NArg() != 0 || (cmd.Bool("start") && cmd.Bool("resume")) {
+			return argumentFailure(ctx, cmd, "login accepts no arguments; choose at most one of --start and --resume")
 		}
 		if !cmd.Bool("start") && !cmd.Bool("resume") {
-			return statusError(runLogin(ctx, output, diagnostics))
+			return statusError(runLogin(ctx, output, diagnostics, cmd.Bool("no-open")))
 		}
 		client, err := newAuthClient(ctx, io.Discard, true)
 		var transaction authclient.AuthTransaction
@@ -122,13 +143,54 @@ func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 	}}
 }
 
-func openLoginBrowser(ctx context.Context, uri string) {
+func runLogin(ctx context.Context, output, diagnostics io.Writer, noOpen bool) int {
+	loginContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	progressOutput := output
+	if managementJSON(ctx) {
+		progressOutput = diagnostics
+	}
+	progress := &loginProgressWriter{Writer: progressOutput, cancel: cancel}
+	if !noOpen {
+		progress.openBrowser = func(uri string) {
+			if err := openLoginBrowser(loginContext, uri); err != nil {
+				fmt.Fprintln(diagnostics, "tiana: could not open a browser; open the sign-in URL above to continue")
+			}
+		}
+	}
+	client, err := newAuthClient(loginContext, progress, false)
+	if err == nil {
+		_, err = client.Login(loginContext)
+	}
+	if progress.err != nil {
+		err = progress.err
+	}
+	if err != nil {
+		writeCommandError(diagnostics, err)
+		if managementJSON(ctx) {
+			code, message, next, exitCode := loginFailure(err)
+			result := apppublish.Failure(&apppublish.Error{Code: code, Message: message, NextAction: next, ExitCode: exitCode})
+			if exitCode == 4 {
+				result.Status = "unknown"
+			}
+			return writeAppResult(result, true, output, diagnostics)
+		}
+		return 1
+	}
+	if managementJSON(ctx) {
+		return writeAppResult(apppublish.Success(map[string]bool{"logged_in": true}), true, output, diagnostics)
+	}
+	return 0
+}
+
+func openLoginBrowser(ctx context.Context, uri string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	command := loginBrowserCommand(ctx, runtime.GOOS, uri)
 	if command != nil {
-		_ = command.Run()
+		return command.Run()
 	}
+	return errors.New("browser launcher unavailable")
 }
 
 func loginBrowserCommand(ctx context.Context, platform, uri string) *exec.Cmd {

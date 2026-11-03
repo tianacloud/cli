@@ -14,5 +14,5 @@ const prefix=mkdtempSync(path.join(tmpdir(),'tiana artifact install-'));
 try{
  runNPM(['install','--offline','--ignore-scripts','--include=optional','--no-audit','--no-fund','--prefix',prefix,'--cache',path.join(prefix,'cache'),path.join(directory,native.filename),path.join(directory,main.filename)],{stdio:'inherit'});
  const launcher=path.join(prefix,'node_modules/@tianacloud/cli/bin/tiana.mjs');
- for(const args of [['version'],['web','list-template','--help'],['web','init-template','--help']])execFileSync(process.execPath,[launcher,...args],{stdio:'inherit'});
+ for(const args of [['version'],['function','--help'],['web','functions','--help'],['web','list-template','--help'],['web','init-template','--help']])execFileSync(process.execPath,[launcher,...args],{stdio:'inherit'});
 }finally{rmSync(prefix,{recursive:true,force:true})}

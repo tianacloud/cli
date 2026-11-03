@@ -65,7 +65,7 @@ func passiveUpdateAllowed(args []string) bool {
 	command := ""
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--json" || strings.HasPrefix(arg, "--json=") || arg == "--help" || arg == "-h" || (command == "" && (arg == "--version" || arg == "-v" || strings.HasPrefix(arg, "--version="))) {
+		if arg == "--auth-only" || strings.HasPrefix(arg, "--auth-only=") || arg == "--json" || strings.HasPrefix(arg, "--json=") || arg == "--help" || arg == "-h" || (command == "" && (arg == "--version" || arg == "-v" || strings.HasPrefix(arg, "--version="))) {
 			return false
 		}
 		if arg == "--ca-file" {
