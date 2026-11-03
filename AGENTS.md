@@ -487,10 +487,11 @@ completed response at the fetch adapter, not a physical deployed-network fault.
 Preserve publish identity/archive until receipt and serving checksums confirm
 the outcome. Report fixture, live-service, cross-build and native CI separately.
 
-## CLI 1.0.7 release boundaries
+## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.7. Both SDK pins remain published v1.0.1. A source tag must
+dependencies are 1.0.10. Core SDK is pinned to published v1.1.0; SQLite SDK remains
+v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication
 when authorizing a tag push. Manual dispatch retains dry_run; optional

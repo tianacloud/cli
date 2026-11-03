@@ -203,3 +203,11 @@ Adds `secrets init/list/set/remove` and Function parameters with `plain` values
 or `secret` key references. Secret values are supplied through files or stdin;
 CLI results contain metadata only. The main package and all seven native
 packages use 1.0.9; agent-skills 1.0.13 includes the matching tiana-secrets skill.
+
+## 1.0.10 Windows local state
+
+Windows authentication and command state use normal process filesystem access
+and inherited permissions. Core SDK is pinned to v1.1.0 for the corresponding
+credential-store behavior; SQLite SDK remains v1.0.1. Persistent file locks and
+atomic writes retain their existing behavior. Login commands and local credential
+formats are unchanged.
