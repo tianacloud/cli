@@ -170,7 +170,7 @@ func newFunctionConfigCommand(kind string, output, diagnostics io.Writer) *cli.C
 			err := c.Request(ctx, "GET", functions.Path(i.ID)+"/"+kind, nil, &result)
 			return apppublish.Success(result), err
 		}),
-		functionCommand("set", "Replace "+kind+" from a JSON file", []cli.Flag{&cli.StringFlag{Name: "file", Required: true, Usage: "JSON object: parameter map {name:{kind:plain,value:string}} or CORS origins/methods/headers/expose_headers"}}, output, diagnostics, func(ctx context.Context, cmd *cli.Command, c *functions.Client, i authclient.Instance) (apppublish.Result, error) {
+		functionCommand("set", "Replace "+kind+" from a JSON file", []cli.Flag{&cli.StringFlag{Name: "file", Required: true, Usage: "JSON object: parameter map {name:{kind:plain|secret,value:string}} or CORS origins/methods/headers/expose_headers"}}, output, diagnostics, func(ctx context.Context, cmd *cli.Command, c *functions.Client, i authclient.Instance) (apppublish.Result, error) {
 			raw, err := os.ReadFile(cmd.String("file"))
 			if err != nil {
 				return apppublish.Result{}, fmt.Errorf("read configuration file: %w", err)
