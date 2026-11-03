@@ -76,7 +76,7 @@ func (s *FilePendingCommandStore) Load() (PendingCommand, error) {
 		return PendingCommand{}, ErrPendingNotFound
 	}
 	if err != nil {
-		return PendingCommand{}, localstate.Wrap("read owned regular mode-0600 pending command (no symlinks, at most 8 MiB)", s.Path, err)
+		return PendingCommand{}, localstate.Wrap("read regular pending command (no symlinks, at most 8 MiB)", s.Path, err)
 	}
 	defer clear(contents)
 	var command PendingCommand
@@ -125,7 +125,7 @@ func validatePendingFile(path string) error {
 	contents, err := localfile.Read(path, maxPendingBytes, true)
 	clear(contents)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return localstate.Wrap("validate owned regular mode-0600 pending command (no symlinks, at most 8 MiB)", path, err)
+		return localstate.Wrap("validate regular pending command (no symlinks, at most 8 MiB)", path, err)
 	}
 	return nil
 }

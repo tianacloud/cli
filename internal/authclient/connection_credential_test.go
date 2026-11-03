@@ -109,6 +109,9 @@ func TestConnectionCredentialFileSafety(t *testing.T) {
 			case "directory":
 				path = dir
 			case "public":
+				if runtime.GOOS == "windows" {
+					t.Skip("Unix file modes")
+				}
 				if err := chmodFixtureFile(path, 0644); err != nil {
 					t.Fatal(err)
 				}
