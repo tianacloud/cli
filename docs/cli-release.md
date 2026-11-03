@@ -204,7 +204,7 @@ or `secret` key references. Secret values are supplied through files or stdin;
 CLI results contain metadata only. The main package and all seven native
 packages use 1.0.9; agent-skills 1.0.13 includes the matching tiana-secrets skill.
 
-## 1.0.10 Windows local state
+## 1.0.11 Windows local state
 
 Windows authentication and command state use normal process filesystem access
 and inherited permissions. Core SDK is pinned to v1.1.0 for the corresponding
