@@ -196,3 +196,10 @@ preserves the 1.0.7 connector login, auth-only status and version-command fixes.
 The main package and seven native optional dependencies use 1.0.8. Source/build
 defaults match that version; SDK pins remain v1.0.1 and the helper contract remains
 3. Publication does not deploy MGR, hosted Web or backend services.
+
+## 1.0.9 user secrets
+
+Adds `secrets init/list/set/remove` and Function parameters with `plain` values
+or `secret` key references. Secret values are supplied through files or stdin;
+CLI results contain metadata only. The main package and all seven native
+packages use 1.0.9; agent-skills 1.0.13 includes the matching tiana-secrets skill.
