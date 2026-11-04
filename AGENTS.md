@@ -353,7 +353,8 @@ This current decision supersedes earlier instance-only Web publication and
 account-credentials-never-reach-Gateway guidance.
 ## Web templates and update notifications
 
-`web list-template` reads one current MGR catalog page with template names,
+`web list-template` requests one current MGR catalog page with fixed size=1000,
+preserves --after and next_cursor, and never follows pages automatically. It returns template names,
 display names, descriptions and the next cursor. `web init-template NAME --dir DIR` downloads
 an MGR-signed private OSS ZIP, verifies size/SHA-256, preserves source bytes and
 metadata, and atomically creates the absent target. Agent instructions own all

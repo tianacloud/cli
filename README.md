@@ -60,7 +60,9 @@ tiana web init-template ledger --dir ./my-ledger --json
 
 Read `metadata.json` and the generated README, replace every declared placeholder,
 initialize SQLite from the optional schema/seeds, then build and publish. Listing
-reads the current catalog each time; initializing creates the new directory.
+reads one current catalog page with size=1000 each time. Use `--after` with the
+returned `next_cursor` to request another page; listing does not auto-paginate.
+Initializing creates the new directory.
 
 For source builds, use Go 1.25 or later, Git, and access to the repository's Go
 dependencies. A Go build includes the SQLite shell, Git transport and connect

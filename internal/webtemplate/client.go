@@ -52,7 +52,7 @@ type Client struct {
 
 func (c Client) List(ctx context.Context, after string) (Page, error) {
 	var result Page
-	query := url.Values{}
+	query := url.Values{"size": {"1000"}}
 	if after != "" {
 		query.Set("after", after)
 	}
