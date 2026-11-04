@@ -211,3 +211,11 @@ and inherited permissions. Core SDK is pinned to v1.1.0 for the corresponding
 credential-store behavior; SQLite SDK remains v1.0.1. Persistent file locks and
 atomic writes retain their existing behavior. Login commands and local credential
 formats are unchanged.
+
+
+## 1.0.12 concise template catalog
+
+`web list-template` returns each template's name, display name and description,
+with the existing page cursor. Initialization reads the downloaded metadata and
+preserves the complete source archive. The main package and all seven native
+packages use 1.0.12.
