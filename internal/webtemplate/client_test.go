@@ -34,7 +34,7 @@ func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *test
 		switch r.URL.Path {
 		case "/api/v1/web-templates":
 			lists++
-			json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]string{"name": "notes", "description": "current notes"}}, "next_cursor": "notes"})
+			json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]string{"name": "notes", "display_name": "Notes", "description": "current notes"}}, "next_cursor": "notes"})
 		case "/api/v1/web-templates/notes/init":
 			json.NewEncoder(w).Encode(map[string]any{"name": "notes", "zip_size": len(data), "zip_sha256": hex.EncodeToString(digest[:]), "download_url": object.URL + "/private.zip?signature=fixture", "expires_at": time.Now().Add(15 * time.Minute)})
 		default:
@@ -56,6 +56,10 @@ func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *test
 		page, err := client.List(t.Context(), "")
 		if err != nil || len(page.Items) != 1 || page.Items[0].Description != "current notes" || page.NextCursor != "notes" {
 			t.Fatalf("list: %+v %v", page, err)
+		}
+		encodedPage, err := json.Marshal(page)
+		if err != nil || string(encodedPage) != `{"items":[{"name":"notes","display_name":"Notes","description":"current notes"}],"next_cursor":"notes"}` {
+			t.Fatalf("catalog: %s, error: %v", encodedPage, err)
 		}
 	}
 	if lists != 2 {

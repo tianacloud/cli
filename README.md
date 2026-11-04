@@ -691,7 +691,7 @@ remove its retained local archive explicitly; no command replays it automaticall
 
 ## Web 模板初始化
 
-每次创建应用时查询当前目录，再按返回的 name 初始化：
+每次创建应用时查询当前目录，列表每项包含 `name`、`display_name`、`description`，再按返回的 name 初始化；通过 `next_cursor` 和 `--after` 继续查询下一页：
 
 ```sh
 tiana web list-template --json
