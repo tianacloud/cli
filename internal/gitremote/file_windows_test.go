@@ -19,12 +19,6 @@ func TestWindowsGitFilePolicy(t *testing.T) {
 	if _, err := readRegular(path, 3, true); err == nil {
 		t.Fatal("accepted oversized token")
 	}
-	if err := chmodFixtureFile(path, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readRegular(path, 64, true); err == nil {
-		t.Fatal("accepted public token")
-	}
 	if _, err := readRegular(path, 64, false); err != nil {
 		t.Fatalf("public CA: %v", err)
 	}

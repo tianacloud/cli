@@ -91,12 +91,13 @@ Never read, create, migrate or delete `instance-tokens.json`, including obsolete
 are outer Gateway CONNECT authentication only, never native argv/env, inner SQL/
 Git traffic or diagnostics. Endpoint syntax does not establish deployment trust.
 
-Explicit token files are owned regular nonsymlink mode0600 files, <=512 credential
-bytes plus one LF/CRLF. Private directories are mode0700 on Unix; Windows uses
-owner-only ACLs. Maintain origin isolation, credential paths/JSON and expiry checks.
+Explicit token files are regular nonsymlink files, <=512 credential bytes plus one
+LF/CRLF. Unix requires current-user ownership, mode0600 files and mode0700
+directories. Windows uses normal process filesystem access and inherited permissions.
+Maintain origin isolation, credential paths/JSON and expiry checks.
 Constructors must not access real stores. Do not expose peer messages or secrets.
 
-Pending files have an 8 MiB bound, owned regular mode0600 files and no symlinks,
+Pending files have an 8 MiB bound, regular files with the platform permissions above and no symlinks,
 FIFOs or special files. Validate opened parent descriptors, use same-directory
 atomic rename and file fsync; directory fsync is not currently guaranteed. Hold
 one persistent per-pending-file lock through loading, mutation and receipt output;
@@ -486,10 +487,11 @@ completed response at the fetch adapter, not a physical deployed-network fault.
 Preserve publish identity/archive until receipt and serving checksums confirm
 the outcome. Report fixture, live-service, cross-build and native CI separately.
 
-## CLI 1.0.7 release boundaries
+## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.7. Both SDK pins remain published v1.0.1. A source tag must
+dependencies are 1.0.11. Core SDK is pinned to published v1.1.0; SQLite SDK remains
+v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication
 when authorizing a tag push. Manual dispatch retains dry_run; optional

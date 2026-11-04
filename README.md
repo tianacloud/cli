@@ -589,13 +589,14 @@ chmod 600 /path/to/connection-token
 export TIANA_TOKEN_FILE=/path/to/connection-token
 ```
 
-A token file must be an owned regular file, not a symlink, and contain at most
+A token file must be a regular file, not a symlink, and contain at most
 512 credential bytes with an optional trailing newline. Account credentials use
 `~/.config/tiana/credentials.json`, or `$XDG_CONFIG_HOME/tiana/credentials.json`
 when set. Command recovery, publication receipts and update state share this root. Login pending files remain beside credentials. Credential readers share this default path; individual credential-file
 overrides are not supported. On Linux/macOS, credential files require mode 0600
 and their directory mode 0700.
-On Windows, Tiana creates private files and directories with an owner-only ACL.
+On Windows, file access follows the current process’s normal filesystem permissions;
+new files and directories inherit the parent directory’s permissions.
 
 When `TIANA_API_ORIGIN` is unset, the CLI always selects online, including when
 only staging credentials are saved. Credentials and unfinished login state are

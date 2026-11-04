@@ -10,7 +10,7 @@ import (
 )
 
 func TestWindowsPendingLockRejectsUnsafeFiles(t *testing.T) {
-	for _, kind := range []string{"public", "hardlink", "symlink"} {
+	for _, kind := range []string{"hardlink", "symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "中文 pending.json")
 			store := NewFilePendingCommandStore(path)
@@ -20,10 +20,6 @@ func TestWindowsPendingLockRejectsUnsafeFiles(t *testing.T) {
 			}
 			release()
 			switch kind {
-			case "public":
-				if err := chmodFixtureFile(path+".lock", 0644); err != nil {
-					t.Fatal(err)
-				}
 			case "hardlink":
 				if err := os.Link(path+".lock", path+".alias"); err != nil {
 					t.Fatal(err)
@@ -44,7 +40,7 @@ func TestWindowsPendingLockRejectsUnsafeFiles(t *testing.T) {
 	}
 }
 
-func TestWindowsPendingReplacementKeepsPrivateACL(t *testing.T) {
+func TestWindowsPendingReplacement(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "中文 pending.json")
 	store := NewFilePendingCommandStore(path)
 	release, err := store.Acquire(context.Background())
@@ -61,7 +57,7 @@ func TestWindowsPendingReplacementKeepsPrivateACL(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, err := store.Load(); err != nil || got.IdempotencyKey != "second" {
-		t.Fatalf("private replacement: %+v %v", got, err)
+		t.Fatalf("pending replacement: %+v %v", got, err)
 	}
 	if err := store.Delete(); err != nil {
 		t.Fatal(err)

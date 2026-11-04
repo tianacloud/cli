@@ -50,7 +50,7 @@ func connectionCredential(ctx context.Context, account func(context.Context) ([]
 		var err error
 		value, err = localfile.Read(file, MaxConnectionCredential+2, true)
 		if err != nil {
-			return nil, errors.New("cannot read TIANA_TOKEN_FILE: require an owned regular mode-0600 file without symlinks")
+			return nil, errors.New("cannot read TIANA_TOKEN_FILE: require a regular file without symlinks")
 		}
 		if len(value) > 0 && value[len(value)-1] == '\n' {
 			value = value[:len(value)-1]

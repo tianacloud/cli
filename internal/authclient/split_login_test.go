@@ -77,6 +77,9 @@ func TestSplitLoginRejectsUnsafeStateBeforeNetwork(t *testing.T) {
 			path, _ := client.pendingLoginPath()
 			switch kind {
 			case "permissions":
+				if runtime.GOOS == "windows" {
+					t.Skip("Unix file modes")
+				}
 				if err := writeFixtureFile(path, []byte("{}"), 0644); err != nil {
 					t.Fatal(err)
 				}

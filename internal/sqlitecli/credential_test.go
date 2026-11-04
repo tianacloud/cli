@@ -40,10 +40,12 @@ func TestTokenFileSafety(t *testing.T) {
 	if _, e := ReadToken("file", link, nil); e == nil {
 		t.Fatal("accepted symlink")
 	}
-	if err := chmodFixtureFile(path, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, e := ReadToken("file", path, nil); e == nil {
-		t.Fatal("accepted public file")
+	if runtime.GOOS != "windows" {
+		if err := chmodFixtureFile(path, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, e := ReadToken("file", path, nil); e == nil {
+			t.Fatal("accepted public file")
+		}
 	}
 }
