@@ -240,3 +240,14 @@ another user, and existing state uses filesystem-provided permissions. Locks,
 bounded regular-file reads and atomic writes retain their existing behavior.
 Core SDK is pinned to v1.1.1; SQLite SDK remains v1.0.1. The main npm package,
 seven platform dependencies and source/build defaults all use 1.0.14.
+
+## 1.0.15 Function runtime logs
+
+`function runtime-logs INSTANCE_ID` queries historical stdout/stderr without
+waking the Function. Time range, stream selection and cursor pagination are
+supported; `--json` preserves collected messages and timestamp precision.
+Repeating the first-page command refreshes the query. Log availability follows
+the deployed management service and collection retention.
+
+The main package, seven exact platform dependencies and source/build defaults
+use 1.0.15. The release keeps the existing SDK versions and verified TLS defaults.
