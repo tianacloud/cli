@@ -29,9 +29,14 @@ type Template struct {
 	Status      string     `json:"status"`
 	Variables   []Variable `json:"variables,omitempty"`
 }
+type Summary struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+}
 type Page struct {
-	Items      []Template `json:"items"`
-	NextCursor string     `json:"next_cursor,omitempty"`
+	Items      []Summary `json:"items"`
+	NextCursor string    `json:"next_cursor,omitempty"`
 }
 type download struct {
 	Template
@@ -47,7 +52,7 @@ type Client struct {
 
 func (c Client) List(ctx context.Context, after string) (Page, error) {
 	var result Page
-	query := url.Values{}
+	query := url.Values{"size": {"1000"}}
 	if after != "" {
 		query.Set("after", after)
 	}

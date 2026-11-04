@@ -354,8 +354,9 @@ This current decision supersedes earlier instance-only Web publication and
 account-credentials-never-reach-Gateway guidance.
 ## Web templates and update notifications
 
-`web list-template` reads one current MGR catalog page, including descriptions,
-status, variables and next cursor. `web init-template NAME --dir DIR` downloads
+`web list-template` requests one current MGR catalog page with fixed size=1000,
+preserves --after and next_cursor, and never follows pages automatically. It returns template names,
+display names, descriptions and the next cursor. `web init-template NAME --dir DIR` downloads
 an MGR-signed private OSS ZIP, verifies size/SHA-256, preserves source bytes and
 metadata, and atomically creates the absent target. Agent instructions own all
 variable substitution and database initialization. Public template requests use
@@ -491,7 +492,7 @@ the outcome. Report fixture, live-service, cross-build and native CI separately.
 ## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.11. Core SDK is pinned to published v1.1.0; SQLite SDK remains
+dependencies are 1.0.13. Core SDK is pinned to published v1.1.0; SQLite SDK remains
 v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication

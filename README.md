@@ -60,7 +60,9 @@ tiana web init-template ledger --dir ./my-ledger --json
 
 Read `metadata.json` and the generated README, replace every declared placeholder,
 initialize SQLite from the optional schema/seeds, then build and publish. Listing
-reads the current catalog each time; initializing creates the new directory.
+reads one current catalog page with size=1000 each time. Use `--after` with the
+returned `next_cursor` to request another page; listing does not auto-paginate.
+Initializing creates the new directory.
 
 For source builds, use Go 1.25 or later, Git, and access to the repository's Go
 dependencies. A Go build includes the SQLite shell, Git transport and connect
@@ -692,7 +694,7 @@ remove its retained local archive explicitly; no command replays it automaticall
 
 ## Web 模板初始化
 
-每次创建应用时查询当前目录，再按返回的 name 初始化：
+每次创建应用时查询当前目录，列表每项包含 `name`、`display_name`、`description`，再按返回的 name 初始化；通过 `next_cursor` 和 `--after` 继续查询下一页：
 
 ```sh
 tiana web list-template --json
