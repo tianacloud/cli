@@ -491,7 +491,7 @@ the outcome. Report fixture, live-service, cross-build and native CI separately.
 ## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.12. Core SDK is pinned to published v1.1.0; SQLite SDK remains
+dependencies are 1.0.13. Core SDK is pinned to published v1.1.0; SQLite SDK remains
 v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication

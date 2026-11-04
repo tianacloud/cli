@@ -219,3 +219,14 @@ formats are unchanged.
 with the existing page cursor. Initialization reads the downloaded metadata and
 preserves the complete source archive. The main package and all seven native
 packages use 1.0.12.
+
+## 1.0.13 larger template catalog pages
+
+`web list-template` requests size=1000 and still reads exactly one catalog page.
+It preserves `--after` and the returned `next_cursor`; it never follows pages
+automatically. Deploy a compatible MGR first to obtain the larger pages. Older
+MGR versions may continue returning their existing page size.
+
+The main package, seven exact native dependencies and source/build defaults use
+1.0.13. SDK pins and the helper contract are unchanged. The SDK's existing 1 MiB
+management-response limit remains in place; page size is not a byte-size guarantee.
