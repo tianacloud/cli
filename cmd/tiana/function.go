@@ -83,6 +83,9 @@ func runFunctionCommand(ctx context.Context, cmd *cli.Command, output, diagnosti
 		return statusError(1)
 	}
 	if !cmd.Bool("json") {
+		if page, ok := result.Data.(authclient.FunctionRuntimeLogPage); ok {
+			return writeFunctionRuntimeLogs(output, page)
+		}
 		if page, ok := result.Data.(authclient.InstancePage); ok {
 			if err := writeInstanceTable(output, page.Items); err != nil {
 				return err
@@ -145,6 +148,7 @@ func newFunctionCommand(input io.Reader, output, diagnostics io.Writer) *cli.Com
 			result, err := c.Account.FunctionLogs(ctx, i.ID, cmd.String("build"), c.Credential)
 			return apppublish.Success(result), err
 		}),
+		newFunctionRuntimeLogsCommand(output, diagnostics),
 		newFunctionConfigCommand("parameters", output, diagnostics),
 		newFunctionConfigCommand("cors", output, diagnostics),
 		newFunctionEnabledCommand(true, output, diagnostics),

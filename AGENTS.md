@@ -504,3 +504,10 @@ Retain the original eight tarballs/integrity index for publication/retry.
 Verify native platform tests, artifact installations and uploaded checksums.
 Rollback selects an older version; never rewrite a source tag or replace release
 artifacts to recover a failed publication.
+
+Function runtime logs use `function runtime-logs` and the existing authenticated
+management JSON transport. Read one server page, preserve string timestamps and
+cursor, and do not wake the function. Cursor continuation reuses its fixed query;
+a fresh first-page command refreshes. JSON retains collected messages; terminal
+presentation escapes controls while preserving line breaks. Check time/stream/
+cursor parameters, output failures and backend errors. See README runtime logs.

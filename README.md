@@ -824,3 +824,18 @@ preview supports the same call using the selected CLI account. Hosted sharing
 uses Site authorization and must be tested separately with another account.
 For private backends, keep SQLite Endpoint/Token in Function parameters and leave
 the Web's database binding empty.
+
+### Function runtime logs
+
+`tiana function runtime-logs FUNCTION_ID` reads one page (up to 100 records) of
+collected stdout/stderr from the last 30 minutes. It works while the function is
+sleeping and does not invoke it. Use `--since 2h` or `--start`/`--end` RFC3339 times,
+`--stream stdout|stderr`, and `--json` for the structured result. Pass the returned
+`next_cursor` with `--cursor` alone to continue the same query. Rerun the first-page
+command to refresh. `function logs --build` continues to read build logs.
+
+Records use collection timestamps and collected text chunks; one record may span
+multiple lines or contain only part of a line. Retention is 7 days and collection
+is best effort. JSON preserves messages and nanosecond timestamp strings; text
+output preserves line breaks and renders terminal control characters visibly.
+Backend failures and an unpageable timestamp boundary return an error exit status.
