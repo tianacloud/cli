@@ -230,3 +230,13 @@ MGR versions may continue returning their existing page size.
 The main package, seven exact native dependencies and source/build defaults use
 1.0.13. SDK pins and the helper contract are unchanged. The SDK's existing 1 MiB
 management-response limit remains in place; page size is not a byte-size guarantee.
+
+
+## 1.0.14 Unix local state
+
+Linux/macOS login, credentials, command state and explicit token files use
+actual filesystem access. Writable shared directories and files may belong to
+another user, and existing state uses filesystem-provided permissions. Locks,
+bounded regular-file reads and atomic writes retain their existing behavior.
+Core SDK is pinned to v1.1.1; SQLite SDK remains v1.0.1. The main npm package,
+seven platform dependencies and source/build defaults all use 1.0.14.
