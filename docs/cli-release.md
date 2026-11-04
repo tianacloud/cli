@@ -82,6 +82,8 @@ Select an existing matching tag in the workflow's manual dispatch and leave
 `dry_run` selected to reproduce source build and artifact installation tests.
 Linux/macOS/Windows runners execute their matching package; other architectures
 receive build/archive verification until they have native acceptance coverage.
+The macOS checks use the hosted `macos-15-intel` runner and execute the Darwin
+x64 package. Darwin arm64 remains included in cross-build and archive checks.
 
 ## Publication and recovery
 
