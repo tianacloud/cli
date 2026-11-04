@@ -7,14 +7,6 @@ import (
 	"syscall"
 )
 
-func ownedByCurrentUser(info os.FileInfo) bool {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return false
-	}
-	return uint64(stat.Uid) == uint64(os.Getuid())
-}
-
 func trustedOwner(info os.FileInfo) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

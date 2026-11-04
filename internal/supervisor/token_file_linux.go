@@ -11,7 +11,7 @@ import (
 )
 
 // readTokenFileSecure opens without following a final symlink and performs
-// all permission checks on the opened descriptor before reading it.  The
+// the regular-file check on the opened descriptor before reading it.  The
 // descriptor, rather than the path, is the authority for the bytes consumed.
 func readTokenFileSecure(path string) ([]byte, error) {
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
@@ -25,7 +25,7 @@ func readTokenFileSecure(path string) ([]byte, error) {
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || !ownedByCurrentUser(info) {
+	if err != nil || !info.Mode().IsRegular() {
 		return nil, ErrCredentialPermissions
 	}
 	read, err := io.ReadAll(io.LimitReader(bufio.NewReader(file), maxTokenIn+1))

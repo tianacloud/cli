@@ -119,7 +119,7 @@ func TestConnectionCredentialFileSafety(t *testing.T) {
 			t.Setenv("TIANA_TOKEN_FILE", path)
 			got, err := ConnectionCredential(context.Background())
 			defer clear(got)
-			if (err == nil) != (mode == "maximum") {
+			if (err == nil) != (mode == "maximum" || mode == "public") {
 				t.Fatalf("unexpected result for %s: %v", mode, err)
 			}
 			if err != nil && (strings.Contains(err.Error(), "private-secret") || strings.Contains(err.Error(), path)) {

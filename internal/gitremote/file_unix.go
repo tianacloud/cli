@@ -23,8 +23,7 @@ func readRegular(path string, limit int64, private bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !info.Mode().IsRegular() || info.Size() > limit || (private && (!ok || stat.Uid != uint32(os.Geteuid()) || info.Mode().Perm() != 0600)) {
+	if !info.Mode().IsRegular() || info.Size() > limit {
 		return nil, errors.New("invalid file")
 	}
 	b, err := readBounded(f, limit)

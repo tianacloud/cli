@@ -31,7 +31,7 @@ func (s *FilePendingCommandStore) Acquire(ctx context.Context) (func(), error) {
 		return nil, localstate.Wrap("open pending command lock", s.Path+".lock", err)
 	}
 	var stat unix.Stat_t
-	if unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&07777 != 0600 || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
+	if unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Nlink != 1 {
 		_ = unix.Close(fd)
 		return nil, localstate.Wrap("validate private pending command lock", s.Path+".lock", errors.New("unsafe lock"))
 	}
@@ -50,8 +50,7 @@ func (s *FilePendingCommandStore) Acquire(ctx context.Context) (func(), error) {
 	return func() { _ = file.Close() }, nil
 }
 
-// Match the existing private-directory permission policy, but validate ownership
-// and restrict the opened directory rather than following a path in Chmod.
+// Prepare the pending directory without following a final symlink.
 func preparePendingDir(path string) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return localstate.Wrap("prepare pending command directory", path, err)
@@ -61,12 +60,5 @@ func preparePendingDir(path string) error {
 		return localstate.Wrap("open nonsymlink pending command directory", path, err)
 	}
 	defer unix.Close(fd)
-	var st unix.Stat_t
-	if unix.Fstat(fd, &st) != nil || st.Uid != uint32(os.Geteuid()) {
-		return errors.New("pending command directory must belong to the current user")
-	}
-	if err := unix.Fchmod(fd, 0700); err != nil {
-		return localstate.Wrap("restrict pending command directory", path, err)
-	}
 	return nil
 }

@@ -18,7 +18,7 @@ func readTokenFile(path string) ([]byte, error) {
 	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	var stat unix.Stat_t
-	if unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&07777 != 0600 || stat.Uid != uint32(os.Getuid()) {
+	if unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG {
 		return nil, errors.New("unsafe credential file")
 	}
 	b, err := io.ReadAll(io.LimitReader(f, 129))

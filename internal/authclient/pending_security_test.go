@@ -14,14 +14,10 @@ import (
 
 func TestPendingStoreRejectsUnsafeFiles(t *testing.T) {
 	valid := []byte(`{"command":"db.create","idempotency_key":"test-key","origin":"https://mgr.example.test"}`)
-	for _, kind := range []string{"permissions", "symlink", "oversized"} {
+	for _, kind := range []string{"symlink", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "pending.json")
 			switch kind {
-			case "permissions":
-				if err := os.WriteFile(path, valid, 0644); err != nil {
-					t.Fatal(err)
-				}
 			case "symlink":
 				target := path + ".target"
 				if err := os.WriteFile(target, valid, 0600); err != nil {

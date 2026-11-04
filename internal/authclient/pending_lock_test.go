@@ -12,7 +12,7 @@ import (
 )
 
 func TestPendingLockRejectsUnsafeFile(t *testing.T) {
-	for _, kind := range []string{"symlink", "hardlink", "permissions", "fifo"} {
+	for _, kind := range []string{"symlink", "hardlink", "fifo"} {
 		t.Run(kind, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "pending.json")
 			lock := path + ".lock"
@@ -29,10 +29,6 @@ func TestPendingLockRejectsUnsafeFile(t *testing.T) {
 					err = os.Link(target, lock)
 				}
 				if err != nil {
-					t.Fatal(err)
-				}
-			case "permissions":
-				if err := os.WriteFile(lock, nil, 0644); err != nil {
 					t.Fatal(err)
 				}
 			case "fifo":

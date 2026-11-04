@@ -593,10 +593,10 @@ A token file must be a regular file, not a symlink, and contain at most
 512 credential bytes with an optional trailing newline. Account credentials use
 `~/.config/tiana/credentials.json`, or `$XDG_CONFIG_HOME/tiana/credentials.json`
 when set. Command recovery, publication receipts and update state share this root. Login pending files remain beside credentials. Credential readers share this default path; individual credential-file
-overrides are not supported. On Linux/macOS, credential files require mode 0600
-and their directory mode 0700.
-On Windows, file access follows the current process’s normal filesystem permissions;
-new files and directories inherit the parent directory’s permissions.
+overrides are not supported. File access follows the current process’s filesystem permissions.
+Linux/macOS requests mode 0600 for new files and 0700 for new directories;
+existing state uses the permissions supplied by the filesystem.
+Windows files and directories inherit the parent directory’s permissions.
 
 When `TIANA_API_ORIGIN` is unset, the CLI always selects online, including when
 only staging credentials are saved. Credentials and unfinished login state are
@@ -632,7 +632,7 @@ When upgrading directory defaults on macOS/Windows, an unresolved command in the
 | Explicitly empty management origin | Unset `TIANA_API_ORIGIN` for online, or set the intended origin for every command. |
 | No valid login or expired access token | Run `tiana login`; check the management origin and explicit token settings. |
 | TLS handshake or certificate verification failed | Check the Endpoint hostname, port and deployment CA; use `--ca-file` or `TIANA_CA_FILE`. |
-| Unsafe credential file | Check ownership, regular-file type and mode 0600; avoid symlinks. |
+| Unsafe credential file | Check actual read/write access and regular-file type; avoid symlinks. |
 | Unfinished operation blocks a mutation | Resume the original instance create with the same arguments and account; do not discard an unknown-outcome record. |
 | Another local mutation is running | Wait for it to finish or stop its local wait; use `list`/`show` to inspect state. |
 | Instance name is ambiguous | Use the immutable instance ID from `list`. |

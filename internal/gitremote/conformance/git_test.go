@@ -358,7 +358,9 @@ func testNativeGitOverConnect(t *testing.T, route string) {
 	if err := os.Chmod(tokenFile, 0644); err != nil {
 		t.Fatal(err)
 	}
-	rejectBeforeConnect(fileEnv)
+	if out, err := run(fileEnv, "ls-remote", url); err != nil {
+		t.Fatalf("readable token file: %v %s", err, out)
+	}
 	if err := os.Chmod(tokenFile, 0600); err != nil {
 		t.Fatal(err)
 	}

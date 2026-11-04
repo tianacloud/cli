@@ -15,6 +15,6 @@ var (
 	ErrSecurityPolicy        = errors.New("local endpoint security level does not satisfy policy")
 	ErrHelperProtocol        = errors.New("trusted helper protocol failure")
 	ErrHelperNotTrusted      = errors.New("trusted helper could not be resolved")
-	ErrCredentialPermissions = errors.New("credential file must be a current-user-owned regular file with mode 0600")
+	ErrCredentialPermissions = errors.New("credential file must be a readable regular file, not a symlink")
 	ErrGatewayConfiguration  = errors.New("invalid Gateway integration configuration")
 )

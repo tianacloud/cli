@@ -44,8 +44,8 @@ func TestTokenFileSafety(t *testing.T) {
 		if err := chmodFixtureFile(path, 0644); err != nil {
 			t.Fatal(err)
 		}
-		if _, e := ReadToken("file", path, nil); e == nil {
-			t.Fatal("accepted public file")
+		if _, e := ReadToken("file", path, nil); e != nil {
+			t.Fatal(e)
 		}
 	}
 }

@@ -41,7 +41,7 @@ func ReadToken(kind, value string, input io.Reader) (*tiana.Token, *Error) {
 		var err error
 		raw, err = readTokenFile(value)
 		if err != nil {
-			return nil, inputError("Token file must be current-user-owned, mode 0600, regular and not a symlink")
+			return nil, inputError("Token file must be readable, regular and not a symlink")
 		}
 	case "stdin":
 		if input == nil {

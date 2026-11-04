@@ -45,6 +45,21 @@ func TestSplitLoginSurvivesProcessAndExchangesOnlyOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if runtime.GOOS != "windows" {
+		directory := filepath.Dir(store.Path)
+		if err := os.Chmod(directory, 0777); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if err := os.Chmod(filepath.Join(directory, entry.Name()), 0666); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	if starts != 1 || polls != 0 {
 		t.Fatal("start must return and reuse the link without polling")
 	}
@@ -69,20 +84,13 @@ func TestSplitLoginSurvivesProcessAndExchangesOnlyOnce(t *testing.T) {
 }
 
 func TestSplitLoginRejectsUnsafeStateBeforeNetwork(t *testing.T) {
-	for _, kind := range []string{"permissions", "symlink", "oversized"} {
+	for _, kind := range []string{"symlink", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			peer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unsafe state reached network") }))
 			defer peer.Close()
 			client, _ := NewWithConfig(Config{Origin: peer.URL, Store: NewFileStore(filepath.Join(t.TempDir(), "credentials.json"), peer.URL)})
 			path, _ := client.pendingLoginPath()
 			switch kind {
-			case "permissions":
-				if runtime.GOOS == "windows" {
-					t.Skip("Unix file modes")
-				}
-				if err := writeFixtureFile(path, []byte("{}"), 0644); err != nil {
-					t.Fatal(err)
-				}
 			case "symlink":
 				target := filepath.Join(t.TempDir(), "target")
 				if err := writeFixtureFile(target, []byte("{}"), 0600); err != nil {
