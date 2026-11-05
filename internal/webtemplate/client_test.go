@@ -34,7 +34,7 @@ func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *test
 		switch r.URL.Path {
 		case "/api/v1/web-templates":
 			lists++
-			if r.URL.Query().Get("size") != "1000" {
+			if r.URL.Query().Has("size") {
 				t.Errorf("catalog size: %s", r.URL.RawQuery)
 			}
 			expectedAfter := ""

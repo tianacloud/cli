@@ -224,7 +224,7 @@ packages use 1.0.12.
 
 ## 1.0.13 larger template catalog pages
 
-`web list-template` requests size=1000 and still reads exactly one catalog page.
+`web list-template` previously requested size=1000 and read exactly one catalog page.
 It preserves `--after` and the returned `next_cursor`; it never follows pages
 automatically. Deploy a compatible MGR first to obtain the larger pages. Older
 MGR versions may continue returning their existing page size.
