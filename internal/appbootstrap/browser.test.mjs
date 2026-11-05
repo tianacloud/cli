@@ -2,9 +2,9 @@ import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const {chromium}=await import(pathToFileURL(process.argv[2]).href);
 const origin=process.argv[3];
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,args:['--ignore-certificate-errors-spki-list='+process.argv[5]]});
 try {
- const context=await browser.newContext();
+ const context=await browser.newContext({ignoreHTTPSErrors:true});
  await context.route('https://fonts.googleapis.com/**',r=>r.fulfill({contentType:'text/css',body:''}));
  await context.route('https://console.example/authorize', route=>route.fulfill({contentType:'text/html',body:'<h1>Explicit Console test fixture</h1>'}));
  const page=await context.newPage();
@@ -42,6 +42,23 @@ try {
  await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
  assert.equal(await page.locator('#app').getAttribute('data-failed-mount'),null);
  assert.equal(await page.locator('#tiana-loading').count(),0);
+ assert.equal(await page.evaluate(()=>typeof tiana.functions.websocket),'function');
+ await page.evaluate(async()=>{
+  window.savedFunctions=tiana.functions;
+  window.liveSocket=await savedFunctions.websocket('fn-orders','/socket?room=one',{protocols:'business.v1'});
+  if(!(liveSocket instanceof WebSocket)||liveSocket.readyState!==WebSocket.OPEN||liveSocket.protocol!=='business.v1')throw new Error('native socket contract');
+  const echoed=new Promise(resolve=>liveSocket.addEventListener('message',event=>resolve(event.data),{once:true}));
+  liveSocket.send('preview');if(await echoed!=='preview')throw new Error('native message failed');
+  if(!(await savedFunctions.fetch('fn-orders','/while-open')).ok)throw new Error('HTTP failed');
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+ });
+ await page.waitForFunction(()=>liveSocket.readyState===WebSocket.CLOSED);
+ await page.evaluate(async()=>{
+  window.restoredSocket=await savedFunctions.websocket('fn-orders','/socket',{protocols:['business.v1']});
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+ });
+ await page.waitForFunction(()=>restoredSocket.readyState===WebSocket.CLOSED);
  // Exercise provider renewal, concurrent callers and abort isolation in a real browser.
  let connections=0;
  await page.route('**/_tiana/connection',async route=>{

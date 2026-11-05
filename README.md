@@ -819,7 +819,11 @@ tiana web serve WEB_ID --dir dist
 ```
 
 Repeat `--function-id` for multiple functions; omit it to clear the list. The
-frontend calls `context.functions.fetch(FUNCTION_ID, '/orders', init)`. Local
+frontend calls `context.functions.fetch(FUNCTION_ID, '/orders', init)` or
+`await context.functions.websocket(FUNCTION_ID, '/events', {protocols: 'events.v1'})`.
+The latter returns a native WebSocket after open. Its optional signal cancels
+the handshake; pagehide closes sockets and persisted pageshow creates a fresh
+client behind the same functions object. Preview CSP permits wss:. Local
 preview supports the same call using the selected CLI account. Hosted sharing
 uses Site authorization and must be tested separately with another account.
 For private backends, keep SQLite Endpoint/Token in Function parameters and leave

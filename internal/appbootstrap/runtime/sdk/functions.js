@@ -4,6 +4,7 @@ import {waitFor} from './auth.js';
 export function createTianaFunctions(options) {
     const transport = options.fetch ?? globalThis.fetch.bind(globalThis);
     const lifetime = new AbortController();
+    const sockets = new Map();
     const credentials = new Map();
     const pending = new Map();
     function active() {
@@ -75,8 +76,93 @@ export function createTianaFunctions(options) {
             }
             return response;
         },
+        async websocket(instanceId, path, options = {}) {
+            active();
+            const signal = options.signal
+                ? AbortSignal.any([lifetime.signal, options.signal]) : lifetime.signal;
+            signal.throwIfAborted();
+            const credential = await waitFor(connection(instanceId), signal);
+            signal.throwIfAborted();
+            if (!usable(credential)) {
+                credentials.delete(instanceId);
+                throw new Error("Function credential expired before dispatch");
+            }
+            let url;
+            try {
+                url = new URL(path, credential.origin);
+            }
+            catch {
+                throw new TypeError("Invalid Function WebSocket path");
+            }
+            if (url.origin !== credential.origin || url.username || url.password) {
+                throw new TypeError("Function request must use its authorized origin");
+            }
+            url.protocol = "wss:";
+            url.searchParams.set("access_token", credential.token);
+            let socket;
+            try {
+                socket = new WebSocket(url, options.protocols);
+            }
+            catch {
+                throw new Error("Function WebSocket construction failed");
+            }
+            return new Promise((resolve, reject) => {
+                let opened = false;
+                const cleanupHandshake = () => {
+                    socket.removeEventListener("open", onOpen);
+                    socket.removeEventListener("error", onError);
+                    signal.removeEventListener("abort", onAbort);
+                };
+                const release = () => {
+                    cleanupHandshake();
+                    socket.removeEventListener("close", onClose);
+                    sockets.delete(socket);
+                };
+                const fail = (error) => {
+                    release();
+                    // Native close may throw for a connecting socket in some runtimes.
+                    try {
+                        socket.close();
+                    }
+                    catch { /* Ownership is already released. */ }
+                    reject(error);
+                };
+                const onOpen = () => {
+                    opened = true;
+                    cleanupHandshake();
+                    resolve(socket);
+                };
+                const onError = () => fail(new Error("Function WebSocket handshake failed"));
+                const onClose = () => {
+                    if (opened)
+                        release();
+                    else
+                        fail(new Error("Function WebSocket closed before open"));
+                };
+                const onAbort = () => fail(new DOMException("Function WebSocket handshake cancelled", "AbortError"));
+                sockets.set(socket, () => {
+                    if (opened) {
+                        release();
+                        try {
+                            socket.close();
+                        }
+                        catch { /* Ownership is already released. */ }
+                    }
+                    else
+                        onAbort();
+                });
+                socket.addEventListener("open", onOpen);
+                socket.addEventListener("error", onError);
+                socket.addEventListener("close", onClose);
+                signal.addEventListener("abort", onAbort, { once: true });
+                if (signal.aborted)
+                    onAbort();
+            });
+        },
         dispose() {
             lifetime.abort(new DOMException("Function context ended", "AbortError"));
+            for (const close of sockets.values())
+                close();
             credentials.clear();
             pending.clear();
         },

@@ -93,7 +93,10 @@ async function loadApplication() {
     return data;
   }};
   let functionClient = createTianaFunctions(functionOptions);
-  const functions = Object.freeze({fetch: (instanceId, path, init) => functionClient.fetch(instanceId, path, init)});
+  const functions = Object.freeze({
+    fetch: (instanceId, path, init) => functionClient.fetch(instanceId, path, init),
+    websocket: (instanceId, path, options) => functionClient.websocket(instanceId, path, options),
+  });
   window.addEventListener('pagehide', () => functionClient.dispose());
   window.addEventListener('pageshow', event => { if (event.persisted) functionClient = createTianaFunctions(functionOptions); });
   const context = Object.freeze({appId: manifest.web_id, user: Object.freeze({id: manifest.user_id, tenantId: manifest.user_tenant_id}), localPreview, auth, files, functions, async connection() {

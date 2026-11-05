@@ -2,7 +2,12 @@ package appbootstrap
 
 import (
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +26,20 @@ func TestBootstrapBrowser(t *testing.T) {
 	if module == "" {
 		t.Skip("set TIANA_PLAYWRIGHT_MODULE to the installed Playwright module")
 	}
+	gateway := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") == "websocket" {
+			functionSocketFixture(t, w, r)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(204)
+			return
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer gateway.Close()
 	dir := buildFixture(t)
 	if err := os.WriteFile(filepath.Join(dir, "assets", "app.css"), []byte(`@import url('https://fonts.googleapis.com/css2?family=DM+Sans'); body {color: #123}`), 0600); err != nil {
 		t.Fatal(err)
@@ -48,7 +67,22 @@ func TestBootstrapBrowser(t *testing.T) {
 			case <-ctx.Done():
 				return Identity{}, ctx.Err()
 			}
-			return Identity{ID: "fixture-owner", TenantID: "fixture-tenant", Label: "Fixture", Connection: func(context.Context) (Connection, error) {
+			return Identity{FileRequest: func(_ context.Context, method, path string, body, result any) error {
+				if method == "GET" && path == "/api/v1/web-projects/billing" {
+					return json.Unmarshal([]byte(`{"owner_id":"fixture-owner"}`), result)
+				}
+				if method == "GET" && path == "/api/v1/web-projects/billing/functions" {
+					return json.Unmarshal([]byte(`{"function_instance_ids":["fn-orders"]}`), result)
+				}
+				if method != "POST" || path != "/api/v1/functions/fn-orders/connection" {
+					t.Errorf("unexpected Function provider request: %s %s", method, path)
+				}
+				if value, ok := body.(map[string]string); !ok || value["web_id"] != "billing" {
+					t.Error("missing originating Web")
+				}
+				data, _ := json.Marshal(map[string]any{"instance_id": "fn-orders", "origin": gateway.URL, "token": "fixture-function-fn-orders", "expires_at": time.Now().Add(time.Minute).Unix()})
+				return json.Unmarshal(data, result)
+			}, ID: "fixture-owner", TenantID: "fixture-tenant", Label: "Fixture", Connection: func(context.Context) (Connection, error) {
 				return Connection{InstanceID: "ins_billing", Origin: "https://ep-00000000000000000000000000.db.example.test", Token: "fixture-access-token", SQLAPI: "hrana-v3", ExpiresAt: time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339Nano)}, nil
 			}}, nil
 		}}, nil
@@ -99,10 +133,60 @@ func TestBootstrapBrowser(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "node", "browser.test.mjs", module, origin)
+	command := exec.CommandContext(ctx, "node", "browser.test.mjs", module, origin, gateway.URL, functionFixtureSPKI(gateway))
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("browser verification failed: %v\n%s", err, output)
 	}
 	t.Log(string(output))
+}
+
+// functionSocketFixture performs a real RFC 6455 handshake and echoes frames.
+func functionSocketFixture(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+	if r.URL.Query().Get("access_token") != "fixture-function-fn-orders" || r.Header.Get("Sec-WebSocket-Protocol") != "business.v1" || r.Header.Get("Authorization") != "" {
+		t.Error("incorrect native WebSocket credential or business protocol")
+	}
+	conn, rw, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer conn.Close()
+	sum := sha1.Sum([]byte(r.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	fmt.Fprintf(rw, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: business.v1\r\n\r\n", base64.StdEncoding.EncodeToString(sum[:]))
+	rw.Flush()
+	for {
+		header := make([]byte, 2)
+		if _, err := io.ReadFull(rw, header); err != nil {
+			return
+		}
+		size := int(header[1] & 127)
+		if size > 125 {
+			t.Error("unexpected fixture frame size")
+			return
+		}
+		mask := make([]byte, 4)
+		if _, err := io.ReadFull(rw, mask); err != nil {
+			return
+		}
+		body := make([]byte, size)
+		if _, err := io.ReadFull(rw, body); err != nil {
+			return
+		}
+		for i := range body {
+			body[i] ^= mask[i%4]
+		}
+		rw.Write([]byte{header[0], byte(size)})
+		rw.Write(body)
+		rw.Flush()
+		if header[0]&15 == 8 {
+			return
+		}
+	}
+}
+
+func functionFixtureSPKI(server *httptest.Server) string {
+	sum := sha256.Sum256(server.Certificate().RawSubjectPublicKeyInfo)
+	return base64.StdEncoding.EncodeToString(sum[:])
 }

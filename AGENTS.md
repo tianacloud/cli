@@ -68,7 +68,12 @@ relative to the persisted `source_dir` on main. Preserve other shared-repository
 files and compare the saved base commit. Function lists and build history expose
 one requested page. Build logs are plain-text HTTP responses. Verify management
 commands and normal local-preview bootstrap against a Web with multiple bound
-functions. Removing the CLI surface does not remove the server-side resources.
+functions. Preview exposes context.functions.websocket(instanceId, path, options),
+returning a native WebSocket after open; pagehide closes sockets and persisted
+pageshow creates a new client behind the retained facade. The application CSP
+allows wss:. Keep generated Function code/provenance aligned with the reviewed
+serverless-js commit; verify native handshakes and HTTP while sockets are open.
+Removing the CLI surface does not remove the server-side resources.
 
 ## Authentication and private local state
 
