@@ -224,7 +224,7 @@ packages use 1.0.12.
 
 ## 1.0.13 larger template catalog pages
 
-`web list-template` previously requested size=1000 and read exactly one catalog page.
+`web list-template` requests size=1000 and still reads exactly one catalog page.
 It preserves `--after` and the returned `next_cursor`; it never follows pages
 automatically. Deploy a compatible MGR first to obtain the larger pages. Older
 MGR versions may continue returning their existing page size.
@@ -253,3 +253,10 @@ the deployed management service and collection retention.
 
 The main package, seven exact platform dependencies and source/build defaults
 use 1.0.15. The release keeps the existing SDK versions and verified TLS defaults.
+
+## 1.0.16 template catalog default page size
+
+`web list-template` omits the size parameter and uses the MGR default page size.
+It continues to request one page and preserves `--after` and `next_cursor`.
+The main package, seven exact platform dependencies and source/build defaults
+use 1.0.16. SDK versions and verified TLS defaults remain unchanged.
