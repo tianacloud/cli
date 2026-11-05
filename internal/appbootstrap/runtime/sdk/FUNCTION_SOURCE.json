@@ -1,10 +1,13 @@
 {
   "package": "@tianacloud/serverless",
   "source": "https://github.com/tianacloud/serverless-js",
-  "state": "local-source-build; publication pending",
-  "base_commit": "91539cb155a5c5842077021b7ccc31b095db7239",
+  "state": "local-source-build",
+  "base_commit": "df8d5d75d0bcbbf00bdb786a1c269ee32735666d",
   "source_file": "src/functions.ts",
   "source_sha256": "dce90dfd93bf4eeacd2202af9a476b4b3a99d138e6c4afef20a8006f5d05e166",
   "generated_block_sha256": "5014fc56d4853d65b7034ef1776be9b69065052e8fbdb4cdffbf2ed41e762534",
-  "build": "tsc -p tsconfig.json; embed functions.js as module with shared auth.waitFor import"
+  "build": "tsc -p tsconfig.json; embed functions.js as module with shared auth.waitFor import",
+  "package_version": "0.3.0",
+  "source_artifact": "tianacloud-serverless-0.3.0-source-df8d5d7.tgz",
+  "source_artifact_sha256": "cff9ddecc91fc5aad8db3131c88a6878e8b6c3b97eb0e712f2c7973b8a9ad26e"
 }

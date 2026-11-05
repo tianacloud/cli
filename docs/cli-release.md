@@ -260,3 +260,14 @@ use 1.0.15. The release keeps the existing SDK versions and verified TLS default
 It continues to request one page and preserves `--after` and `next_cursor`.
 The main package, seven exact platform dependencies and source/build defaults
 use 1.0.16. SDK versions and verified TLS defaults remain unchanged.
+
+## 1.0.17 Function WebSocket preview
+
+Local Web preview exposes `tiana.functions.websocket(instanceId, path, options)`
+with native WebSocket open/close semantics. The generated Function client is
+pinned to the serverless-js 0.3.0 source build. Page exit disposes open sockets;
+back-forward restoration replaces the client behind the retained facade.
+
+The main package, seven exact native dependencies and source/build defaults use
+1.0.17. Agent-skills 1.0.17 requires CLI 1.0.17 or a newer stable release.
+Hosted Web and backend rollout remain separate from npm publication.
