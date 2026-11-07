@@ -82,14 +82,13 @@ func TestShareStatusPreservesPublicFileInventoryWithoutAddingLegacyCapabilities(
 	}
 }
 
-func TestSharedSourceDownloadAndBounds(t *testing.T) {
+func TestSharedSourceDownloadIntegrity(t *testing.T) {
 	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes"}`, "app.js": "demo"})
 	sum := sha256.Sum256(data)
-	for _, mode := range []string{"valid", "oversized descriptor", "long body", "redirect", "wrong digest"} {
+	for _, mode := range []string{"valid", "long body", "redirect", "wrong digest"} {
 		t.Run(mode, func(t *testing.T) {
-			downloads, followed := 0, 0
+			followed := 0
 			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				downloads++
 				if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
 					t.Error("account credentials reached object storage")
 				}
@@ -114,9 +113,6 @@ func TestSharedSourceDownloadAndBounds(t *testing.T) {
 				}
 				size := len(data)
 				digest := hex.EncodeToString(sum[:])
-				if mode == "oversized descriptor" {
-					size = maxSourceZIP + 1
-				}
 				if mode == "wrong digest" {
 					digest = strings.Repeat("0", 64)
 				}
@@ -151,9 +147,6 @@ func TestSharedSourceDownloadAndBounds(t *testing.T) {
 				if _, e := os.Stat(target); !os.IsNotExist(e) {
 					t.Fatalf("partial target %v", e)
 				}
-			}
-			if mode == "oversized descriptor" && downloads != 0 {
-				t.Fatal("download started before size admission")
 			}
 			if followed != 0 {
 				t.Fatal("followed object redirect")

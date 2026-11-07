@@ -73,8 +73,8 @@ func (c Client) Init(ctx context.Context, name, target string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if descriptor.ZIPSize <= 0 || descriptor.ZIPSize > MaxPackageBytes {
-		return Result{}, errors.New("source ZIP exceeds the 16 MiB limit")
+	if descriptor.ZIPSize <= 0 {
+		return Result{}, errors.New("source ZIP size must be positive")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, descriptor.DownloadURL, nil)
 	if err != nil {

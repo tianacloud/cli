@@ -74,7 +74,7 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 			return Result{}, errors.New("template ZIP contains an invalid path")
 		}
 		if entry.FileInfo().IsDir() {
-			if _, err := budget.copy(io.Discard, entry, MaxMaterialBytes); err != nil {
+			if _, err := budget.copy(io.Discard, entry); err != nil {
 				return Result{}, err
 			}
 			if err := root.MkdirAll(filepath.FromSlash(name), 0755); err != nil {
@@ -93,7 +93,7 @@ func Materialize(ctx context.Context, archive Archive, target string) (Result, e
 		if err != nil {
 			return Result{}, err
 		}
-		_, copyErr := budget.copy(out, entry, MaxMaterialBytes)
+		_, copyErr := budget.copy(out, entry)
 		closeErr := out.Close()
 		if copyErr != nil {
 			return Result{}, copyErr

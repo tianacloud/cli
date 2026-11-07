@@ -16,7 +16,7 @@ import (
 )
 
 func TestClientFetchesCurrentCatalogAndDownloadsWithoutAccountCredential(t *testing.T) {
-	seed := strings.Repeat("original binary\x00material\n", 1024)
+	seed := strings.Repeat("original binary\x00material\n", 1<<20)
 	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes","file_seeds":"template-files"}`, "README.md": "source", "template-files/documents/guide.bin": seed})
 	digest := sha256.Sum256(data)
 	lists := 0

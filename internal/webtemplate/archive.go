@@ -11,16 +11,10 @@ import (
 	"strings"
 )
 
-const (
-	MaxPackageBytes   int64 = 16 << 20
-	MaxMaterialBytes  int64 = 16 << 20
-	MaxExpandedBytes  int64 = 128 << 20
-	MaxArchiveEntries       = 5000
-)
+const MaxArchiveEntries = 5000
 
 type archiveBudget struct {
 	ctx     context.Context
-	bytes   int64
 	entries int
 }
 
@@ -47,10 +41,10 @@ func CopyBounded(ctx context.Context, dst io.Writer, src io.Reader, limit int64)
 }
 
 // Check the actual central directory before archive/zip allocates File objects.
-// Archives within these budgets use the ordinary, single-disk ZIP directory.
+// Template sources use the ordinary, single-disk ZIP directory.
 func archiveDirectory(r io.ReaderAt, size int64, remaining int) (int, error) {
-	if size < 22 || size > MaxPackageBytes {
-		return 0, errors.New("ZIP size outside package budget")
+	if size < 22 {
+		return 0, zip.ErrFormat
 	}
 	tailSize := min(size, 22+65535)
 	tail := make([]byte, int(tailSize))
@@ -152,20 +146,15 @@ func (b *archiveBudget) open(r io.ReaderAt, size int64, source bool) (*zip.Reade
 			}
 			dirs[parent] = true
 		}
-		if f.UncompressedSize64 > uint64(MaxMaterialBytes) {
-			return nil, fmt.Errorf("ZIP entry %q exceeds 16 MiB", name)
-		}
 	}
 	return z, nil
 }
 
-func (b *archiveBudget) copy(dst io.Writer, f *zip.File, limit int64) (int64, error) {
+func (b *archiveBudget) copy(dst io.Writer, f *zip.File) (int64, error) {
 	r, err := f.Open()
 	if err != nil {
 		return 0, err
 	}
 	defer r.Close()
-	n, err := CopyBounded(b.ctx, dst, r, min(limit, MaxMaterialBytes, MaxExpandedBytes-b.bytes))
-	b.bytes += n
-	return n, err
+	return io.Copy(dst, contextReader{b.ctx, r})
 }

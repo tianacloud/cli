@@ -19,9 +19,6 @@ import (
 	"github.com/tianacloud/cli/internal/fileclient"
 )
 
-const maxInstallZIP = 32 << 20
-const maxSourceZIP = 16 << 20
-
 // Publication versions are decoded losslessly from MGR integers and printed as
 // decimal strings, including values above JavaScript's safe integer range.
 type publicationVersion uint64
@@ -102,8 +99,8 @@ func (c Client) PublishShare(ctx context.Context, web, filename string) (Publica
 	if err != nil {
 		return Publication{}, err
 	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxInstallZIP {
-		return Publication{}, errors.New("install.zip must be a regular file of at most 32 MiB")
+	if !info.Mode().IsRegular() || info.Size() <= 0 {
+		return Publication{}, errors.New("install.zip must be a nonempty regular file")
 	}
 	var random [16]byte
 	if _, err = rand.Read(random[:]); err != nil {
@@ -188,8 +185,8 @@ func (c Client) InitShare(ctx context.Context, link, target string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	if descriptor.Size <= 0 || descriptor.Size > maxSourceZIP {
-		return Result{}, errors.New("source ZIP exceeds the 16 MiB limit")
+	if descriptor.Size <= 0 {
+		return Result{}, errors.New("source ZIP size must be positive")
 	}
 	client := http.Client{Timeout: 30 * time.Second}
 	if c.DownloadHTTP != nil {
