@@ -271,3 +271,10 @@ back-forward restoration replaces the client behind the retained facade.
 The main package, seven exact native dependencies and source/build defaults use
 1.0.17. Agent-skills 1.0.17 requires CLI 1.0.17 or a newer stable release.
 Hosted Web and backend rollout remain separate from npm publication.
+
+## 1.0.19 template material admission
+
+Template uploads use MGR admission with its current configuration. Template source
+downloads verify the declared byte count and SHA-256; extraction preserves source
+bytes and verifies CRC and paths. The main package and seven native dependencies
+use 1.0.19. Web App archive budgets and SDK versions remain unchanged.
