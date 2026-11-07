@@ -623,6 +623,8 @@ New instance detail/list `current_job_id`, revision, quota quantities and millis
 
 `status --json` returns verified `logged_in`, `user` and `quota`; a quota failure retains the verified account with `quota:null`. `sqlite shell --json` is a non-interactive alias for `--format json`, preserving the SQL result contract; it conflicts with other formats. Native `connect` and Git remote-helper retain their protocol streams.
 
+Local preview permits WebAssembly compilation through `script-src 'self' 'wasm-unsafe-eval'`. Bundle `.wasm` assets with the application and load them from the preview origin. The bootstrap browser test verifies execution alongside authentication and asset loading.
+
 `web serve --json` emits one startup result with `port`, `preview_url`, `launch_url` and `authorization`. The CLI-authorized launch URL is a short-lived capability and must not be written to ordinary logs or source; Console fallback has `launch_url:null`. Running logs stay on stderr.
 
 When upgrading directory defaults on macOS/Windows, an unresolved command in the previous platform directory raises `LEGACY_PENDING_COMMAND` before a new mutation. Stop older CLI processes, set `TIANA_PENDING_COMMAND_FILE` to that original path and recover the original command with the same account and arguments. Unset the override after recovery. No automatic move/deletion occurs; previous publication receipts remain available in the old directory. Different old/new records must be investigated, not overwritten. Coordinate upgrades because older writers do not lock the new path.

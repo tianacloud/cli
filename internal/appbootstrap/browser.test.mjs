@@ -21,6 +21,12 @@ try {
  await page.locator('#app').waitFor({state:'visible'});
  await page.waitForFunction(()=>document.querySelector('#app').dataset.instance==='ins_billing');
  assert.equal(await page.locator('#app').textContent(),'Browser ledger');
+ const wasmAnswer=await page.evaluate(async()=>{
+  const bytes=new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,7,10,1,6,97,110,115,119,101,114,0,0,10,6,1,4,0,65,42,11]);
+  const {instance}=await WebAssembly.instantiate(bytes);
+  return instance.exports.answer();
+ });
+ assert.equal(wasmAnswer,42);
  assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
  assert.equal(new URL(page.url()).pathname,'/web/billing/');
  assert.equal(new URL(page.url()).search,'?view=fixture');

@@ -107,3 +107,7 @@ result, including Web apps without a database binding. The runtime context keeps
 its existing id/tenantId shape. Validate profile defaults and identity through a
 real CLI preview; local session state remains in memory and changing this response
 adds no persistent data migration.
+
+Local preview CSP permits WebAssembly compilation with `wasm-unsafe-eval`.
+Keep the authenticated bootstrap browser test exercising a real WASM module;
+application packaging and usage are documented in README.
