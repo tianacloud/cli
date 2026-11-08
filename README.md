@@ -563,6 +563,35 @@ A transport error is not automatically replayed, and native exit status is prese
 
 ## Credentials and environment
 
+### Instance tokens for backend services
+
+Create a data credential for one instance, covering its branch Endpoints:
+
+```sh
+tiana token create SQLITE_INSTANCE_ID --name "Orders backend" --json
+```
+
+Account login is required. `INSTANCE` accepts an ID or exact name. The default
+expiry is never (`-1`); use `--expires-at UNIX_SECONDS` for an expiry. The JSON
+receipt contains `data.instance_id`, `data.token_id`, `data.token`, `data.expires_at`
+and `data.request_id`. Capture stdout in a private file outside the source tree:
+plaintext is delivered once. `--request-id` supplies an explicit request identity.
+An unknown outcome or missing plaintext exits nonzero; inspect the instance's
+tokens in Console before issuing a replacement. Repeating creation cannot recover
+the original plaintext.
+
+For a Function accessing SQLite, obtain `data.connection.hostname` from
+`tiana sqlite show SQLITE_INSTANCE_ID --json`, write the issued token with
+`tiana secrets set KEY --stdin`, and configure Function parameters with a plain
+`SQLITE_ENDPOINT` and a secret `SQLITE_TOKEN` referring to KEY. Extract only
+`data.token` into the secret command's stdin, without adding a newline. Preserve
+existing Function parameters when calling `function parameters set`.
+The Go SDK's Endpoint is a hostname. Inside a Function, keep the SDK's default
+logical port 443; the platform proxy selects the Gateway's internal destination.
+Verify the Function with an actual SQL request after publication.
+
+### Connection credentials
+
 Management commands use account login. SQLite shell, Git transport and `connect`
 select their connection credential in this order:
 

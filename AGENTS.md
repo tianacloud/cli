@@ -39,7 +39,7 @@ Environment origin overrides permit HTTP only for loopback development.
 
 Products are `web`, `function`, `sqlite`, `git` and `file`. Tenant file commands use
 `tiana file` with `list`, `get`, `get-url`, `put` and `delete` subcommands.
-Removed `apps`, `whoami`, `verify-install`, SQLite Token commands and `branches` spellings have no compatibility aliases.
+Removed `apps`, `whoami`, `verify-install` and `branches` spellings have no compatibility aliases.
 Instance create requires one nonblank NAME and a product-selected engine;
 removed engine/display-name flags fail before state/network work. Descriptions
 are verbatim valid UTF-8, <=2048 bytes for both instances and Web (Web description projects instance notes).
@@ -117,6 +117,14 @@ and structured operation identities remain available without raw peer errors.
 Uninstallation validates trusted ancestors and intermediate paths before removal.
 
 ## Mutations, receipts and waiting
+
+`token create INSTANCE --name NAME` explicitly creates an Instance-scoped data
+credential through MGR. Default expiry is -1; --expires-at accepts Unix seconds.
+Deliver plaintext only in the first successful stdout receipt, with --json using
+the management envelope. A missing plaintext or incomplete sync returns a
+nonzero failed/pending result; an ambiguous write retains the instance/request identity
+and directs inspection in Console. Verify token-to-secret handoff and incomplete
+delivery. Removing this command leaves already-issued server tokens in place.
 
 Instance create persists the original request identity before POST and accepted
 receipt before stdout. Accept a nonempty instance ID plus positive uint64 job ID

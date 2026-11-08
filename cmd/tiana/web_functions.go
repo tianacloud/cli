@@ -13,7 +13,7 @@ func newWebFunctionsCommand(output, diagnostics io.Writer) *cli.Command {
 			return argumentFailure(ctx, cmd, "Provide WEB_ID; set also requires --expected-revision from functions get")
 		}
 		if cmd.Name == "set" {
-			release, err := lockFunctionMutation(ctx, diagnostics)
+			release, err := lockManagementMutation(ctx, diagnostics)
 			if err != nil {
 				writeCommandError(diagnostics, err)
 				return statusError(1)

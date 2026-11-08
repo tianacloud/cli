@@ -185,6 +185,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			newGitCommand(input, output, diagnostics),
 			newFunctionCommand(input, output, diagnostics),
 			newSecretsCommand(input, output, diagnostics),
+			newTokenCommand(output, diagnostics),
 			newWebCommand(input, output, diagnostics),
 			newFilesCommand(input, output, diagnostics),
 		},

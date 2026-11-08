@@ -43,7 +43,7 @@ func runFunctionCommand(ctx context.Context, cmd *cli.Command, output, diagnosti
 	switch cmd.Name {
 	case "set", "save", "publish", "delete", "enable", "disable", "update":
 		var release func()
-		release, err = lockFunctionMutation(ctx, diagnostics)
+		release, err = lockManagementMutation(ctx, diagnostics)
 		if err == nil {
 			defer release()
 		}
@@ -97,7 +97,7 @@ func runFunctionCommand(ctx context.Context, cmd *cli.Command, output, diagnosti
 	return statusError(writeAppResult(result, cmd.Bool("json"), output, diagnostics))
 }
 
-func lockFunctionMutation(ctx context.Context, diagnostics io.Writer) (func(), error) {
+func lockManagementMutation(ctx context.Context, diagnostics io.Writer) (func(), error) {
 	store, err := newPendingStore()
 	if err != nil {
 		return nil, err
