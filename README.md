@@ -116,18 +116,11 @@ tiana login
 tiana status
 ```
 
-For staging, set the origin in the process environment:
-
-```sh
-export TIANA_API_ORIGIN=https://console.tianacloud-staging.net
-tiana login
-tiana status
-```
-
-The CLI and native Git helper inherit the same management origin. When a user
-selects an origin in an Agent task, pass it to every CLI and Git subprocess;
-separate shell calls do not retain an earlier export. See [staging CA setup](docs/staging-ca.md)
-for VPN and browser requirements. Example addresses below are placeholders.
+To use another deployment, set `TIANA_API_ORIGIN` to its management origin in
+the process environment. The CLI and native Git helper inherit that origin. When
+a user selects an origin in an Agent task, pass it to every CLI and Git subprocess;
+separate shell calls do not retain an earlier export. Example addresses below are
+placeholders.
 The CLI has no management configuration-file option. Connection parameters
 after `connect --` belong to the native client and are passed through unchanged.
 
