@@ -50,11 +50,11 @@ exchanged only by a same-origin POST; it is not an account token. Treat the URL 
 a temporary local capability. Other visitors must use the Console login flow.
 
 The SDK owns account refresh/persistence and cross-process locking. Preview pins
-the original user/tenant, checks the immutable SQLite binding and waits for grant
+the original user/space, checks the immutable SQLite binding and waits for grant
 synchronization. Refresh credentials never reach JavaScript. Browser logout drops
 only that preview cookie; it does not log out the CLI. Stopping the server clears
 local sessions. A missing/unusable saved account retains separate Console login
-with an in-memory credential store. Trusted app code receives tenant account scope.
+with an in-memory credential store. Trusted app code receives space account scope.
 
 Use the provider with the corresponding serverless SDK build so long-running
 applications receive replacement access tokens:
@@ -137,7 +137,7 @@ an accepted selection.
 
 `--force` / `-f` skips confirmation and is required without a terminal.
 `--wait` / `-w` waits for confirmed deletion; otherwise success means durable
-acceptance. The local pending intent retains the pinned origin/account/tenant,
+acceptance. The local pending intent retains the pinned origin/account/space,
 resolved ID and deletion choices. Response loss, output failure or interrupted
 waiting preserves that intent. Repeat the same command rather than re-resolving
 a name or deleting pending state. Stopping CLI does not cancel server cleanup.

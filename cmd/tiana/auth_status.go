@@ -14,10 +14,10 @@ import (
 )
 
 func newStatusCommand(output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "status", Usage: "Show login status and tenant quota", Flags: []cli.Flag{
+	return &cli.Command{Name: "status", Usage: "Show login status and space quota", Flags: []cli.Flag{
 		boolOption("json", "Write a structured JSON result"),
 		boolOption("auth-only", "Check saved access-token expiry locally, without refresh or quota requests"),
-	}, Description: "Shows the signed-in account and tenant usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status. With --auth-only, missing or expired credentials are a successful check with logged_in=false; server revocation is not checked.",
+	}, Description: "Shows the signed-in account and space usage/limits without starting browser login. Unavailable login or quota returns a nonzero exit status. With --auth-only, missing or expired credentials are a successful check with logged_in=false; server revocation is not checked.",
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 {
 				return argumentFailure(ctx, cmd, "this command does not accept arguments")

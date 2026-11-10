@@ -705,9 +705,9 @@ in `MESSAGE`. Web descriptions share the instance notes limit of 2048 UTF-8 byte
 (`data.endpoint` with `--json`). The address comes from MGR's configured Site
 origin and `/web/<id>/`; upload confirmation does not mean activation has finished.
 
-Web publication uses `tiana web publish ID --dir DIST [--json]` and `tiana web status ID [--publish-id ID]`. It packages one `.tweb` with empty root `web.yaml` and `data/`, then uploads via Gateway business control using `TIANA_TOKEN` or `TIANA_TOKEN_FILE` (mutually exclusive), otherwise the selected account access token. Explicit credentials are authoritative, and invalid or rejected input never falls back to another token. Endpoint, Instance, Group and Tenant scopes are all supported when they cover the target; no local instance-token cache is read. The logged-in account still resolves owner-scoped Web project metadata through MGR. MGR manages Web/instance identity, not publication. S3 upload confirmation precedes activation; retain publish ID and checksum and query status on unknown results. No automatic PUT replay or versions. Plain files are supported. `web create NAME --entry assets/app.js` sets the immutable Site entry; optional `--database-instance-id` and `--git-instance-id` fix the project associations in MGR at creation. There is no styles flag or tiana.app.json. Entry JS loads its CSS. Publish validates data/<entry> before uploading. `web serve ID --dir DIST` previews using saved project parameters. Entry and associations are immutable; source-commit and web update are retired. Web list uses generic instance pagination with engine=web; MESSAGE projects notes, and names/notes are edited through the instance PATCH API with If-Match. Deploy the matching MGR schema 34 and API changes together. The Go SDK dependency is pinned to its exact published revision in go.mod; standalone builds do not require a local workspace.
+Web publication uses `tiana web publish ID --dir DIST [--json]` and `tiana web status ID [--publish-id ID]`. It packages one `.tweb` with empty root `web.yaml` and `data/`, then uploads via Gateway business control using `TIANA_TOKEN` or `TIANA_TOKEN_FILE` (mutually exclusive), otherwise the selected account access token. Explicit credentials are authoritative, and invalid or rejected input never falls back to another token. Endpoint, Instance, Group and Space scopes are all supported when they cover the target; no local instance-token cache is read. The logged-in account still resolves owner-scoped Web project metadata through MGR. MGR manages Web/instance identity, not publication. S3 upload confirmation precedes activation; retain publish ID and checksum and query status on unknown results. No automatic PUT replay or versions. Plain files are supported. `web create NAME --entry assets/app.js` sets the immutable Site entry; optional `--database-instance-id` and `--git-instance-id` fix the project associations in MGR at creation. There is no styles flag or tiana.app.json. Entry JS loads its CSS. Publish validates data/<entry> before uploading. `web serve ID --dir DIST` previews using saved project parameters. Entry and associations are immutable; source-commit and web update are retired. Web list uses generic instance pagination with engine=web; MESSAGE projects notes, and names/notes are edited through the instance PATCH API with If-Match. Deploy the matching MGR schema 34 and API changes together. The Go SDK dependency is pinned to its exact published revision in go.mod; standalone builds do not require a local workspace.
 
-Web application assets require an authenticated session for their owning tenant;
+Web application assets require an authenticated session for their owning space;
 unauthorized reads return 404. Uploads use private OSS ACL and no object tags.
 See [application delivery](docs/application-delivery.md) for the publish workflow.
 
@@ -745,8 +745,8 @@ Web status JSON adds `query_kind: current / receipt` without changing existing `
 
 ### Files
 
-Files belong to the current tenant and share its storage quota. Paths are
-relative to that tenant's files directory:
+Files belong to the current space and share its storage quota. Paths are
+relative to that space's files directory:
 
 ```sh
 tiana file list docs/
@@ -774,7 +774,7 @@ Downloads and `get-url` use the configured files CDN. The returned URL contains
 a public scope selector, not a bearer credential: opening it requires a browser
 file cookie or a valid file Authorization header. The CLI obtains its own
 15-minute read grant and sends only that grant to the CDN. File bytes upload
-directly to OSS; tenant identity is checked through the MGR account API.
+directly to OSS; space identity is checked through the MGR account API.
 
 `tiana web serve` exposes the same SDK as `context.files` to the mounted app.
 It needs the existing WebApp ID, including for an unpublished project. The

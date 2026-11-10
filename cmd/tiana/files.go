@@ -50,7 +50,7 @@ func newFilesCommand(input io.Reader, output, diagnostics io.Writer) *cli.Comman
 			return statusError(runFiles(ctx, cmd, input, output, diagnostics))
 		}})
 	}
-	return &cli.Command{Name: "file", Usage: "Manage files in the current tenant", Action: groupAction, Commands: commands}
+	return &cli.Command{Name: "file", Usage: "Manage files in the current space", Action: groupAction, Commands: commands}
 }
 
 func runFiles(ctx context.Context, cmd *cli.Command, input io.Reader, output, diagnostics io.Writer) int {
