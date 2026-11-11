@@ -17,13 +17,15 @@ import (
 	"time"
 
 	"github.com/tianacloud/cli/internal/testutil/proxypeer"
+	"github.com/tianacloud/cli/internal/testutil/sqlitepeer"
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
+	"github.com/tianacloud/sdk-go/gatewaydial"
 	"github.com/tianacloud/sdk-go/outbound"
 )
 
 // Opt-in black-box test against the actual app_sqlite library in a test-only
 // peer executable. Relative sockets avoid sun_path limits on long workspaces.
-func realAppConfig(t *testing.T, ttl time.Duration) tianasqlite.Config {
+func realAppConfig(t *testing.T, ttl time.Duration, compatible ...bool) tianasqlite.Config {
 	t.Helper()
 	binary := os.Getenv("TIANA_SQLITE_APP_PEER_BINARY")
 	if binary == "" {
@@ -67,7 +69,11 @@ func realAppConfig(t *testing.T, ttl time.Duration) tianasqlite.Config {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	dial, _ := nativeGateway(t, func(r io.Reader, w io.Writer) {
+	makeGateway := sqlitepeer.Gateway
+	if len(compatible) > 0 && compatible[0] {
+		makeGateway = sqlitepeer.CompatGateway
+	}
+	dial, _ := makeGateway(t, func(r io.Reader, w io.Writer) {
 		conn, e := net.Dial("unix", socket)
 		if e != nil {
 			t.Error(e)
@@ -80,11 +86,18 @@ func realAppConfig(t *testing.T, ttl time.Duration) tianasqlite.Config {
 		_ = conn.Close()
 		<-copyDone
 	}, false)
+	if len(compatible) > 0 && compatible[0] {
+		dial.Gateway.Transport = gatewaydial.Compat
+	}
 	return dial
 }
 
 func TestRealAppOverNativeSDK(t *testing.T) {
-	dial := realAppConfig(t, time.Minute)
+	t.Run("standard", func(t *testing.T) { testRealAppOverNativeSDK(t, false) })
+	t.Run("compat", func(t *testing.T) { testRealAppOverNativeSDK(t, true) })
+}
+func testRealAppOverNativeSDK(t *testing.T, compatible bool) {
+	dial := realAppConfig(t, time.Minute, compatible)
 	newClient := func() *Client { c := NewClient(dial, 2*time.Second); t.Cleanup(c.Close); return c }
 	c := newClient()
 	queries := []string{

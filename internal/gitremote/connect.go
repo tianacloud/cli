@@ -16,6 +16,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/supervisor"
+	"github.com/tianacloud/sdk-go/gatewaydial"
 	"github.com/tianacloud/sdk-go/outbound"
 )
 
@@ -67,12 +68,21 @@ func connect(ctx context.Context, repo supervisor.Endpoint) (result tunnel, err 
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
 	dialCtx, stop := context.WithTimeout(ctx, 10*time.Second)
-	raw, err := config.network.DialTunnel(dialCtx, outbound.Target{URL: &url.URL{Scheme: "https", Host: net.JoinHostPort(repo.Hostname(), repo.Port())}, DialAddress: config.address})
+	var raw net.Conn
+	if config.mode == gatewaydial.Compat {
+		raw, err = gatewaydial.DialCompat(dialCtx, repo.Hostname(), config.address)
+	} else {
+		raw, err = config.network.DialTunnel(dialCtx, outbound.Target{URL: &url.URL{Scheme: "https", Host: net.JoinHostPort(repo.Hostname(), repo.Port())}, DialAddress: config.address})
+	}
 	if err != nil {
 		stop()
 		cancel()
 		reader.Close()
 		writer.Close()
+		var compatError *gatewaydial.Error
+		if errors.As(err, &compatError) {
+			return nil, compatError
+		}
 		var proxyError *outbound.Error
 		if errors.As(err, &proxyError) {
 			return nil, proxyError

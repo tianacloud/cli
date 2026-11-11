@@ -52,6 +52,8 @@ for (const target of targets) {
   const binary = binaryName(target);
   copyFileSync(path.join(assets, target, binary), path.join(directory, 'bin', binary));
   chmodSync(path.join(directory, 'bin', binary), 0o755);
+  const helper = readFileSync(fileURLToPath(new URL('./git-remote-tiana', import.meta.url)), 'utf8').replace('"$launcher_dir/tiana"', `"$launcher_dir/${binary}"`);
+  writeFileSync(path.join(directory, 'bin', 'git-remote-tiana'), helper, { mode: 0o755 });
   copyFileSync(path.join(assets, target, 'manifest.json'), path.join(directory, 'manifest.json'));
   copyFileSync(path.join(template, 'README.md'), path.join(directory, 'README.md'));
   copyFileSync(license, path.join(directory, 'LICENSE'));

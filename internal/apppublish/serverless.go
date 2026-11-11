@@ -13,7 +13,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/localstate"
-	"github.com/tianacloud/cli/internal/netconfig"
+	"github.com/tianacloud/cli/internal/transportmode"
 	"github.com/tianacloud/sdk-go/fetch"
 )
 
@@ -24,7 +24,7 @@ type PublicationReceipt struct {
 }
 
 func (r Runner) runServerless(ctx context.Context, o Options) Result {
-	network, networkErr := netconfig.Policy(ctx)
+	network, networkErr := transportmode.GatewayPolicy(ctx)
 	if networkErr != nil {
 		return Failure(inputError(networkErr.Error()))
 	}
@@ -56,7 +56,7 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		return Failure(&Error{Code: "WEB_CREDENTIAL_UNAVAILABLE", Message: "Cannot resolve Web data credential", NextAction: "Check TIANA_TOKEN/TIANA_TOKEN_FILE or the current account login", ExitCode: 5})
 	}
 	defer clear(credential)
-	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network}
+	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network, Transport: transportmode.FromContext(ctx)}
 	// Proxy selection uses the logical port even with a physical dial override.
 	if origin.Port() != "" && origin.Port() != "443" {
 		config.Port = origin.Port()

@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/chzyer/readline v1.5.1
-	github.com/tianacloud/sdk-go v1.2.0
+	github.com/tianacloud/sdk-go v1.2.1-0.20261111114035-9238f5319dec
 	github.com/tianacloud/sdk-go-sqlite v1.0.1
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/mod v0.37.0

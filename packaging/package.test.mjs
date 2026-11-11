@@ -54,6 +54,8 @@ test('seven platform packages and an npm launcher package', { timeout: 180000, s
         assert.equal(createHash('sha256').update(bytes).digest('hex'),digest(path.join(assets,target,binaryName(target))));
         const manifest=JSON.parse(execFileSync('tar',['-xOzf',tarball,'package/manifest.json'],{encoding:'utf8'}));
         assert.equal(manifest.version,version);
+        const helper=execFileSync('tar',['-xOzf',tarball,'package/bin/git-remote-tiana'],{encoding:'utf8'});
+        assert.ok(helper.includes(`exec "$launcher_dir/${binaryName(target)}" git remote-helper "$@"`));
       }
     }
   });

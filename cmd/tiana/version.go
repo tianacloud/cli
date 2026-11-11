@@ -68,11 +68,11 @@ func passiveUpdateAllowed(args []string) bool {
 		if arg == "--auth-only" || strings.HasPrefix(arg, "--auth-only=") || arg == "--json" || strings.HasPrefix(arg, "--json=") || arg == "--help" || arg == "-h" || (command == "" && (arg == "--version" || arg == "-v" || strings.HasPrefix(arg, "--version="))) {
 			return false
 		}
-		if arg == "--ca-file" {
+		if arg == "--ca-file" || arg == "--transport" {
 			i++
 			continue
 		}
-		if strings.HasPrefix(arg, "--ca-file=") {
+		if strings.HasPrefix(arg, "--ca-file=") || strings.HasPrefix(arg, "--transport=") {
 			continue
 		}
 		if command == "" && !strings.HasPrefix(arg, "-") {
@@ -84,7 +84,8 @@ func passiveUpdateAllowed(args []string) bool {
 	}
 	if command == "git" {
 		for _, arg := range args {
-			if arg == "remote-helper" {
+			switch arg {
+			case "remote-helper", "clone", "fetch", "pull", "push", "ls-remote", "submodule":
 				return false
 			}
 		}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
+	"github.com/tianacloud/cli/internal/transportmode"
 )
 
 const maxCommand = 4096
@@ -54,6 +55,11 @@ func Run(ctx context.Context, args []string, input io.ReadCloser, output io.Writ
 	defer netconfig.Close(ctx)
 	if len(args) < 1 || len(args) > 2 {
 		return errors.New("usage: tiana git remote-helper <remote> [tiana://<endpoint>[:port]/repo.git]")
+	}
+	var err error
+	ctx, err = transportmode.FromGitCommand(ctx)
+	if err != nil {
+		return err
 	}
 	repo, err := parseRepository(args[len(args)-1])
 	if err != nil {

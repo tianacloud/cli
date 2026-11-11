@@ -20,6 +20,7 @@ no Web product version selector or versioned URL. Existing Web IDs retain their 
 - [Manage SQLite branches](#manage-sqlite-branches)
 - [Run SQL](#run-sql)
 - [Clone, fetch and push Git repositories](#clone-fetch-and-push-git-repositories)
+- [Compatibility transport](#compatibility-transport)
 - [Connect with Turso](#connect-with-turso)
 - [Credentials and environment](#credentials-and-environment)
 - [Troubleshooting](#troubleshooting)
@@ -530,6 +531,40 @@ which must be installed beside `tiana` on PATH. There is no need to invoke
 Git uses the same connection credential selection as SQLite. Set `TIANA_CA_FILE`
 when the deployment CA is not in the system trust store. An interrupted push can
 have an unknown outcome; inspect the remote before retrying.
+
+## Compatibility transport
+
+Use the standard connection first. If an Agent environment fails during a data
+connection or handshake, try the same target with `--transport compat`:
+
+```sh
+tiana --transport compat sqlite shell INSTANCE -e 'SELECT 1'
+tiana --transport compat git ls-remote origin
+tiana --transport compat git push origin main
+```
+
+The option requires a Gateway that supports compatibility transport. It uses the
+original Endpoint and credentials, without an additional proxy address, password
+or environment variable. It directly connects to that Endpoint while retaining
+TLS verification; `--transport standard` and omitting the flag preserve the normal
+network policy. Management API requests, object storage and update downloads keep
+their existing network policy. There is no automatic switch or replay.
+
+The option covers the built-in SQLite shell, Git data commands, Gateway Web
+publication/status, and Function source transfers. Native `connect` clients retain
+their existing transport and reject an explicit compatibility selection.
+
+Git supports direct `clone`, `fetch`, `pull`, `push`, `ls-remote` and `submodule`
+commands. Put Tiana flags before `git`; subsequent arguments are passed to Git,
+with native input, output and exit codes. The installed package provides the
+matching helper. An explicit `--ca-file` is inherited by that helper even if Git
+changes directories. No repository or global Git configuration is changed.
+
+An interrupted write may already have succeeded. Check SQL state, the actual Git
+push destination's ref, or the original publication receipt before retrying.
+For Git, inspect `git remote get-url --push REMOTE` (use `--all` for multiple push
+URLs); fetch and push destinations may differ. Authentication, certificate, quota
+and application errors should be resolved according to their actual cause.
 
 ## Connect with Turso
 

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tianacloud/cli/internal/testutil/compatpeer"
 	tiana "github.com/tianacloud/sdk-go"
 	tianasqlite "github.com/tianacloud/sdk-go-sqlite"
 )
@@ -25,6 +26,12 @@ const Token = "tia_0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 const Endpoint = "ep-01j5c9m7q2v8x4k6n3r0t1w2yz.db.example.test"
 
 func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool, certificate ...*[]byte) (tianasqlite.Config, *atomic.Int32) {
+	return gateway(t, inner, refuse, false, certificate...)
+}
+func CompatGateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool, certificate ...*[]byte) (tianasqlite.Config, *atomic.Int32) {
+	return gateway(t, inner, refuse, true, certificate...)
+}
+func gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse, compatible bool, certificate ...*[]byte) (tianasqlite.Config, *atomic.Int32) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -80,6 +87,9 @@ func Gateway(t *testing.T, inner func(io.Reader, io.Writer), refuse bool, certif
 	}
 	server.EnableHTTP2 = true
 	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS13}
+	if compatible {
+		server.Listener = &compatpeer.Listener{Listener: server.Listener, Endpoint: Endpoint}
+	}
 	server.StartTLS()
 	t.Cleanup(server.Close)
 	token, err := tiana.NewToken(Token)

@@ -524,3 +524,16 @@ cursor, and do not wake the function. Cursor continuation reuses its fixed query
 a fresh first-page command refreshes. JSON retains collected messages; terminal
 presentation escapes controls while preserving line breaks. Check time/stream/
 cursor parameters, output failures and backend errors. See README runtime logs.
+
+## Explicit compatibility transport
+
+`--transport standard|compat` selects the data transport; standard is the default.
+Compat uses an Endpoint-bound preface on the Endpoint socket before the existing
+verified TLS and authorized protocol. Management requests retain their transport.
+The WebSocket `connect` command retains its original implementation and rejects
+an explicit compat selection. Native Git commands forward the mode through a
+command-scoped Git setting to the adjacent matching helper, without persisting
+Git configuration. Cancellation must reap the native Git process tree.
+Verify both modes with SQLite, Fetch and real native Git pack traffic, and run
+native process tests on Linux, macOS and Windows. Selecting standard restores
+the original transport without changing saved remotes or credentials.

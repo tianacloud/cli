@@ -9,14 +9,16 @@ import (
 
 	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/gitcommand"
 	"github.com/tianacloud/cli/internal/gitremote"
+	"github.com/tianacloud/cli/internal/supervisor"
 	"github.com/urfave/cli/v3"
 )
 
 var gitManagementScope = databaseScope{engine: "git"}
 
 func newGitCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command {
-	return &cli.Command{Name: "git", Usage: "Git product commands", Action: groupAction, Commands: []*cli.Command{
+	command := &cli.Command{Name: "git", Usage: "Git product commands", Action: groupAction, Commands: []*cli.Command{
 		newGitCreateCommand(output, diagnostics),
 		newGitListCommand(input, output, diagnostics),
 		newGitShowCommand(output, diagnostics),
@@ -40,6 +42,19 @@ func newGitCommand(input io.Reader, output, diagnostics io.Writer) *cli.Command 
 				return nil
 			}},
 	}}
+	for _, name := range []string{"clone", "fetch", "pull", "push", "ls-remote", "submodule"} {
+		command.Commands = append(command.Commands, &cli.Command{Name: name, Usage: "Run native git " + name, SkipFlagParsing: true,
+			Action: func(ctx context.Context, cmd *cli.Command) error {
+				code, err := gitcommand.Run(ctx, append([]string{cmd.Name}, cmd.Args().Slice()...), supervisor.IO{Stdin: input, Stdout: output, Stderr: diagnostics})
+				if err != nil {
+					fmt.Fprintln(diagnostics, "tiana git:", safeDisplay(err.Error()))
+					return statusError(1)
+				}
+				return statusError(code)
+			},
+		})
+	}
+	return command
 }
 
 func newGitCreateCommand(output, diagnostics io.Writer) *cli.Command {

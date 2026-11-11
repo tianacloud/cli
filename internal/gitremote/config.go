@@ -15,6 +15,8 @@ import (
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
+	"github.com/tianacloud/cli/internal/transportmode"
+	"github.com/tianacloud/sdk-go/gatewaydial"
 	"github.com/tianacloud/sdk-go/outbound"
 )
 
@@ -23,6 +25,7 @@ type config struct {
 	tls     *tls.Config
 	token   *supervisor.SecretToken
 	network *outbound.Policy
+	mode    gatewaydial.Mode
 }
 
 func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (config, error) {
@@ -46,9 +49,12 @@ func configurationWithContext(ctx context.Context, repo supervisor.Endpoint) (co
 	}
 
 	var err error
-	c.network, err = netconfig.PolicyWithRoots(ctx, c.tls.RootCAs)
-	if err != nil {
-		return c, err
+	c.mode = transportmode.FromContext(ctx)
+	if c.mode == gatewaydial.Standard {
+		c.network, err = netconfig.PolicyWithRoots(ctx, c.tls.RootCAs)
+		if err != nil {
+			return c, err
+		}
 	}
 	value, err := authclient.ConnectionCredential(ctx)
 	if err != nil {
