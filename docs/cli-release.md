@@ -278,12 +278,3 @@ Template uploads use MGR admission with its current configuration. Template sour
 downloads verify the declared byte count and SHA-256; extraction preserves source
 bytes and verifies CRC and paths. The main package and seven native dependencies
 use 1.0.19. Web App archive budgets and SDK versions remain unchanged.
-
-## 1.0.21 compatibility transport
-
-Adds explicit `--transport compat` for Endpoint data connections, including
-built-in SQLite, Web publication, Function source access and native Git commands.
-The default transport and WebSocket connect behavior remain unchanged. Native
-platform packages include the adjacent Git helper. Core SDK is pinned to
-`v1.2.1-0.20261111114035-9238f5319dec`. Deploy the matching Gateway before using
-compatibility transport; existing instances require no changes.

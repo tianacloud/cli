@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/tianacloud/cli/internal/clientconfig"
-	"github.com/tianacloud/cli/internal/transportmode"
+	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/sdk-go/fetch"
 )
 
@@ -44,11 +44,11 @@ func (c *Client) Source(ctx context.Context, id string) (*Source, error) {
 	if err != nil {
 		return nil, errors.New("invalid source connection origin")
 	}
-	network, err := transportmode.GatewayPolicy(ctx)
+	network, err := netconfig.Policy(ctx)
 	if err != nil {
 		return nil, err
 	}
-	config := fetch.Config{Endpoint: grant.Hostname, Token: grant.Token, Port: origin.Port(), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network, Transport: transportmode.FromContext(ctx)}
+	config := fetch.Config{Endpoint: grant.Hostname, Token: grant.Token, Port: origin.Port(), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network}
 	if trust := clientconfig.FromContext(ctx); trust != nil {
 		config.RootCAs = trust.Roots
 	}

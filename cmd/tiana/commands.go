@@ -16,9 +16,7 @@ import (
 	requestdiag "github.com/tianacloud/cli/internal/diagnostics"
 	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/sqlitecli"
-	"github.com/tianacloud/cli/internal/transportmode"
 	"github.com/tianacloud/cli/internal/updatecheck"
-	"github.com/tianacloud/sdk-go/gatewaydial"
 	"github.com/urfave/cli/v3"
 )
 
@@ -169,7 +167,6 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		Reader: input, Writer: output, ErrWriter: diagnostics, HideVersion: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "ca-file", Usage: "Deployment CA PEM for all MGR and Gateway connections"},
-			&cli.StringFlag{Name: "transport", Value: "standard", Usage: "Gateway connection mode: standard or compat"},
 		},
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 		Action:         groupAction,
@@ -183,9 +180,6 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,
 				Description: "Arguments after -- belong to the native client and are passed unchanged.",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					if transportmode.FromContext(ctx) == gatewaydial.Compat {
-						return argumentFailure(ctx, cmd, "connect does not support --transport compat; use sqlite shell for SQL")
-					}
 					return statusError(runConnect(ctx, append([]string{"connect"}, cmd.Args().Slice()...), output, diagnostics))
 				}},
 			newGitCommand(input, output, diagnostics),
@@ -209,11 +203,6 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 		if err != nil {
 			return ctx, err
 		}
-		mode, err := transportmode.Parse(cmd.String("transport"))
-		if err != nil {
-			return ctx, argumentFailure(ctx, cmd, err.Error())
-		}
-		ctx = transportmode.With(ctx, mode, cmd.IsSet("transport"))
 		path := cmd.String("ca-file")
 		if !cmd.IsSet("ca-file") {
 			path = os.Getenv("TIANA_CA_FILE")
