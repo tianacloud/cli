@@ -923,3 +923,26 @@ multiple lines or contain only part of a line. Retention is 7 days and collectio
 is best effort. JSON preserves messages and nanosecond timestamp strings; text
 output preserves line breaks and renders terminal control characters visibly.
 Backend failures and an unpageable timestamp boundary return an error exit status.
+
+### Web delivery links and sharing
+
+Web publication and successful `web status` queries include `endpoint` for browser use,
+`console_url` for management, `mini_program_url` for the HTTPS WeChat entry page,
+and `mini_program_code_url` for the app's scan code image. These addresses identify
+the app; publication is confirmed by its upload receipt and matching current checksums.
+WeChat entry and scan-code support target online.
+
+Use the current account and space to read or change invitation settings:
+
+```sh
+tiana web share get WEB_ID --json
+tiana web share set WEB_ID --enabled=true --expected-revision REVISION --json
+tiana web share set WEB_ID --auto-approve=true --expected-revision NEXT_REVISION --json
+```
+
+Use the revision from the preceding read or successful update. Each update changes
+one setting; `false` disables it. Automatic approval applies to new requests; existing
+pending requests still need an administrator. The result reports actual management
+and approval permissions, global availability, limits and the invitation URL.
+If a write's response is lost, read the same app in the original account and space
+before another change. Publication, sharing and automatic approval have separate results.

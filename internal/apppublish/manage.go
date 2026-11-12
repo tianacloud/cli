@@ -11,7 +11,10 @@ import (
 )
 
 type WebProject struct {
-	Endpoint string `json:"endpoint"`
+	Endpoint           string `json:"endpoint"`
+	ConsoleURL         string `json:"console_url"`
+	MiniProgramURL     string `json:"mini_program_url"`
+	MiniProgramCodeURL string `json:"mini_program_code_url"`
 	WebProjectParams
 	ProjectRevision    uint64 `json:"project_revision"`
 	Enabled            bool   `json:"enabled"`
@@ -99,16 +102,24 @@ func invalidWebResponse(requestID string) *Error {
 	return &Error{RequestID: requestID, Code: "INVALID_WEB_RESPONSE", Message: "MGR returned inconsistent Web metadata", NextAction: "Inspect the service response before retrying", ExitCode: 1}
 }
 
+func (r Runner) projectByID(ctx context.Context, id string) (WebProject, *Error) {
+	res, e := r.boundRequest(ctx, "GET", "/api/v1/web-projects/"+url.PathEscape(id), nil)
+	if e != nil {
+		return WebProject{}, e
+	}
+	var project WebProject
+	if json.Unmarshal(res.Body, &project) != nil || project.ID != id || (r.TenantID != "" && project.TenantID != r.TenantID) {
+		return project, invalidWebResponse(res.RequestID)
+	}
+	return project, nil
+}
+
 // Resolve uses the immutable ID first, then a complete exact-name search. Duplicate
 // names never select a target, including when matches span multiple pages.
 func (r Runner) Resolve(ctx context.Context, reference string) (WebProject, *Error) {
 	if appID(reference) {
-		res, e := r.boundRequest(ctx, "GET", "/api/v1/web-projects/"+url.PathEscape(reference), nil)
+		w, e := r.projectByID(ctx, reference)
 		if e == nil {
-			var w WebProject
-			if json.Unmarshal(res.Body, &w) != nil || w.ID != reference || (r.TenantID != "" && w.TenantID != r.TenantID) {
-				return w, invalidWebResponse(res.RequestID)
-			}
 			return w, nil
 		}
 		if e.HTTPStatus != 404 {

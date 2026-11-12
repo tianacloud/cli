@@ -293,3 +293,12 @@ members can read shared Web metadata.
 
 The main package, seven native dependencies and source/build defaults use 1.0.23.
 Credential storage and SDK versions are unchanged.
+
+## 1.0.24 Web delivery and invitation settings
+
+Publication and status results include browser, management, HTTPS mini-program and
+app-code image URLs from MGR metadata. The mini-program entry targets online.
+`web share get/set` reads invitation settings and changes sharing or automatic approval
+with the current project revision. Explicit false values, 64-bit revisions, permissions,
+conflicts and unknown writes retain their service semantics. Package and build defaults
+are 1.0.24; SDK pins and App publication protocols are unchanged.

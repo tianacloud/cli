@@ -36,6 +36,12 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 	if e != nil {
 		return Failure(e)
 	}
+	if project.ID != o.ID {
+		project, e = bound.projectByID(ctx, project.ID)
+		if e != nil {
+			return Failure(e)
+		}
+	}
 	if project.InstanceID == "" {
 		return Failure(inputError("Web has no instance binding"))
 	}
@@ -189,8 +195,11 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 	}
 	if o.Command == "publish" {
 		retainArchive = false
-		body["endpoint"] = project.Endpoint
 	}
+	body["endpoint"] = project.Endpoint
+	body["console_url"] = project.ConsoleURL
+	body["mini_program_url"] = project.MiniProgramURL
+	body["mini_program_code_url"] = project.MiniProgramCodeURL
 	return Success(body)
 }
 

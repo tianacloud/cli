@@ -278,7 +278,8 @@ resolution checks all pages and rejects ambiguity. Names never replace IDs.
 Upload preserves exact scoped URLs/headers, immutable fingerprints, content
 checksums, private ACL, forbid-overwrite and reconciliation. Management
 credentials never reach object storage; rejected/uncertain management writes are
-not replayed automatically. Confirmed publication returns the MGR project endpoint. Web list also displays
+not replayed automatically. Confirmed publication and successful status queries return MGR browser, Console,
+HTTPS mini-program and app-code image addresses. Web list also displays
 the configured hosted address; its presence does not assert publication or readiness.
 
 Preview has one-use local launch authorization; account refresh secrets stay local.
@@ -541,3 +542,8 @@ cursor, and do not wake the function. Cursor continuation reuses its fixed query
 a fresh first-page command refreshes. JSON retains collected messages; terminal
 presentation escapes controls while preserving line breaks. Check time/stream/
 cursor parameters, output failures and backend errors. See README runtime logs.
+
+Web sharing commands are described in README Web delivery links and sharing.
+`web share get/set` uses the existing account/space-bound management transport,
+one setting and the returned revision per write. Unknown writes retain the
+Web identity and requested value for readback. The release baseline is 1.0.24.
