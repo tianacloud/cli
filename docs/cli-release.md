@@ -278,3 +278,18 @@ Template uploads use MGR admission with its current configuration. Template sour
 downloads verify the declared byte count and SHA-256; extraction preserves source
 bytes and verifies CRC and paths. The main package and seven native dependencies
 use 1.0.19. Web App archive budgets and SDK versions remain unchanged.
+
+## 1.0.23 space management and quota
+
+Adds `space` listing, creation, switching, renaming and leaving, member management,
+and invitations with automatic resend. Creating a space or accepting an invitation
+preserves the current login space. Switch reports success after saving the returned
+credentials and exposes data credential synchronization separately.
+
+Status shows the current space name and role, plus compute, storage, instance and
+public network quotas. JSON also includes file usage details. Resource resolution
+and creation recovery stay bound to the selected account and space; same-space
+members can read shared Web metadata.
+
+The main package, seven native dependencies and source/build defaults use 1.0.23.
+Credential storage and SDK versions are unchanged.
