@@ -123,13 +123,23 @@ func printInstanceDetail(output io.Writer, instance authclient.Instance) error {
 // resolveInstanceWithLogin resolves a reference, completing browser
 // authentication first when the session is absent or revoked.
 func resolveInstanceWithLogin(ctx context.Context, client *authclient.Client, reference string) (authclient.Instance, error) {
+	instance, _, err := resolveInstanceAccountWithLogin(ctx, client, reference)
+	return instance, err
+}
+
+func resolveInstanceAccountWithLogin(ctx context.Context, client *authclient.Client, reference string) (authclient.Instance, authclient.Credential, error) {
 	var instance authclient.Instance
-	operation := func(operationContext context.Context, _ authclient.Credential) error {
-		resolved, err := client.ResolveInstance(operationContext, reference)
+	var identity, selected authclient.Credential
+	operation := func(operationContext context.Context, credential authclient.Credential) error {
+		if err := bindOperationIdentity(&identity, credential); err != nil {
+			return err
+		}
+		resolved, err := client.WithCredential(credential).ResolveInstance(operationContext, reference)
 		if err != nil {
 			return err
 		}
 		instance = resolved
+		selected = credential
 		return nil
 	}
 	err := client.RunAuthenticated(ctx, operation)
@@ -137,9 +147,20 @@ func resolveInstanceWithLogin(ctx context.Context, client *authclient.Client, re
 		err = client.RunAuthenticated(ctx, operation)
 	}
 	if err != nil {
-		return authclient.Instance{}, err
+		return authclient.Instance{}, authclient.Credential{}, err
 	}
-	return instance, nil
+	return instance, selected, nil
+}
+
+func bindOperationIdentity(first *authclient.Credential, current authclient.Credential) error {
+	if first.AccessToken == "" {
+		*first = current
+		return nil
+	}
+	if first.User.ID != current.User.ID || first.User.TenantID != current.User.TenantID {
+		return errors.New("account or space changed during the operation; retry in the original space")
+	}
+	return nil
 }
 
 func reportResolveError(errorOutput io.Writer, reference string, err error) {

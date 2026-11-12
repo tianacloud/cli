@@ -134,15 +134,16 @@ only the final `status/data/error` result, with `data.logged_in=true` on success
 the existing `AUTH_DENIED` / `AUTH_EXPIRED` errors (exit 5), without changing the
 plain login or split login exit codes.
 
-`status` shows available account details
-and compute, storage and instance quota usage and limits, with a percentage and
-20-cell progress bar:
+`status` shows account details, the current space and role, and data credential
+synchronization status. Compute, storage, instance and public network quota each
+show usage, limits, a percentage and a 20-cell progress bar:
 
 ```text
 RESOURCE         USED        LIMIT       USAGE  PROGRESS
 Compute          2500        10000       25.0%  [█████░░░░░░░░░░░░░░░]
 Storage (bytes)  1000000000  2000000000   50.0%  [██████████░░░░░░░░░░]
 Instances        2           3           66.7%  [█████████████░░░░░░░]
+Public network (bytes)  25    100         25.0%  [█████░░░░░░░░░░░░░░░]
 ```
 
 Percentages are shown to one decimal place. Over-quota usage keeps its actual
@@ -150,7 +151,10 @@ percentage while the bar stays full. Very small usage appears as `<0.1%`;
 values just below/above the limit use `>99.9%`/`>100.0%` to avoid rounding away
 that distinction. Missing usage appears as `unknown`. A zero limit remains `0`
 with `n/a` percentage; unknown or undefined percentages show `-` for the bar.
-If login or quota is unavailable, the command exits nonzero.
+`status --json` includes file storage and file compute as parts of the
+corresponding totals, and upload reservations separately. General blockage and public network blockage are separate statuses; retrieved blockage
+itself is a successful query. If login, space information or quota is unavailable,
+the command exits nonzero.
 
 Connectors that only need a local credential check can use:
 
@@ -238,6 +242,58 @@ Sign out with:
 ```sh
 tiana logout
 ```
+
+## Spaces
+
+```sh
+tiana space list
+tiana space show
+tiana space create "Project space"
+tiana space switch SPACE_ID
+tiana space rename "New name"
+tiana space leave SPACE_ID --force
+
+tiana space member list
+tiana space member set-admin USER_ID
+tiana space member remove USER_ID --force
+
+tiana space invitation invite USER_ID [USER_ID...]
+tiana space invitation list
+tiana space invitation preview INVITATION_ID
+tiana space invitation accept INVITATION_ID
+```
+
+All space commands accept `--json` and use the management result envelope.
+Lists fetch all pages in the selected account or space. Space IDs select switch
+and leave targets; names may repeat. Member operations and rename act on the
+current space, using the revision read before the change. Conflicts require
+inspection before another attempt. Roles and available operations are decided
+by the service.
+
+Creating a space and accepting an invitation preserve the current login space;
+use `space switch` to enter it. Creation prints its request ID before sending.
+If the result is uncertain, repeat the exact name with `--request-id ORIGINAL_ID`.
+
+Switch succeeds once the returned credentials are saved to the existing account
+file for the selected origin. `pending` data credential synchronization does not
+prevent management commands; check `status` later for synchronization progress.
+If the switch response is lost or saving fails, sign in again. Commands running
+during a switch can fail authentication; retry after switching finishes.
+
+`invitation invite` removes duplicate user IDs, processes users in order and
+returns a result per user. It automatically resends existing unaccepted invitations,
+which creates a new system message. Known failures and unknown outcomes retain
+other users' results; authentication failure or cancellation stops the remaining
+requests and marks them `not_executed`. Inspect the invitation/member lists after
+an uncertain result; another explicit invite is a new send operation.
+
+`invitation list` shows unaccepted invitations sent by the current space. Give the
+returned invitation ID to the recipient for preview and acceptance. Acceptance
+returns the joined space ID for an explicit switch.
+
+Leaving the current space signs out this origin; leaving another space preserves
+the current login. Leaving and removing members prompt on a terminal and require
+`--force` for JSON or noninteractive use. A space owner cannot leave their space.
 
 ## Manage instances
 
@@ -643,7 +699,7 @@ SQLite/Git `list`, `show`, `delete`, SQLite `branch list/create/delete`, and top
 
 New instance detail/list `current_job_id`, revision, quota quantities and millisecond timestamps preserve decimal-string precision. Existing create JSON keeps its original `job_id` number contract; use a lossless JSON parser for it. Default mutation output means `accepted`, waiting success means `succeeded`. A confirmed operation failure is `failed`; uncertain mutation/observation returns `unknown` and retains immutable targets and receipt IDs. Unknown outcomes exit 4; cancellation exits 130 and does not cancel server work. JSON deletion requires explicit `--force`.
 
-`status --json` returns verified `logged_in`, `user` and `quota`; a quota failure retains the verified account with `quota:null`. `sqlite shell --json` is a non-interactive alias for `--format json`, preserving the SQL result contract; it conflicts with other formats. Native `connect` and Git remote-helper retain their protocol streams.
+`status --json` returns verified `logged_in`, `user`, `space`, `quota`, `sync_status` and an optional decimal-string `job_id`. A space or quota read failure retains the verified account and available results, with the failed section set to `null`. `sqlite shell --json` is a non-interactive alias for `--format json`, preserving the SQL result contract; it conflicts with other formats. Native `connect` and Git remote-helper retain their protocol streams.
 
 Local preview permits WebAssembly compilation through `script-src 'self' 'wasm-unsafe-eval'`. Bundle `.wasm` assets with the application and load them from the preview origin. The bootstrap browser test verifies execution alongside authentication and asset loading.
 
@@ -705,7 +761,7 @@ in `MESSAGE`. Web descriptions share the instance notes limit of 2048 UTF-8 byte
 (`data.endpoint` with `--json`). The address comes from MGR's configured Site
 origin and `/web/<id>/`; upload confirmation does not mean activation has finished.
 
-Web publication uses `tiana web publish ID --dir DIST [--json]` and `tiana web status ID [--publish-id ID]`. It packages one `.tweb` with empty root `web.yaml` and `data/`, then uploads via Gateway business control using `TIANA_TOKEN` or `TIANA_TOKEN_FILE` (mutually exclusive), otherwise the selected account access token. Explicit credentials are authoritative, and invalid or rejected input never falls back to another token. Endpoint, Instance, Group and Space scopes are all supported when they cover the target; no local instance-token cache is read. The logged-in account still resolves owner-scoped Web project metadata through MGR. MGR manages Web/instance identity, not publication. S3 upload confirmation precedes activation; retain publish ID and checksum and query status on unknown results. No automatic PUT replay or versions. Plain files are supported. `web create NAME --entry assets/app.js` sets the immutable Site entry; optional `--database-instance-id` and `--git-instance-id` fix the project associations in MGR at creation. There is no styles flag or tiana.app.json. Entry JS loads its CSS. Publish validates data/<entry> before uploading. `web serve ID --dir DIST` previews using saved project parameters. Entry and associations are immutable; source-commit and web update are retired. Web list uses generic instance pagination with engine=web; MESSAGE projects notes, and names/notes are edited through the instance PATCH API with If-Match. Deploy the matching MGR schema 34 and API changes together. The Go SDK dependency is pinned to its exact published revision in go.mod; standalone builds do not require a local workspace.
+Web publication uses `tiana web publish ID --dir DIST [--json]` and `tiana web status ID [--publish-id ID]`. It packages one `.tweb` with empty root `web.yaml` and `data/`, then uploads via Gateway business control using `TIANA_TOKEN` or `TIANA_TOKEN_FILE` (mutually exclusive), otherwise the selected account access token. Explicit credentials are authoritative, and invalid or rejected input never falls back to another token. Endpoint, Instance, Group and Space scopes are all supported when they cover the target; no local instance-token cache is read. The logged-in account still resolves space-scoped Web project metadata through MGR. MGR manages Web/instance identity, not publication. S3 upload confirmation precedes activation; retain publish ID and checksum and query status on unknown results. No automatic PUT replay or versions. Plain files are supported. `web create NAME --entry assets/app.js` sets the immutable Site entry; optional `--database-instance-id` and `--git-instance-id` fix the project associations in MGR at creation. There is no styles flag or tiana.app.json. Entry JS loads its CSS. Publish validates data/<entry> before uploading. `web serve ID --dir DIST` previews using saved project parameters. Entry and associations are immutable; source-commit and web update are retired. Web list uses generic instance pagination with engine=web; MESSAGE projects notes, and names/notes are edited through the instance PATCH API with If-Match. Deploy the matching MGR schema 34 and API changes together. The Go SDK dependency is pinned to its exact published revision in go.mod; standalone builds do not require a local workspace.
 
 Web application assets require an authenticated session for their owning space;
 unauthorized reads return 404. Uploads use private OSS ACL and no object tags.

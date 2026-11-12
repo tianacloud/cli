@@ -53,7 +53,7 @@ func TestCreateQueuedJobReceiptAndRecovery(t *testing.T) {
 					if product == "function" {
 						key = "function.create"
 					}
-					if err := store.Save(authclient.PendingCommand{Command: key, Args: []string{"create", "demo"}, Origin: server.URL, UserID: "usr_cli", IdempotencyKey: "already-created"}); err != nil {
+					if err := store.Save(authclient.PendingCommand{Command: key, Args: []string{"create", "demo"}, Origin: server.URL, UserID: "usr_cli", TenantID: "tenant", IdempotencyKey: "already-created"}); err != nil {
 						t.Fatal(err)
 					}
 				}

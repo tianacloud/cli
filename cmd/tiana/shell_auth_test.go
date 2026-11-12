@@ -88,11 +88,15 @@ func TestShellAutomaticTokenRequiresAccountInstanceAccess(t *testing.T) {
 
 func TestGlobalCAReachesMGRAndSQLContext(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/tenant" {
+			io.WriteString(w, testSpaceResponse)
+			return
+		}
 		if r.URL.Path == "/api/v1/usage" {
 			io.WriteString(w, testQuotaResponse)
 			return
 		}
-		io.WriteString(w, `{"user":{"user_id":"usr_ca","email":"ca@example.com"}}`)
+		io.WriteString(w, `{"user":{"user_id":"usr_ca","tenant_id":"tenant","email":"ca@example.com"}}`)
 	}))
 	defer server.Close()
 	path := filepath.Join(t.TempDir(), "root.crt")

@@ -100,3 +100,30 @@ func writeWebInstancePage(t *testing.T, w http.ResponseWriter, page, totalPages 
 		t.Fatal(err)
 	}
 }
+
+func TestReadWebCreatedByAnotherMemberOfSameSpace(t *testing.T) {
+	r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/web-projects/AbCdEfGhIjKl" {
+			t.Errorf("unexpected request %s", req.URL)
+			w.WriteHeader(500)
+			return
+		}
+		json.NewEncoder(w).Encode(WebProject{ID: "AbCdEfGhIjKl", OwnerID: "another-member", TenantID: "ten-test", InstanceID: "web-instance", Name: "Shared"})
+	})
+	credential, loadErr := r.Client.LoadCredential()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	credential.User.TenantID = "ten-test"
+	if saveErr := r.Client.SaveCredential(credential); saveErr != nil {
+		t.Fatal(saveErr)
+	}
+	r, err := r.Bind(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := r.Resolve(t.Context(), "AbCdEfGhIjKl")
+	if err != nil || project.OwnerID != "another-member" {
+		t.Fatalf("project=%+v err=%v", project, err)
+	}
+}

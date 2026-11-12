@@ -116,6 +116,21 @@ without changing stored/API metadata, SQL output or protocol bytes. Request IDs
 and structured operation identities remain available without raw peer errors.
 Uninstallation validates trusted ancestors and intermediate paths before removal.
 
+## Space management
+
+For space, member, invitation and quota changes, consult [README Spaces](README.md#spaces)
+and account status. Keep the existing credential path and per-origin JSON structure.
+Switch saves the returned access/refresh/user before success; sync remains observable
+through status. Preserve the accepted concurrent-switch authentication-failure boundary.
+Space requests pin one credential per operation using the existing one-use SDK store
+per HTTP request. Persisted instance creation binds user and tenant; unknown writes
+retain the original request and space. Name resolution and subsequent writes use
+that same identity, including after authentication re-entry. Web reads use space
+membership; creator identity remains metadata and server operation policies apply.
+Verify response loss, failed saves, partial invitations, precision, and interleaved
+space switches. Reverting the CLI surface leaves server resources and the selected
+login intact; existing pending creation records retain their original space.
+
 ## Mutations, receipts and waiting
 
 `token create INSTANCE --name NAME` explicitly creates an Instance-scoped data
@@ -167,8 +182,8 @@ fields through resolution/wait; only the server validates retained history.
 
 Branch mutations have no local resume record or server deduplication guarantee.
 Never replay create automatically or treat rerunning it as resume. Delete retries
-use original IDs after inspection. SDK explicit 401 refresh preserves target/body/
-request key; no transport/5xx mutation retry. Existing pending intents block writes.
+use original IDs after inspection. Selected-space requests keep target/body/request key and report authentication
+failure for an expired snapshot; no transport/5xx mutation retry. Existing pending intents block writes.
 
 Branch create/delete and instance delete waits poll bound operations once per
 second; validate kind, instance and immutable parent/branch. CREATE_BRANCH success
@@ -256,7 +271,7 @@ absolute Bootstrap script at `id=tiana-bootstrap-script`; preserve version/hash
 routes and byte-identical shared CLI/Web runtime files.
 
 Creation/list traversal pins origin/user/tenant. Retain exact description/request
-identity across unknown outcomes. List uses owner-scoped cursor pages, caps 10000
+identity across unknown outcomes. List uses space-scoped cursor pages, caps 10000
 pages, rejects malformed/nonadvancing cursors and foreign records; exact-name
 resolution checks all pages and rejects ambiguity. Names never replace IDs.
 
@@ -273,7 +288,7 @@ fallback. Coordinate CLI/Web/MGR provider contracts and data-plane synchronizati
 trusted app code has tenant scope. Recover lookups but never replay SQL.
 
 Web project entry and optional Git/SQLite associations are fixed at create.
-source_commit and web update are retired. Web list uses owner-filtered generic
+source_commit and web update are retired. Web list uses space-scoped generic
 instance pagination with engine=web; name/description/revision project generic
 instance metadata. Generic revision strings must retain uint64 precision.
 
@@ -296,7 +311,8 @@ and rely on durable deleting state plus idempotent OSS deletion after restart.
 
 ## Account status and diagnostics
 
-`status` verifies the account noninteractively then reads tenant usage summary;
+`status` verifies the account noninteractively, then reads current-space metadata
+and the tenant usage summary;
 never infer tenant or usage from detail counts. Preserve decimal-string uint64 and
 Unix-millisecond precision, zero vs unknown, blocked/reason and partial failures.
 Missing login or unavailable quota exits 1; retrieved blockage itself exits 0.
@@ -304,9 +320,10 @@ Missing login or unavailable quota exits 1; retrieved blockage itself exits 0.
 refresh, quota, lock-file or update-check writes. Missing/expired credentials are
 successful checks with logged_in=false; unreadable/corrupt state remains an error.
 It does not verify server revocation or refreshability. Keep ordinary status and
-its WorkBuddy `Quota period:` match unchanged.
-Print available account details and quota, omitting User ID/Management/Tenant lines.
-Use exact bounded math for three rows, one-decimal percentage and 20-cell bars;
+its WorkBuddy `Quota period:` match unchanged. Space/quota reads use the verified
+account identity and a credential snapshot, retaining successful sections on failure.
+Print available account details, current space/role, sync state and quota.
+Use exact bounded math for four resource rows, one-decimal percentage and 20-cell bars;
 preserve tiny/nonzero/below/above-limit distinctions and cap only bar width.
 
 `TIANA_DIAGNOSTICS=1` exposes request identities on stderr without secrets, SQL

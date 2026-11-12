@@ -1,6 +1,7 @@
 package authclient
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -31,7 +32,29 @@ var (
 // Client keeps CLI resource operations around the shared SDK auth client.
 type Client struct {
 	*auth.Client
-	config Config
+	config     Config
+	credential *Credential
+}
+
+// WithCredential keeps this operation's requests in the space selected at entry.
+// Each request gets a fresh one-use store; a 401 cannot adopt another login.
+func (c *Client) WithCredential(credential Credential) *Client {
+	copy := *c
+	copy.credential = &credential
+	return &copy
+}
+
+func (c *Client) DoJSON(ctx context.Context, method, path string, body any, headers map[string]string, result any) (int, error) {
+	if c.credential == nil {
+		return c.Client.DoJSON(ctx, method, path, body, headers, result)
+	}
+	cfg := c.config
+	cfg.Store = &pinnedAppCredential{value: *c.credential}
+	client, err := auth.NewWithConfig(cfg)
+	if err != nil {
+		return 0, err
+	}
+	return client.DoJSON(ctx, method, path, body, headers, result)
 }
 
 func New(origin string) (*Client, error) { return NewWithConfig(Config{Origin: origin}) }

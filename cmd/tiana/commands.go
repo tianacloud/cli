@@ -175,6 +175,7 @@ func newCLICommand(input io.Reader, output, diagnostics io.Writer, sqlAction sql
 			newLoginCommand(output, diagnostics),
 			{Name: "logout", Usage: "Sign out and clear local account credentials", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result")}, Action: noArgs(runLogout)},
 			newStatusCommand(output, diagnostics),
+			newSpaceCommand(input, output, diagnostics),
 
 			newSQLiteCommand(input, output, diagnostics, sqlAction),
 			{Name: "connect", Usage: "Connect a native client through the helper", ArgsUsage: "[options] -- <native client> [args...]", SkipFlagParsing: true,

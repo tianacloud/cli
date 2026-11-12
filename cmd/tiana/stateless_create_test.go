@@ -101,7 +101,7 @@ func TestAsyncCreationRecoveryAndConflictingIntent(t *testing.T) {
 				blocked := mode == "other-account" || mode == "pending-conflict"
 				var before []byte
 				if blocked {
-					p := authclient.PendingCommand{Command: key, Args: []string{"create", "demo"}, Origin: server.URL, UserID: "usr_cli", IdempotencyKey: "stable"}
+					p := authclient.PendingCommand{Command: key, Args: []string{"create", "demo"}, Origin: server.URL, UserID: "usr_cli", TenantID: "tenant", IdempotencyKey: "stable"}
 					if mode == "other-account" {
 						p.UserID = "other"
 					}

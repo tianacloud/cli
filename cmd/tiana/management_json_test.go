@@ -67,6 +67,8 @@ func TestManagementJSONReadCommands(t *testing.T) {
 					} else {
 						io.WriteString(w, `{"items":[{"branch_id":"child","name":"preview"}],"next_cursor":""}`)
 					}
+				case "/api/v1/tenant":
+					io.WriteString(w, testSpaceResponse)
 				case "/api/v1/usage":
 					io.WriteString(w, strings.ReplaceAll(testQuotaResponse, `"storage_used":"456"`, `"storage_used":"18446744073709551615"`))
 				default:

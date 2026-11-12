@@ -63,7 +63,9 @@ func TestInheritedOriginSelectsAccountForActualStatus(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/api/v1/auth/transactions/whoami":
-			io.WriteString(w, `{"user":{"user_id":"configured","email":"configured@example.test"}}`)
+			io.WriteString(w, `{"user":{"user_id":"configured","tenant_id":"tenant","email":"configured@example.test"}}`)
+		case "/api/v1/tenant":
+			io.WriteString(w, testSpaceResponse)
 		case "/api/v1/usage":
 			io.WriteString(w, testQuotaResponse)
 		default:
@@ -83,7 +85,7 @@ func TestInheritedOriginSelectsAccountForActualStatus(t *testing.T) {
 	if code := runCLI(context.Background(), []string{"--ca-file", ca, "status"}, nil, &out, &diag); code != 0 || !strings.Contains(out.String(), "configured@example.test") {
 		t.Fatalf("code=%d diagnostics=%s", code, &diag)
 	}
-	if requests != 2 {
+	if requests != 3 {
 		t.Fatalf("requests=%d", requests)
 	}
 }

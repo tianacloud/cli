@@ -48,7 +48,7 @@ func createInstanceToken(ctx context.Context, cmd *cli.Command, output, diagnost
 	if err != nil {
 		return fail(err)
 	}
-	instance, err := resolveInstanceWithLogin(ctx, account, cmd.Args().First())
+	instance, credential, err := resolveInstanceAccountWithLogin(ctx, account, cmd.Args().First())
 	if err != nil {
 		return fail(err)
 	}
@@ -61,7 +61,7 @@ func createInstanceToken(ctx context.Context, cmd *cli.Command, output, diagnost
 	}
 	fmt.Fprintln(diagnostics, "Token request ID:", safeDisplay(requestID))
 	data := map[string]any{"instance_id": instance.ID, "request_id": requestID}
-	receipt, err := account.CreateInstanceToken(ctx, instance.ID, authclient.CreateInstanceTokenRequest{RequestID: requestID, Name: cmd.String("name"), ExpiresAt: cmd.Int64("expires-at")})
+	receipt, err := account.WithCredential(credential).CreateInstanceToken(ctx, instance.ID, authclient.CreateInstanceTokenRequest{RequestID: requestID, Name: cmd.String("name"), ExpiresAt: cmd.Int64("expires-at")})
 	if err != nil {
 		var api *authclient.APIError
 		if errors.As(err, &api) && api.Status < 500 && api.Code != "COMMIT_STATUS_UNKNOWN" && api.Code != "RESULT_UNKNOWN" {

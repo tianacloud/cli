@@ -81,7 +81,7 @@ func (r Runner) ListPage(ctx context.Context, after string) (WebProjectPage, *Er
 		if err != nil {
 			return WebProjectPage{}, invalidWebResponse(res.RequestID)
 		}
-		w := WebProject{Endpoint: i.Web.Endpoint, ID: i.Web.ID, InstanceID: i.ID, Name: i.DisplayName, Description: i.Notes, OwnerID: r.PrincipalID, TenantID: r.TenantID, CreatedAt: created.UnixMilli(), ProjectRevision: revision, RuntimeStatusStale: i.RuntimeStatusStale, WebProjectParams: WebProjectParams{Entry: i.Web.Entry, DatabaseInstanceID: i.Web.DatabaseInstanceID, GitInstanceID: i.Web.GitInstanceID}}
+		w := WebProject{Endpoint: i.Web.Endpoint, ID: i.Web.ID, InstanceID: i.ID, Name: i.DisplayName, Description: i.Notes, TenantID: r.TenantID, CreatedAt: created.UnixMilli(), ProjectRevision: revision, RuntimeStatusStale: i.RuntimeStatusStale, WebProjectParams: WebProjectParams{Entry: i.Web.Entry, DatabaseInstanceID: i.Web.DatabaseInstanceID, GitInstanceID: i.Web.GitInstanceID}}
 		if i.Enabled != nil {
 			w.Enabled = *i.Enabled
 		}
@@ -106,7 +106,7 @@ func (r Runner) Resolve(ctx context.Context, reference string) (WebProject, *Err
 		res, e := r.boundRequest(ctx, "GET", "/api/v1/web-projects/"+url.PathEscape(reference), nil)
 		if e == nil {
 			var w WebProject
-			if json.Unmarshal(res.Body, &w) != nil || w.ID != reference || w.OwnerID != r.PrincipalID || (r.TenantID != "" && w.TenantID != r.TenantID) {
+			if json.Unmarshal(res.Body, &w) != nil || w.ID != reference || (r.TenantID != "" && w.TenantID != r.TenantID) {
 				return w, invalidWebResponse(res.RequestID)
 			}
 			return w, nil

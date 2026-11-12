@@ -13,7 +13,9 @@ import (
 	"testing"
 )
 
-const testQuotaResponse = `{"tenant_id":"tenant-status","compute_used":"123","storage_used":"456","updated_at":1790083200123,"period_start":1789948800000,"period_end":1790553600000,"instances_used":"2","limits":{"compute":"10000","storage_bytes":"2000000000","max_instances":"3","period":"week"},"blocked":false,"reason":""}`
+const testQuotaResponse = `{"tenant_id":"tenant","compute_used":"123","storage_used":"456","updated_at":1790083200123,"period_start":1789948800000,"period_end":1790553600000,"instances_used":"2","public_network_used":"25","file_storage_used":"42","file_compute_used":"100","file_reserved_bytes":"8","public_network_blocked":false,"limits":{"compute":"10000","storage_bytes":"2000000000","max_instances":"3","public_network_bytes":"100","period":"week"},"blocked":false,"reason":""}`
+
+const testSpaceResponse = `{"tenant_id":"tenant","display_name":"Test space","role":"tenant_owner","revision":"1","is_default":true,"can_manage":true,"can_set_admin":true}`
 
 func TestStatusUsesExplicitOrigin(t *testing.T) {
 	requests := 0
@@ -24,7 +26,9 @@ func TestStatusUsesExplicitOrigin(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/api/v1/auth/transactions/whoami":
-			io.WriteString(w, `{"user":{"user_id":"usr_saved","email":"saved@example.test"}}`)
+			io.WriteString(w, `{"user":{"user_id":"usr_saved","tenant_id":"tenant","email":"saved@example.test"}}`)
+		case "/api/v1/tenant":
+			io.WriteString(w, testSpaceResponse)
 		case "/api/v1/usage":
 			io.WriteString(w, testQuotaResponse)
 		default:
@@ -41,7 +45,7 @@ func TestStatusUsesExplicitOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, diag bytes.Buffer
-	if code := runCLI(context.Background(), []string{"--ca-file", caFile, "status"}, nil, &out, &diag); code != 0 || requests != 2 || !strings.Contains(out.String(), "saved@example.test") {
+	if code := runCLI(context.Background(), []string{"--ca-file", caFile, "status"}, nil, &out, &diag); code != 0 || requests != 3 || !strings.Contains(out.String(), "saved@example.test") {
 		t.Fatalf("code=%d requests=%d out=%s diagnostics=%s", code, requests, &out, &diag)
 	}
 }
@@ -59,7 +63,9 @@ func TestStatusLoginAndQuota(t *testing.T) {
 				switch r.URL.Path {
 				case "/api/v1/auth/transactions/whoami":
 					authCalls++
-					io.WriteString(w, `{"user":{"user_id":"usr_status","email":"status@example.test","display_name":"Test User","username":"testuser"},"access_token":"PRIVATE_ACCOUNT_SECRET"}`)
+					io.WriteString(w, `{"user":{"user_id":"usr_status","tenant_id":"tenant","email":"status@example.test","display_name":"Test User","username":"testuser"},"access_token":"PRIVATE_ACCOUNT_SECRET"}`)
+				case "/api/v1/tenant":
+					io.WriteString(w, testSpaceResponse)
 				case "/api/v1/usage":
 					usageCalls++
 					if r.URL.Query().Get("page_size") != "1" || r.URL.Query().Get("page") != "1" || len(r.URL.Query()) != 2 {
@@ -71,7 +77,7 @@ func TestStatusLoginAndQuota(t *testing.T) {
 						return
 					}
 					if mode == "quota-malformed" {
-						io.WriteString(w, `{"tenant_id":"tenant-status"}`)
+						io.WriteString(w, `{"tenant_id":"tenant"}`)
 						return
 					}
 					body := testQuotaResponse
@@ -111,7 +117,7 @@ func TestStatusLoginAndQuota(t *testing.T) {
 			if strings.Contains(out.String()+diag.String(), "PRIVATE_") {
 				t.Fatal("status leaked credentials/error body")
 			}
-			for _, hidden := range []string{"Signed in as", "User ID:", "Management:", "Tenant:", "usr_status", "tenant-status", server.URL} {
+			for _, hidden := range []string{"Signed in as", "User ID:", "Management:", "Tenant:", "usr_status", server.URL} {
 				if strings.Contains(out.String(), hidden) {
 					t.Errorf("status displays removed field %q: %s", hidden, &out)
 				}
@@ -201,6 +207,54 @@ func TestStatusQuotaProgress(t *testing.T) {
 			percent, bar := statusQuotaProgress(tc.used, tc.limit)
 			if percent != tc.percent || bar != tc.bar {
 				t.Fatalf("got %s %s; want %s %s", percent, bar, tc.percent, tc.bar)
+			}
+		})
+	}
+}
+
+func TestStatusSpaceQuotaPrecisionAndUnknowns(t *testing.T) {
+	for _, mode := range []string{"precision", "unknown", "space-failed"} {
+		t.Run(mode, func(t *testing.T) {
+			webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/auth/transactions/whoami":
+					io.WriteString(w, `{"user":{"user_id":"owner","tenant_id":"tenant"},"sync_status":"pending","job_id":9007199254740993}`)
+				case "/api/v1/tenant":
+					if mode == "space-failed" {
+						w.WriteHeader(503)
+						return
+					}
+					io.WriteString(w, testSpaceResponse)
+				case "/api/v1/usage":
+					body := strings.ReplaceAll(testQuotaResponse, `"25"`, `"18446744073709551615"`)
+					body = strings.ReplaceAll(body, `"public_network_blocked":false`, `"public_network_blocked":true`)
+					if mode == "unknown" {
+						body = strings.ReplaceAll(body, `"file_storage_used":"42"`, `"file_storage_used":null`)
+					}
+					io.WriteString(w, body)
+				default:
+					t.Errorf("unexpected request %s", r.URL)
+					w.WriteHeader(500)
+				}
+			})
+			code, result, diag := runSpaceJSON(t, "status")
+			expected := 0
+			if mode == "space-failed" {
+				expected = 1
+			}
+			if code != expected {
+				t.Fatalf("code=%d result=%v diag=%s", code, result, diag)
+			}
+			data := result["data"].(map[string]any)
+			quota := data["quota"].(map[string]any)
+			if data["job_id"] != "9007199254740993" || quota["public_network_used"] != "18446744073709551615" || quota["public_network_blocked"] != true || quota["blocked"] != false {
+				t.Fatalf("data=%v", data)
+			}
+			if mode == "unknown" && quota["file_storage_used"] != nil {
+				t.Fatalf("quota=%v", quota)
+			}
+			if mode == "space-failed" && (data["space"] != nil || data["logged_in"] != true) {
+				t.Fatalf("data=%v", data)
 			}
 		})
 	}

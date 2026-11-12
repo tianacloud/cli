@@ -81,9 +81,15 @@ func executeInstanceDelete(ctx context.Context, reference string, force, wait bo
 		return 1
 	}
 	var instance authclient.Instance
-	resolve := func(ctx context.Context, _ authclient.Credential) error {
+	var identity authclient.Credential
+	var selected *authclient.Client
+	resolve := func(ctx context.Context, credential authclient.Credential) error {
+		if err := bindOperationIdentity(&identity, credential); err != nil {
+			return err
+		}
+		selected = client.WithCredential(credential)
 		var err error
-		instance, err = resolveDeletionTarget(ctx, client, reference, scope)
+		instance, err = resolveDeletionTarget(ctx, selected, reference, scope)
 		return err
 	}
 	err = client.RunAuthenticated(ctx, resolve)
@@ -124,9 +130,9 @@ func executeInstanceDelete(ctx context.Context, reference string, force, wait bo
 		writeCommandError(diagnostics, err)
 		return 1
 	}
-	// Pin the resolved ID across confirmation and the SDK's 401 refresh retry.
+	// Keep the resolved ID and space credential across confirmation.
 	// No name re-resolution or command-level retry on transport/server failure.
-	receipt, err := client.DeleteInstance(ctx, instance.ID, key)
+	receipt, err := selected.DeleteInstance(ctx, instance.ID, key)
 	if err != nil {
 		if managementJSON(ctx) {
 			return mutationJSONFailure(ctx, err, map[string]string{"instance_id": instance.ID, "request_id": key}, output, diagnostics)

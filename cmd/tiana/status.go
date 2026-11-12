@@ -24,7 +24,21 @@ func runStatus(ctx context.Context, output, diagnostics io.Writer) int {
 		writeCommandError(diagnostics, err)
 		return 1
 	}
-	user, err := client.Whoami(ctx)
+	credential, err := client.EnsureCredential(ctx)
+	var account authclient.AccountState
+	if err == nil {
+		account, err = client.AccountState(ctx)
+	}
+	if err == nil {
+		// Account verification retains the SDK's normal same-space refresh.
+		// Pin the resulting credential before reading space metadata and quota.
+		var current authclient.Credential
+		current, err = client.EnsureCredential(ctx)
+		if err == nil {
+			err = bindOperationIdentity(&credential, current)
+			client = client.WithCredential(current)
+		}
+	}
 	if err != nil {
 		if managementJSON(ctx) {
 			return managementFailure(err, output, diagnostics, nil)
@@ -35,71 +49,111 @@ func runStatus(ctx context.Context, output, diagnostics io.Writer) int {
 		writeCommandError(diagnostics, err)
 		return 1
 	}
-	if user.ID == "" {
-		if managementJSON(ctx) {
-			return writeAppResult(apppublish.Failure(&apppublish.Error{Code: "INVALID_ACCOUNT_RESPONSE", Message: "Invalid account status response", ExitCode: 1}), true, output, diagnostics)
-		}
-		fmt.Fprintln(diagnostics, "tiana: invalid account status response")
-		return 1
+	user := account.User
+	if user.ID == "" || user.ID != credential.User.ID || user.TenantID != credential.User.TenantID {
+		return spaceFailure(ctx, errors.New("account response does not match the selected space"), false, nil, "Run tiana status again", output, diagnostics)
 	}
-	if !managementJSON(ctx) {
-		for _, field := range []struct{ label, value string }{{"Email", user.Email}, {"Name", user.DisplayName}, {"Username", user.Username}} {
-			if field.value != "" {
-				if _, err := fmt.Fprintf(output, "%s: %s\n", field.label, safeDisplay(field.value)); err != nil {
-					fmt.Fprintln(diagnostics, "tiana: cannot write status")
-					return 1
-				}
-			}
-		}
+	space, spaceErr := client.CurrentSpace(ctx)
+	quota, quotaErr := client.GetTenantUsage(ctx)
+	data := map[string]any{"logged_in": true, "user": user, "space": nil, "quota": nil, "sync_status": account.SyncStatus}
+	if account.JobID != 0 {
+		data["job_id"] = strconv.FormatUint(account.JobID, 10)
 	}
-	quota, err := client.GetTenantUsage(ctx)
-	if err != nil {
-		if managementJSON(ctx) {
-			writeCommandError(diagnostics, err)
-			return writeAppResult(apppublish.Result{Status: "failed", Data: map[string]any{"logged_in": true, "user": user, "quota": nil}, Error: &apppublish.Error{Code: "QUOTA_UNAVAILABLE", Message: "Account verified but quota is unavailable", NextAction: "Query tiana status again when quota service is available", ExitCode: 1}}, true, output, diagnostics)
-		}
-		fmt.Fprintln(output, "Quota: unavailable")
-		writeCommandError(diagnostics, err)
-		return 1
+	if spaceErr == nil {
+		data["space"] = space
+	}
+	if quotaErr == nil {
+		data["quota"] = statusQuotaData(quota)
+	}
+	if spaceErr != nil {
+		writeCommandError(diagnostics, spaceErr)
+	}
+	if quotaErr != nil {
+		writeCommandError(diagnostics, quotaErr)
 	}
 	if managementJSON(ctx) {
-		data := map[string]any{"logged_in": true, "user": user, "quota": map[string]any{"tenant_id": quota.TenantID, "compute_used": quota.ComputeUsed, "storage_used": quota.StorageUsed, "instances_used": quota.InstancesUsed, "updated_at": millisJSON(quota.UpdatedAt), "period_start": millisJSON(quota.PeriodStart), "period_end": millisJSON(quota.PeriodEnd), "limits": quota.Limits, "blocked": quota.Blocked, "reason": quota.Reason}}
-		// Encode uint64 quantities as decimal strings independently of API decoding.
-		q := data["quota"].(map[string]any)
-		q["compute_used"] = quantityJSON(quota.ComputeUsed)
-		q["storage_used"] = quantityJSON(quota.StorageUsed)
-		q["instances_used"] = quantityJSON(quota.InstancesUsed)
+		if spaceErr != nil || quotaErr != nil {
+			code, message := "SPACE_UNAVAILABLE", "Account verified but space information is unavailable"
+			if quotaErr != nil {
+				code, message = "QUOTA_UNAVAILABLE", "Account verified but quota is unavailable"
+			}
+			return writeAppResult(apppublish.Result{Status: "failed", Data: data, Error: &apppublish.Error{Code: code, Message: message, NextAction: "Query tiana status again when the service is available", ExitCode: 1}}, true, output, diagnostics)
+		}
 		return writeAppResult(apppublish.Success(data), true, output, diagnostics)
 	}
 	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(table, "Quota period: %s (%s to %s)\n", safeDisplay(quota.Limits.Period), statusTime(quota.PeriodStart), statusTime(quota.PeriodEnd))
-	fmt.Fprintln(table, "RESOURCE\tUSED\tLIMIT\tUSAGE\tPROGRESS")
-	for _, resource := range []struct {
-		name  string
-		used  *uint64
-		limit uint64
-	}{
-		{"Compute", quota.ComputeUsed, *quota.Limits.Compute},
-		{"Storage (bytes)", quota.StorageUsed, *quota.Limits.StorageBytes},
-		{"Instances", quota.InstancesUsed, *quota.Limits.MaxInstances},
-	} {
-		percent, bar := statusQuotaProgress(resource.used, resource.limit)
-		fmt.Fprintf(table, "%s\t%s\t%d\t%s\t%s\n", resource.name, statusQuantity(resource.used), resource.limit, percent, bar)
+	for _, field := range []struct{ label, value string }{{"Email", user.Email}, {"Name", user.DisplayName}, {"Username", user.Username}} {
+		if field.value != "" {
+			fmt.Fprintf(table, "%s: %s\n", field.label, safeDisplay(field.value))
+		}
 	}
-	blocked := "no"
-	if *quota.Blocked {
-		blocked = "yes"
+	if spaceErr == nil {
+		fmt.Fprintf(table, "Space: %s\nRole: %s\n", safeDisplay(spaceName(space.Space)), safeDisplay(space.Role))
+	} else {
+		fmt.Fprintln(table, "Space: unavailable")
 	}
-	fmt.Fprintf(table, "Blocked: %s\n", blocked)
-	if quota.Reason != "" {
-		fmt.Fprintf(table, "Reason: %s\n", safeDisplay(quota.Reason))
+	syncStatus := account.SyncStatus
+	if syncStatus == "" {
+		syncStatus = "unknown"
 	}
-	fmt.Fprintf(table, "Usage updated at: %s\n", statusTime(quota.UpdatedAt))
+	fmt.Fprintf(table, "Data credential sync: %s\n", safeDisplay(syncStatus))
+	if quotaErr != nil {
+		fmt.Fprintln(table, "Quota: unavailable")
+	} else {
+		writeStatusQuota(table, quota)
+	}
 	if err := table.Flush(); err != nil {
 		fmt.Fprintln(diagnostics, "tiana: cannot write status")
 		return 1
 	}
+	if spaceErr != nil || quotaErr != nil {
+		return 1
+	}
 	return 0
+}
+
+func statusQuotaData(quota authclient.TenantUsage) map[string]any {
+	return map[string]any{
+		"tenant_id": quota.TenantID, "compute_used": quantityJSON(quota.ComputeUsed), "storage_used": quantityJSON(quota.StorageUsed), "instances_used": quantityJSON(quota.InstancesUsed),
+		"public_network_used": quantityJSON(quota.PublicNetworkUsed), "file_compute_used": quantityJSON(quota.FileComputeUsed), "file_storage_used": quantityJSON(quota.FileStorageUsed), "file_reserved_bytes": quantityJSON(quota.FileReservedBytes),
+		"updated_at": millisJSON(quota.UpdatedAt), "period_start": millisJSON(quota.PeriodStart), "period_end": millisJSON(quota.PeriodEnd), "limits": quota.Limits, "blocked": quota.Blocked, "reason": quota.Reason, "public_network_blocked": quota.PublicNetworkBlocked,
+	}
+}
+
+func writeStatusQuota(table io.Writer, quota authclient.TenantUsage) {
+	fmt.Fprintf(table, "Quota period: %s (%s to %s)\n", safeDisplay(quota.Limits.Period), statusTime(quota.PeriodStart), statusTime(quota.PeriodEnd))
+	fmt.Fprintln(table, "RESOURCE\tUSED\tLIMIT\tUSAGE\tPROGRESS")
+	for _, resource := range []struct {
+		name        string
+		used, limit *uint64
+	}{
+		{"Compute", quota.ComputeUsed, quota.Limits.Compute},
+		{"Storage (bytes)", quota.StorageUsed, quota.Limits.StorageBytes},
+		{"Instances", quota.InstancesUsed, quota.Limits.MaxInstances},
+		{"Public network (bytes)", quota.PublicNetworkUsed, quota.Limits.PublicNetworkBytes},
+	} {
+		percent, bar := "unknown", "-"
+		if resource.limit != nil {
+			percent, bar = statusQuotaProgress(resource.used, *resource.limit)
+		}
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", resource.name, statusQuantity(resource.used), statusQuantity(resource.limit), percent, bar)
+	}
+	fmt.Fprintf(table, "Blocked: %s\n", statusBool(quota.Blocked))
+	if quota.Reason != "" {
+		fmt.Fprintf(table, "Reason: %s\n", safeDisplay(quota.Reason))
+	}
+	fmt.Fprintf(table, "Public network blocked: %s\n", statusBool(quota.PublicNetworkBlocked))
+	fmt.Fprintf(table, "Usage updated at: %s\n", statusTime(quota.UpdatedAt))
+}
+
+func statusBool(value *bool) string {
+	if value == nil {
+		return "unknown"
+	}
+	if *value {
+		return "yes"
+	}
+	return "no"
 }
 
 func statusQuantity(value *uint64) string {

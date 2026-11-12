@@ -261,7 +261,7 @@ func TestGitCreateResumeRejectsChangedMetadata(t *testing.T) {
 			env := newTestEnv(t, server.URL)
 			saveTestCredential(t, server.URL, env.credentialsPath, "usr_git")
 			store := authclient.NewFilePendingCommandStore(env.pendingPath)
-			pending := authclient.PendingCommand{Command: "git.create", Args: []string{"create", "my-repo"}, Origin: server.URL, UserID: "usr_git", InstanceID: testInstanceID, IdempotencyKey: "instance-key"}
+			pending := authclient.PendingCommand{Command: "git.create", Args: []string{"create", "my-repo"}, Origin: server.URL, UserID: "usr_git", TenantID: "tenant", InstanceID: testInstanceID, IdempotencyKey: "instance-key"}
 			if err := store.Save(pending); err != nil {
 				t.Fatal(err)
 			}

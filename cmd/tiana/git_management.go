@@ -142,8 +142,13 @@ func executeGitShow(ctx context.Context, reference string, urlOnly bool, output,
 func resolveGitInstanceWithLogin(ctx context.Context, client *authclient.Client, reference string) (authclient.Instance, error) {
 	reference = strings.TrimSpace(reference)
 	var instance authclient.Instance
-	operation := func(ctx context.Context, _ authclient.Credential) error {
-		found, err := client.GetInstance(ctx, reference)
+	var identity authclient.Credential
+	operation := func(ctx context.Context, credential authclient.Credential) error {
+		if err := bindOperationIdentity(&identity, credential); err != nil {
+			return err
+		}
+		selected := client.WithCredential(credential)
+		found, err := selected.GetInstance(ctx, reference)
 		if err == nil {
 			instance = found
 			return nil
@@ -153,7 +158,7 @@ func resolveGitInstanceWithLogin(ctx context.Context, client *authclient.Client,
 		}
 		var matches []authclient.Instance
 		for page := 1; ; page++ {
-			result, err := client.ListInstances(ctx, reference, page, nonInteractivePageSize)
+			result, err := selected.ListInstances(ctx, reference, page, nonInteractivePageSize)
 			if err != nil {
 				return err
 			}

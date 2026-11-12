@@ -93,9 +93,15 @@ func executeBranchMutation(ctx context.Context, action, reference, name, parent 
 		return 1
 	}
 	var instance authclient.Instance
-	resolve := func(ctx context.Context, _ authclient.Credential) error {
+	var identity authclient.Credential
+	var selected *authclient.Client
+	resolve := func(ctx context.Context, credential authclient.Credential) error {
+		if err := bindOperationIdentity(&identity, credential); err != nil {
+			return err
+		}
+		selected = client.WithCredential(credential)
 		var e error
-		instance, e = resolveDeletionTarget(ctx, client, reference, sqliteManagementScope)
+		instance, e = resolveDeletionTarget(ctx, selected, reference, sqliteManagementScope)
 		return e
 	}
 	err = client.RunAuthenticated(ctx, resolve)
@@ -118,7 +124,7 @@ func executeBranchMutation(ctx context.Context, action, reference, name, parent 
 			targetByID = true
 		}
 	}
-	detail, err := client.ResolveMutationBranch(ctx, instance.ID, target, targetByID)
+	detail, err := selected.ResolveMutationBranch(ctx, instance.ID, target, targetByID)
 	if err != nil {
 		if managementJSON(ctx) {
 			return managementFailure(err, output, diagnostics, nil)
@@ -165,9 +171,9 @@ func executeBranchMutation(ctx context.Context, action, reference, name, parent 
 	}
 	var receipt authclient.BranchOperationReceipt
 	if action == "create" {
-		receipt, err = client.CreateBranch(ctx, instance.ID, branch.ID, create, key)
+		receipt, err = selected.CreateBranch(ctx, instance.ID, branch.ID, create, key)
 	} else {
-		receipt, err = client.DeleteBranch(ctx, instance.ID, branch.ID, key)
+		receipt, err = selected.DeleteBranch(ctx, instance.ID, branch.ID, key)
 	}
 	if err != nil {
 		if managementJSON(ctx) {

@@ -204,6 +204,8 @@ func TestLoginStatusAndTemplateDownloadThroughAllProxy(t *testing.T) {
 						t.Error("account credential missing")
 					}
 					io.WriteString(w, `{"user":{"user_id":"owner","tenant_id":"tenant","email":"owner@example.test"}}`)
+				case "/api/v1/tenant":
+					io.WriteString(w, testSpaceResponse)
 				case "/api/v1/usage":
 					io.WriteString(w, testQuotaResponse)
 				case "/api/v1/web-templates":

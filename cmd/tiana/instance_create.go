@@ -85,10 +85,11 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 	}
 	exitCode := 0
 	operation := func(call context.Context, credential authclient.Credential) error {
-		if pending.UserID != "" && pending.UserID != credential.User.ID {
-			return errors.New("pending creation belongs to another account; original intent preserved")
+		if (existing || pending.UserID != "") && (pending.UserID != credential.User.ID || pending.TenantID == "" || pending.TenantID != credential.User.TenantID) {
+			return errors.New("pending creation does not match this account and space; original intent preserved; return to the original space, or use the original CLI for a record without a space")
 		}
 		pending.UserID = credential.User.ID
+		pending.TenantID = credential.User.TenantID
 		if pending.InstanceID == "" {
 			if !existing {
 				engines, e := client.ListAppTypes(call)
@@ -107,7 +108,7 @@ func executeInstanceCreate(ctx context.Context, options createOptions, args []st
 			if err := store.Save(pending); err != nil {
 				return err
 			}
-			instance, e := client.CreateInstance(call, options.input, pending.IdempotencyKey)
+			instance, e := client.WithCredential(credential).CreateInstance(call, options.input, pending.IdempotencyKey)
 			if e != nil {
 				if definitiveCreateRejection(e) {
 					if cleanup := store.Delete(); cleanup != nil {

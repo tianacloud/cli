@@ -21,10 +21,12 @@ func TestRunKeepsChildSIGPIPEDefault(t *testing.T) {
 		} else if status := child.ProcessState.Sys().(syscall.WaitStatus); !status.Signaled() || status.Signal() != syscall.SIGPIPE {
 			t.Errorf("child status=%v", status)
 		}
-		if r.URL.Path == "/api/v1/usage" {
+		if r.URL.Path == "/api/v1/tenant" {
+			fmt.Fprint(w, testSpaceResponse)
+		} else if r.URL.Path == "/api/v1/usage" {
 			fmt.Fprint(w, testQuotaResponse)
 		} else {
-			fmt.Fprint(w, `{"user":{"user_id":"usr_cli"}}`)
+			fmt.Fprint(w, `{"user":{"user_id":"usr_cli","tenant_id":"tenant"}}`)
 		}
 	}))
 	defer server.Close()

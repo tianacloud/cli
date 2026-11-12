@@ -47,7 +47,7 @@ func saveTestCredential(t *testing.T, serverURL, path, userID string) {
 	store := authclient.NewFileStore(path, serverURL)
 	if err := store.Save(authclient.Credential{
 		AccessToken: "access-" + userID, RefreshToken: "refresh-" + userID, TokenType: "Bearer",
-		ExpiresAt: time.Now().Add(time.Hour), User: authclient.User{ID: userID, Email: userID + "@example.com"},
+		ExpiresAt: time.Now().Add(time.Hour), User: authclient.User{ID: userID, TenantID: "tenant", Email: userID + "@example.com"},
 	}); err != nil {
 		t.Fatal(err)
 	}

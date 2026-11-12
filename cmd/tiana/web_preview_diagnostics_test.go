@@ -21,11 +21,11 @@ func TestWebPreviewSavedAccountOutputFailureRetainsRequestIDs(t *testing.T) {
 				ids = append(ids, r.Header.Get("X-Request-ID"))
 				w.Header().Set("Content-Type", "application/json")
 				if r.URL.Path == "/api/v1/web-projects/fixture" {
-					fmt.Fprint(w, `{"id":"fixture","owner_id":"usr_cli","tenant_id":"","instance_id":"web-fixture","project_revision":1,"name":"Fixture","entry":"app.js","database_instance_id":"ins_fixture"}`)
+					fmt.Fprint(w, `{"id":"fixture","owner_id":"usr_cli","tenant_id":"tenant","instance_id":"web-fixture","project_revision":1,"name":"Fixture","entry":"app.js","database_instance_id":"ins_fixture"}`)
 					return
 				}
 				if strings.HasSuffix(r.URL.Path, "whoami") {
-					fmt.Fprint(w, `{"user":{"user_id":"usr_cli"},"sync_status":"complete"}`)
+					fmt.Fprint(w, `{"user":{"user_id":"usr_cli","tenant_id":"tenant"},"sync_status":"complete"}`)
 					return
 				}
 				fmt.Fprint(w, `{"id":"ins_fixture","engine":"sqlite","endpoint_id":"ep-7k3rbz6104qg3qk2z6de5z2vmh","connection":{"hostname":"ep-7k3rbz6104qg3qk2z6de5z2vmh.db.example.test"}}`)
