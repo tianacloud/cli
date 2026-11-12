@@ -541,3 +541,13 @@ cursor, and do not wake the function. Cursor continuation reuses its fixed query
 a fresh first-page command refreshes. JSON retains collected messages; terminal
 presentation escapes controls while preserving line breaks. Check time/stream/
 cursor parameters, output failures and backend errors. See README runtime logs.
+
+## Unified template client candidate
+
+The stable-ID template commands are candidate consumers
+of an aligned, unpublished MGR API. Consult docs/unified-templates-integration.md
+before extending publication or source initialization. Preserve legacy Web-ID
+commands, keep IDs distinct, keep distribution fixed receipts and original publication job identities,
+and never fall back to a legacy write after an error. Integration requires the
+published exact protocol; local fixtures are not deployed acceptance. Rollback
+removes the additive commands without changing server templates or local state.

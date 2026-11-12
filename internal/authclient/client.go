@@ -44,6 +44,18 @@ func (c *Client) WithCredential(credential Credential) *Client {
 	return &copy
 }
 
+// PinCredential preserves an existing operation snapshot, or selects one now.
+func (c *Client) PinCredential(ctx context.Context) (*Client, error) {
+	if c.credential != nil {
+		return c, nil
+	}
+	credential, err := c.Client.EnsureCredential(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.WithCredential(credential), nil
+}
+
 func (c *Client) DoJSON(ctx context.Context, method, path string, body any, headers map[string]string, result any) (int, error) {
 	if c.credential == nil {
 		return c.Client.DoJSON(ctx, method, path, body, headers, result)
