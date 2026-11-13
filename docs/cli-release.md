@@ -302,3 +302,10 @@ app-code image URLs from MGR metadata. The mini-program entry targets online.
 with the current project revision. Explicit false values, 64-bit revisions, permissions,
 conflicts and unknown writes retain their service semantics. Package and build defaults
 are 1.0.24; SDK pins and App publication protocols are unchanged.
+
+## 1.0.25 packaged README deployment guidance
+
+The npm package README now describes deployment selection generically: set
+`TIANA_API_ORIGIN` to a management origin in each CLI/Git process environment.
+Package and build defaults are 1.0.25; runtime behavior, embedded trust assets and
+SDK pins are unchanged.
