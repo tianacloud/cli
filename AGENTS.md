@@ -546,4 +546,4 @@ cursor parameters, output failures and backend errors. See README runtime logs.
 Web sharing commands are described in README Web delivery links and sharing.
 `web share get/set` uses the existing account/space-bound management transport,
 one setting and the returned revision per write. Unknown writes retain the
-Web identity and requested value for readback. The release baseline is 1.0.24.
+Web identity and requested value for readback. The release baseline is 1.0.25.
