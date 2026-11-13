@@ -9,9 +9,9 @@ tiana login
 ```
 
 Commands default to `https://console.tianacloud.com`, using system CA trust.
-For staging, set `TIANA_API_ORIGIN=https://console.tianacloud-staging.net`
-in each CLI/Git process environment; the CLI automatically adds the staging CA.
-Browser/VPN setup: [staging access](https://github.com/tianacloud/cli/blob/main/docs/staging-ca.md).
+To use another deployment, set `TIANA_API_ORIGIN` to its management origin in
+each CLI/Git process environment. The CLI and native Git helper inherit that
+origin; separate shell calls do not retain an earlier export.
 
 npm installs the native package for your operating system and CPU. The `tiana`
 and `git-remote-tiana` launchers run that binary with your arguments, input and
