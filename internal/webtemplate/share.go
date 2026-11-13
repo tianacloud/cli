@@ -133,8 +133,16 @@ func (c Client) PublishShare(ctx context.Context, web, filename string) (Publica
 	if result.JobID != jobID {
 		return Publication{JobID: jobID}, fmt.Errorf("publication %d receipt identity changed; inspect status-share-template", jobID)
 	}
+	if result.Status == "uploading" {
+		return Publication{JobID: jobID, Status: result.Status}, fmt.Errorf("publication %d remains uploading; inspect status-share-template", jobID)
+	}
 	if result.Status == "fail" {
 		return result, fmt.Errorf("publication %d failed: %s", jobID, result.LastError)
+	}
+	switch result.Status {
+	case "pending", "running", "complete":
+	default:
+		return result, fmt.Errorf("publication %d has unknown status; inspect status-share-template", jobID)
 	}
 	return result, nil
 }

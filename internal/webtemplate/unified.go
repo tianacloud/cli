@@ -83,6 +83,9 @@ func unifiedTemplatePath(id string) (string, error) {
 	}
 	return "/api/v1/templates/" + url.PathEscape(id), nil
 }
+func ValidTemplateID(id string) bool { _, err := unifiedTemplatePath(id); return err == nil }
+func ValidDecimal(s string) bool     { return validDecimal(s) }
+
 func (d TemplateDistribution) valid() bool { return d.ShareEnabled != nil && d.MarketEnabled != nil }
 func (c Client) TemplateStatus(ctx context.Context, id string) (UnifiedTemplate, error) {
 	path, err := unifiedTemplatePath(id)
@@ -120,6 +123,9 @@ func (c Client) ListTemplates(ctx context.Context, after string, limit int) (Uni
 	}
 	var result UnifiedPage
 	_, err := c.Auth.DoJSON(ctx, "GET", "/api/v1/templates?"+query.Encode(), nil, nil, &result)
+	if err == nil && result.Items == nil {
+		err = errors.New("template list response is missing items")
+	}
 	return result, err
 }
 func (c Client) SetTemplateDistribution(ctx context.Context, id string, update DistributionUpdate) (DistributionReceipt, error) {

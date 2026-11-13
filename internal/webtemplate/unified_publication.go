@@ -13,6 +13,8 @@ import (
 	"github.com/tianacloud/cli/internal/fileclient"
 )
 
+var ErrPublicationFailed = errors.New("publication explicitly failed")
+
 type TemplatePublication struct {
 	TemplateID       string  `json:"template_id"`
 	JobID            uint64  `json:"job_id"`
@@ -108,7 +110,7 @@ func (c Client) PublishTemplate(ctx context.Context, id, requestID, filename str
 	job := receipt.JobID
 	switch receipt.Status {
 	case "fail":
-		return receipt, fmt.Errorf("publication %d failed: %s", job, receipt.LastError)
+		return receipt, fmt.Errorf("%w: publication %d", ErrPublicationFailed, job)
 	case "pending", "running", "complete":
 		// Replayed begin returns the original job; never upload it again.
 		return receipt, nil
@@ -130,8 +132,11 @@ func (c Client) PublishTemplate(ctx context.Context, id, requestID, filename str
 	if err := validatePublication(complete.receipt(), id, job); err != nil {
 		return receipt, fmt.Errorf("template %s publication %d completion identity changed; query the original job", id, job)
 	}
+	if complete.Status == "uploading" {
+		return receipt, fmt.Errorf("template %s publication %d remains uploading; query or recover the original job", id, job)
+	}
 	if complete.Status == "fail" {
-		return complete.receipt(), fmt.Errorf("publication %d failed: %s", job, complete.LastError)
+		return complete.receipt(), fmt.Errorf("%w: publication %d", ErrPublicationFailed, job)
 	}
 	return complete.receipt(), nil
 }
@@ -150,7 +155,7 @@ func (c Client) WaitTemplatePublication(ctx context.Context, id string, job uint
 			return receipt, nil
 		}
 		if receipt.Status == "fail" {
-			return receipt, fmt.Errorf("publication %d failed: %s", job, receipt.LastError)
+			return receipt, fmt.Errorf("%w: publication %d", ErrPublicationFailed, job)
 		}
 		if receipt.Status != "uploading" && receipt.Status != "pending" && receipt.Status != "running" {
 			return receipt, errors.New("publication result is unknown or incomplete; query the original job before any new submission")

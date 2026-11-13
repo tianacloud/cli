@@ -557,3 +557,12 @@ commands, keep IDs distinct, keep distribution fixed receipts and original publi
 and never fall back to a legacy write after an error. Integration requires the
 published exact protocol; local fixtures are not deployed acceptance. Rollback
 removes the additive commands without changing server templates or local state.
+
+Unified publication and distribution writes hold the existing management mutation
+lock and fail before network access if another intent is pending. An accepted
+publication reports accepted until its original job completes; interrupted or
+uncertain writes preserve request, target and any job identity as unknown, while
+explicit job failure remains failed. A completion still uploading is not success.
+Keep local locks and receipts intact on rollback; removing the commands does not
+reverse remote writes. Verify pending exclusion, lost response, cancellation,
+original-job readback and upload failure independently of deployed acceptance.

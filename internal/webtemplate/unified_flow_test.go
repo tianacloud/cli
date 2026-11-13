@@ -270,3 +270,57 @@ func TestLegacyPublicationCompleteFailureIsNotSuccess(t *testing.T) {
 		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
 }
+
+func TestUnifiedListRejectsMissingItems(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		ok   bool
+	}{{`null`, false}, {`{}`, false}, {`{"items":null}`, false}, {`{"items":[]}`, true}} {
+		t.Run(tc.body, func(t *testing.T) {
+			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, tc.body) })
+			result, err := client.ListTemplates(t.Context(), "", 20)
+			if (err == nil) != tc.ok {
+				t.Fatalf("body=%s result=%+v err=%v", tc.body, result, err)
+			}
+		})
+	}
+}
+
+func TestUploadFailureStillUploadingIsNotAccepted(t *testing.T) {
+	for _, mode := range []string{"unified", "legacy"} {
+		t.Run(mode, func(t *testing.T) {
+			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
+			defer object.Close()
+			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/complete") {
+					if mode == "unified" {
+						io.WriteString(w, `{"template_id":"stable-template","job_id":7,"status":"uploading","published_version":null}`)
+					} else {
+						io.WriteString(w, `{"job_id":7,"status":"uploading"}`)
+					}
+					return
+				}
+				if mode == "unified" {
+					json.NewEncoder(w).Encode(map[string]any{"template_id": "stable-template", "job_id": 7, "status": "uploading", "published_version": nil, "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "fixture/install.zip"}}})
+				} else {
+					json.NewEncoder(w).Encode(map[string]any{"job_id": 7, "status": "uploading", "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "fixture/install.zip"}}})
+				}
+			})
+			file := filepath.Join(t.TempDir(), "install.zip")
+			if err := os.WriteFile(file, []byte("reviewed"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "unified" {
+				r, err := client.PublishTemplate(t.Context(), "stable-template", "request-1", file)
+				if err == nil || r.JobID != 7 {
+					t.Fatalf("receipt=%+v err=%v", r, err)
+				}
+			} else {
+				r, err := client.PublishShare(t.Context(), "source-web", file)
+				if err == nil || r.JobID != 7 {
+					t.Fatalf("receipt=%+v err=%v", r, err)
+				}
+			}
+		})
+	}
+}
