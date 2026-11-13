@@ -227,3 +227,137 @@ func TestSharePublishUsesDirectUploadAndReturnsJobReceipt(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
+
+func fixtureShareClient(t *testing.T, handler http.HandlerFunc) (Client, string) {
+	t.Helper()
+	mgr := httptest.NewServer(handler)
+	t.Cleanup(mgr.Close)
+	store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
+	if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Client{Auth: auth}, mgr.URL
+}
+
+func TestShareWaitRequiresPublicationAndSourceIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, web string
+		job       uint64
+		wantError bool
+	}{
+		{"legacy success", "source-web", 7, false},
+		{"wrong Web", "another-web", 7, true},
+		{"missing Web", "", 7, true},
+		{"zero job", "source-web", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "GET" || r.URL.Path != "/api/v1/web-projects/source-web/share-template" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				json.NewEncoder(w).Encode(map[string]any{"share": map[string]any{"web_id": tc.web, "package_id": 7, "version": uint64(18446744073709551615)}})
+			})
+			_, err := client.WaitShare(t.Context(), "source-web", tc.job)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("error=%v", err)
+			}
+			if tc.job == 0 && calls != 0 {
+				t.Fatal("zero job queried server")
+			}
+		})
+	}
+}
+
+func TestSharedSourceUnavailableNeverDownloadsInstallMaterials(t *testing.T) {
+	for _, mode := range []string{"no source", "withdrawn", "deleted", "zero size", "missing descriptor"} {
+		t.Run(mode, func(t *testing.T) {
+			downloads := 0
+			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				downloads++
+				t.Error("unavailable source triggered object download")
+			}))
+			defer object.Close()
+			calls := 0
+			client, origin := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "GET" || r.URL.Path != "/api/v1/shared-templates/legacy-web/source" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				if mode == "zero size" || mode == "missing descriptor" {
+					if mode == "missing descriptor" {
+						io.WriteString(w, "{}")
+						return
+					}
+					json.NewEncoder(w).Encode(map[string]any{"url": object.URL + "/site.tweb", "size": 0})
+					return
+				}
+				w.WriteHeader(404)
+				io.WriteString(w, `{"error":{"code":"TEMPLATE_NOT_FOUND","message":"template not found"}}`)
+			})
+			target := filepath.Join(t.TempDir(), "new-project")
+			_, err := client.InitShare(t.Context(), origin+"/shared-templates/legacy-web", target)
+			if err == nil || calls != 1 || downloads != 0 {
+				t.Fatalf("error=%v calls=%d downloads=%d", err, calls, downloads)
+			}
+			if _, err := os.Stat(target); !os.IsNotExist(err) {
+				t.Fatal("created target without source")
+			}
+		})
+	}
+}
+
+func TestSharePublishRejectsUnboundReceiptsWithoutReplay(t *testing.T) {
+	for _, mode := range []string{"missing begin id", "changed complete id", "missing complete id"} {
+		t.Run(mode, func(t *testing.T) {
+			uploads, begins, completes := 0, 0, 0
+			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				uploads++
+				io.Copy(io.Discard, r.Body)
+				w.WriteHeader(204)
+			}))
+			defer object.Close()
+			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/web-projects/source-web/share-template/uploads":
+					begins++
+					id := uint64(7)
+					if mode == "missing begin id" {
+						id = 0
+					}
+					json.NewEncoder(w).Encode(map[string]any{"job_id": id, "status": "uploading", "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "synthetic/install.zip"}}})
+				case "/api/v1/web-projects/source-web/share-template/uploads/7/complete":
+					completes++
+					if mode == "missing complete id" {
+						io.WriteString(w, `{"status":"pending"}`)
+					} else {
+						io.WriteString(w, `{"job_id":8,"status":"pending"}`)
+					}
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+					w.WriteHeader(404)
+				}
+			})
+			file := filepath.Join(t.TempDir(), "install.zip")
+			if err := os.WriteFile(file, []byte("reviewed archive"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := client.PublishShare(t.Context(), "source-web", file)
+			if err == nil || begins != 1 {
+				t.Fatalf("error=%v begins=%d", err, begins)
+			}
+			expected := 1
+			if mode == "missing begin id" {
+				expected = 0
+			}
+			if uploads != expected || completes != expected {
+				t.Fatalf("uploads=%d completes=%d", uploads, completes)
+			}
+		})
+	}
+}

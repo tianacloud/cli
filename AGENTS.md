@@ -547,3 +547,22 @@ Web sharing commands are described in README Web delivery links and sharing.
 `web share get/set` uses the existing account/space-bound management transport,
 one setting and the returned revision per write. Unknown writes retain the
 Web identity and requested value for readback. The release baseline is 1.0.25.
+
+## Unified template client candidate
+
+The stable-ID template commands are candidate consumers
+of the unified MGR API; availability depends on the target environment. Consult docs/unified-templates-integration.md
+before extending publication or source initialization. Preserve legacy Web-ID
+commands, keep IDs distinct, keep distribution fixed receipts and original publication job identities,
+and never fall back to a legacy write after an error. Integration requires the
+published exact protocol; local fixtures are not deployed acceptance. Rollback
+removes the additive commands without changing server templates or local state.
+
+Unified publication and distribution writes hold the existing management mutation
+lock and fail before network access if another intent is pending. An accepted
+publication reports accepted until its original job completes; interrupted or
+uncertain writes preserve request, target and any job identity as unknown, while
+explicit job failure remains failed. A completion still uploading is not success.
+Keep local locks and receipts intact on rollback; removing the commands does not
+reverse remote writes. Verify pending exclusion, lost response, cancellation,
+original-job readback and upload failure independently of deployed acceptance.
