@@ -547,3 +547,12 @@ Web sharing commands are described in README Web delivery links and sharing.
 `web share get/set` uses the existing account/space-bound management transport,
 one setting and the returned revision per write. Unknown writes retain the
 Web identity and requested value for readback. The release baseline is 1.0.24.
+## Unified template client candidate
+
+The stable-ID template commands are candidate consumers
+of the unified MGR API; availability depends on the target environment. Consult docs/unified-templates-integration.md
+before extending publication or source initialization. Preserve legacy Web-ID
+commands, keep IDs distinct, keep distribution fixed receipts and original publication job identities,
+and never fall back to a legacy write after an error. Integration requires the
+published exact protocol; local fixtures are not deployed acceptance. Rollback
+removes the additive commands without changing server templates or local state.

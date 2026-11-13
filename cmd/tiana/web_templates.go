@@ -11,10 +11,19 @@ import (
 )
 
 func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
-	return []*cli.Command{
-		{Name: "publish-share-template", Usage: "Publish a reviewed install.zip as an app template", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("file", "Reviewed install.zip file", ""), &cli.BoolFlag{Name: "wait", Aliases: []string{"w"}, Usage: "Wait for publication to finish", Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+	return append(newUnifiedTemplateCommands(output, diagnostics), []*cli.Command{
+		{Name: "publish-share-template", Usage: "Publish a reviewed install.zip as an app template", ArgsUsage: "WEB_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), boolOption("unified", "Use the candidate unified template API"), stringOption("template-id", "Update this stable template identity (candidate API)", ""), stringOption("request-id", "Stable request identity for unified publication/recovery", ""), stringOption("file", "Reviewed install.zip file", ""), &cli.BoolFlag{Name: "wait", Aliases: []string{"w"}, Usage: "Wait for publication to finish", Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || cmd.String("file") == "" {
 				return argumentFailure(ctx, cmd, "Provide WEB_ID and --file install.zip")
+			}
+			if cmd.IsSet("template-id") && cmd.String("template-id") == "" {
+				return argumentFailure(ctx, cmd, "--template-id must not be empty")
+			}
+			if cmd.Bool("unified") || cmd.String("template-id") != "" {
+				return publishUnifiedFromWeb(ctx, cmd, output, diagnostics)
+			}
+			if cmd.IsSet("request-id") {
+				return argumentFailure(ctx, cmd, "--request-id requires --unified or --template-id")
 			}
 			auth, err := newAuthClient(ctx, diagnostics, true)
 			if err != nil {
@@ -66,11 +75,11 @@ func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			if cmd.NArg() != 1 || cmd.String("dir") == "" {
 				return argumentFailure(ctx, cmd, "Provide LINK and --dir for a new project")
 			}
-			auth, err := newAuthClient(ctx, diagnostics, true)
+			client, err := pinnedTemplateClient(ctx, diagnostics)
 			if err != nil {
 				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
 			}
-			result, err := (webtemplate.Client{Auth: auth}).InitShare(ctx, cmd.Args().First(), cmd.String("dir"))
+			result, err := client.InitShare(ctx, cmd.Args().First(), cmd.String("dir"))
 			if err != nil {
 				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
 			}
@@ -115,10 +124,10 @@ func newWebTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return nil
 		}},
-	}
+	}...)
 }
 
 func templateCommandFailure(err error, jsonMode bool, output, diagnostics io.Writer) error {
-	e := &apppublish.Error{Code: "WEB_TEMPLATE_FAILED", Message: err.Error(), NextAction: "Check login, template availability and the target directory, then retry.", ExitCode: 1}
+	e := &apppublish.Error{Code: "WEB_TEMPLATE_FAILED", Message: err.Error(), NextAction: "Check login, template availability and the target directory. For uncertain writes, inspect the original request/job before another submission.", ExitCode: 1}
 	return statusError(writeAppResult(apppublish.Failure(e), jsonMode, output, diagnostics))
 }

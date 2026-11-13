@@ -111,30 +111,46 @@ func (c Client) PublishShare(ctx context.Context, web, filename string) (Publica
 	if _, err = c.Auth.DoJSON(ctx, "POST", shareAPI(web)+"/uploads", request, nil, &result); err != nil {
 		return result, err
 	}
+	if result.JobID == 0 {
+		return Publication{}, errors.New("publication has no job identity; inspect status-share-template before starting another upload")
+	}
 	if result.Form == nil {
 		return result, fmt.Errorf("publication %d has no active upload authorization; inspect status-share-template", result.JobID)
 	}
+	jobID := result.JobID
 	uploader := fileclient.Client{HTTP: c.Auth.FileHTTPClient()}
-	if err = uploader.Upload(ctx, *result.Form, "install.zip", info.Size(), f); err != nil {
-		// A lost OSS response is resolved by HEAD in complete; it never authorizes a second key.
-		original := err
-		if _, err = c.Auth.DoJSON(ctx, "POST", fmt.Sprintf("%s/uploads/%d/complete", shareAPI(web), result.JobID), struct{}{}, nil, &result); err != nil {
-			return result, fmt.Errorf("publication %d: %w; inspect status-share-template before starting another upload", result.JobID, original)
-		}
-		result.Form = nil
-		return result, nil
-	}
-	_, err = c.Auth.DoJSON(ctx, "POST", fmt.Sprintf("%s/uploads/%d/complete", shareAPI(web), result.JobID), struct{}{}, nil, &result)
+	uploadErr := uploader.Upload(ctx, *result.Form, "install.zip", info.Size(), f)
+	// Complete resolves a lost OSS response by HEAD; it never authorizes a second key.
+	result = Publication{}
+	_, err = c.Auth.DoJSON(ctx, "POST", fmt.Sprintf("%s/uploads/%d/complete", shareAPI(web), jobID), struct{}{}, nil, &result)
 	result.Form = nil
-	return result, err
+	if err != nil {
+		if uploadErr != nil {
+			return Publication{JobID: jobID}, fmt.Errorf("publication %d: %w; inspect status-share-template before starting another upload", jobID, uploadErr)
+		}
+		return Publication{JobID: jobID}, err
+	}
+	if result.JobID != jobID {
+		return Publication{JobID: jobID}, fmt.Errorf("publication %d receipt identity changed; inspect status-share-template", jobID)
+	}
+	if result.Status == "fail" {
+		return result, fmt.Errorf("publication %d failed: %s", jobID, result.LastError)
+	}
+	return result, nil
 }
 func (c Client) WaitShare(ctx context.Context, web string, id uint64) (ShareStatus, error) {
+	if id == 0 {
+		return ShareStatus{}, errors.New("publication job identity must be nonzero")
+	}
 	for {
 		status, err := c.ShareStatus(ctx, web)
 		if err != nil {
 			return status, err
 		}
 		if status.Share.PackageID == id {
+			if status.Share.WebID != web {
+				return status, errors.New("publication source Web identity does not match")
+			}
 			return status, nil
 		}
 		found := false
@@ -167,24 +183,26 @@ func (c Client) InitShare(ctx context.Context, link, target string) (Result, err
 		return Result{}, errors.New("invalid template share link")
 	}
 	origin, _ := url.Parse(c.Auth.Origin())
-	if shared.Scheme != origin.Scheme || shared.Host != origin.Host || shared.User != nil || shared.RawQuery != "" || shared.Fragment != "" || !strings.HasPrefix(shared.Path, "/shared-templates/") {
+	if shared.Scheme != origin.Scheme || shared.Host != origin.Host || shared.User != nil || shared.RawQuery != "" || shared.Fragment != "" || (!strings.HasPrefix(shared.Path, "/shared-templates/") && !strings.HasPrefix(shared.Path, "/templates/")) {
 		return Result{}, errors.New("use a template share link from the current Tiana environment")
+	}
+	if strings.HasPrefix(shared.Path, "/templates/") {
+		id := strings.TrimPrefix(shared.Path, "/templates/")
+		return c.InitUnifiedTemplate(ctx, id, "share", "", target)
 	}
 	web := strings.TrimPrefix(shared.Path, "/shared-templates/")
 	if web == "" || strings.Contains(web, "/") {
 		return Result{}, errors.New("invalid template share link")
 	}
-	var descriptor struct {
-		URL    string `json:"url"`
-		Size   int64  `json:"size"`
-		SHA256 string `json:"sha256"`
-		Prompt string `json:"prompt"`
-		Name   string `json:"name"`
-	}
+	var descriptor sourceDownload
 	_, err = c.Auth.DoJSON(ctx, "GET", "/api/v1/shared-templates/"+url.PathEscape(web)+"/source", nil, nil, &descriptor)
 	if err != nil {
 		return Result{}, err
 	}
+	return c.downloadSource(ctx, descriptor, target)
+}
+
+func (c Client) downloadSource(ctx context.Context, descriptor sourceDownload, target string) (Result, error) {
 	if descriptor.Size <= 0 {
 		return Result{}, errors.New("source ZIP size must be positive")
 	}

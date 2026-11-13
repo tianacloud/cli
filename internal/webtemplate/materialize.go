@@ -24,6 +24,9 @@ type Source struct {
 }
 
 type Result struct {
+	TemplateID   string `json:"template_id,omitempty"`
+	SourceWebID  string `json:"source_web_id,omitempty"`
+	Version      string `json:"version,omitempty"`
 	Prompt       string `json:"prompt,omitempty"`
 	Name         string `json:"name"`
 	Directory    string `json:"directory"`
