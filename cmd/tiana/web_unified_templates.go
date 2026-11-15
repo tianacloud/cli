@@ -16,7 +16,7 @@ import (
 
 func newUnifiedTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 	return []*cli.Command{
-		{Name: "init-unified-template", Usage: "Download source by template ID (candidate API; requires matching MGR)", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("channel", "share or market", "market"), stringOption("version", "Fixed template version, if selected", ""), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "init-unified-template", Usage: "Download source by template ID", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("channel", "share or market", "market"), stringOption("version", "Fixed template version, if selected", ""), stringOption("dir", "New project directory", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || cmd.String("dir") == "" || !webtemplate.ValidTemplateID(cmd.Args().First()) || (cmd.String("channel") != "share" && cmd.String("channel") != "market") || (cmd.String("version") != "" && (!webtemplate.ValidDecimal(cmd.String("version")) || cmd.String("version") == "0")) {
 				return argumentFailure(ctx, cmd, "Provide TEMPLATE_ID and --dir")
 			}
@@ -30,7 +30,7 @@ func newUnifiedTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
 		}},
-		{Name: "list-owned-templates", Usage: "Read one page of space templates (candidate API; requires matching MGR)", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("after", "Opaque next-page cursor", ""), &cli.IntFlag{Name: "limit", Value: 20, Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "list-owned-templates", Usage: "Read one page of space templates", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("after", "Opaque next-page cursor", ""), &cli.IntFlag{Name: "limit", Value: 20, Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 0 || cmd.Int("limit") < 1 || cmd.Int("limit") > 100 {
 				return argumentFailure(ctx, cmd, "Use --limit between 1 and 100 without positional arguments")
 			}
@@ -44,8 +44,7 @@ func newUnifiedTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
 		}},
-
-		{Name: "status-template", Usage: "Read a template by stable identity (candidate API; requires matching MGR)", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), &cli.Uint64Flag{Name: "job-id", Usage: "Read this original publication job", Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "status-template", Usage: "Read a template or publication job by stable identity", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), &cli.Uint64Flag{Name: "job-id", Usage: "Read this original publication job", Local: true}}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || !webtemplate.ValidTemplateID(cmd.Args().First()) || (cmd.IsSet("job-id") && cmd.Uint64("job-id") == 0) {
 				return argumentFailure(ctx, cmd, "Provide TEMPLATE_ID and a nonzero job identity")
 			}
@@ -64,7 +63,7 @@ func newUnifiedTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 			}
 			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
 		}},
-		{Name: "set-template-distribution", Usage: "Set independent share/market switches (candidate API; requires matching MGR)", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("request-id", "Stable request identity; preserve it on an unknown result", ""), stringOption("expected-revision", "Revision from template status; preserve it on replay", ""), boolOption("share-enabled", "Enable or disable sharing; pass =false to disable"), boolOption("market-enabled", "Enable or disable market listing; pass =false to disable")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		{Name: "set-template-distribution", Usage: "Set independent share and market switches", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("request-id", "Stable request identity; preserve it on an unknown result", ""), stringOption("expected-revision", "Revision from template status; preserve it on replay", ""), boolOption("share-enabled", "Enable or disable sharing; pass =false to disable"), boolOption("market-enabled", "Enable or disable market listing; pass =false to disable")}, Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 || strings.TrimSpace(cmd.String("request-id")) == "" || !webtemplate.ValidTemplateID(cmd.Args().First()) || !webtemplate.ValidDecimal(cmd.String("expected-revision")) || (!cmd.IsSet("share-enabled") && !cmd.IsSet("market-enabled")) {
 				return argumentFailure(ctx, cmd, "Provide TEMPLATE_ID and --share-enabled or --market-enabled")
 			}
@@ -95,6 +94,26 @@ func newUnifiedTemplateCommands(output, diagnostics io.Writer) []*cli.Command {
 				if update.MarketEnabled != nil {
 					data["market_enabled"] = *update.MarketEnabled
 				}
+				return templateMutationFailure(ctx, err, data, false, true, cmd.Bool("json"), output, diagnostics)
+			}
+			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
+		}},
+		{Name: "delete-template", Usage: "Delete a template permanently by stable identity", ArgsUsage: "TEMPLATE_ID", Flags: []cli.Flag{boolOption("json", "Write a structured JSON result"), stringOption("request-id", "Stable request identity; preserve it on an unknown result", ""), stringOption("expected-revision", "Revision from template status; preserve it on replay", "")}, Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.NArg() != 1 || strings.TrimSpace(cmd.String("request-id")) == "" || !webtemplate.ValidTemplateID(cmd.Args().First()) || !webtemplate.ValidDecimal(cmd.String("expected-revision")) {
+				return argumentFailure(ctx, cmd, "Provide TEMPLATE_ID, --request-id and --expected-revision")
+			}
+			release, err := lockManagementMutation(ctx, diagnostics)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			defer release()
+			client, err := pinnedTemplateClient(ctx, diagnostics)
+			if err != nil {
+				return templateCommandFailure(err, cmd.Bool("json"), output, diagnostics)
+			}
+			result, err := client.DeleteTemplate(ctx, cmd.Args().First(), cmd.String("request-id"), cmd.String("expected-revision"))
+			if err != nil {
+				data := map[string]any{"template_id": cmd.Args().First(), "request_id": cmd.String("request-id"), "expected_revision": cmd.String("expected-revision")}
 				return templateMutationFailure(ctx, err, data, false, true, cmd.Bool("json"), output, diagnostics)
 			}
 			return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
@@ -165,6 +184,9 @@ func publishUnifiedFromWeb(ctx context.Context, cmd *cli.Command, output, diagno
 			data["job_id"] = result.JobID
 			data["publication_status"] = result.Status
 		}
+		if strings.TrimSpace(result.LastError) != "" {
+			data["last_error"] = safeDisplay(result.LastError)
+		}
 		return templateMutationFailure(ctx, err, data, errors.Is(err, webtemplate.ErrPublicationFailed), false, cmd.Bool("json"), output, diagnostics)
 	}
 	if result.Status != "complete" {
@@ -173,10 +195,11 @@ func publishUnifiedFromWeb(ctx context.Context, cmd *cli.Command, output, diagno
 	return statusError(writeAppResult(apppublish.Success(result), cmd.Bool("json"), output, diagnostics))
 }
 
-// Retain immutable recovery inputs without copying untrusted server errors into output.
+// Retain immutable recovery inputs and surface sanitized failure reasons for diagnosis.
 func templateMutationFailure(ctx context.Context, err error, data map[string]any, definite, allowRejection bool, jsonMode bool, output, diagnostics io.Writer) error {
 	var api *authclient.APIError
-	if allowRejection && errors.As(err, &api) && api.Status >= 400 && api.Status < 500 && api.Status != 408 && api.Code != "COMMIT_STATUS_UNKNOWN" && api.Code != "RESULT_UNKNOWN" {
+	hasAPI := errors.As(err, &api) && api != nil
+	if allowRejection && hasAPI && api.Status >= 400 && api.Status < 500 && api.Status != 408 && api.Code != "COMMIT_STATUS_UNKNOWN" && api.Code != "RESULT_UNKNOWN" {
 		definite = true
 	}
 	code, status, errorCode := 4, "unknown", "TEMPLATE_OUTCOME_UNKNOWN"
@@ -186,9 +209,24 @@ func templateMutationFailure(ctx context.Context, err error, data map[string]any
 	if errors.Is(ctx.Err(), context.Canceled) {
 		code, status, errorCode = 130, "unknown", "OBSERVATION_STOPPED"
 	}
-	result := apppublish.Result{Status: status, Data: data, Error: &apppublish.Error{Code: errorCode, Message: "Template operation did not complete", NextAction: "Preserve the original request, target and any package; inspect the original request or job before retrying", ExitCode: code}}
+	message := "Template operation did not complete"
+	nextAction := "Preserve the original request, target and any package; inspect the original request or job before retrying"
+	if lastError, ok := data["last_error"].(string); ok && lastError != "" {
+		message = fmt.Sprintf("Template publication failed: %s", lastError)
+		nextAction = "Fix the reported package/material error, rebuild install.zip and publish with a new --request-id"
+	} else if definite && hasAPI {
+		if strings.TrimSpace(api.Code) != "" {
+			data["api_code"] = safeDisplay(api.Code)
+		}
+		if strings.TrimSpace(api.Message) != "" {
+			message = fmt.Sprintf("Template operation rejected (%s): %s", safeDisplay(api.Code), safeDisplay(api.Message))
+		} else if strings.TrimSpace(api.Code) != "" {
+			message = fmt.Sprintf("Template operation rejected (%s)", safeDisplay(api.Code))
+		}
+	}
+	result := apppublish.Result{Status: status, Data: data, Error: &apppublish.Error{Code: errorCode, Message: message, NextAction: nextAction, ExitCode: code}}
 	if !jsonMode {
-		for _, key := range []string{"source_web_id", "template_id", "request_id", "job_id", "expected_revision", "share_enabled", "market_enabled"} {
+		for _, key := range []string{"source_web_id", "template_id", "request_id", "job_id", "expected_revision", "share_enabled", "market_enabled", "last_error", "api_code"} {
 			if value, ok := data[key]; ok {
 				fmt.Fprintf(diagnostics, "%s: %s\n", key, safeDisplay(fmt.Sprint(value)))
 			}

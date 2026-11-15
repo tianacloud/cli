@@ -4,14 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,73 +17,25 @@ import (
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
-func TestShareStatusPreservesPublicFileInventoryWithoutAddingLegacyCapabilities(t *testing.T) {
-	for _, mode := range []string{"legacy", "files", "large_version"} {
-		t.Run(mode, func(t *testing.T) {
-			filesEnabled := mode != "legacy"
-			version := uint64(3)
-			if mode == "large_version" {
-				version = ^uint64(0)
-			}
-			digest := strings.Repeat("a", 64)
-			mgr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != "GET" || r.URL.Path != "/api/v1/web-projects/a1b2c3d4e5f6/share-template" {
-					t.Error("status changed its read-only product route")
-					w.WriteHeader(404)
-					return
-				}
-				metadata := map[string]any{"name": "notes"}
-				manifest := map[string]any{"metadata": metadata}
-				share := map[string]any{"web_id": "a1b2c3d4e5f6", "package_id": 7, "manifest": manifest, "ignored": "private-object-key"}
-				if filesEnabled {
-					share["version"], share["material_version"] = version, digest
-					metadata["file_seeds"] = "template-files"
-					manifest["format_version"], manifest["requires"] = 2, []string{"template_files_v1"}
-					manifest["file_manifest_sha256"] = digest
-					manifest["files"] = map[string]any{"version": 1, "root": "template-assets/", "entries": []any{map[string]any{"path": "documents/guide.txt", "size": 3, "sha256": digest, "content_type": "text/plain", "ignored": "private-object-key"}}}
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"share": share})
-			}))
-			defer mgr.Close()
-			store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
-			if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-				t.Fatal(err)
-			}
-			auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
-			if err != nil {
-				t.Fatal(err)
-			}
-			status, err := (Client{Auth: auth}).ShareStatus(t.Context(), "a1b2c3d4e5f6")
-			if err != nil {
-				t.Fatal(err)
-			}
-			encoded, err := json.Marshal(status)
-			if err != nil || strings.Contains(string(encoded), "private-object-key") {
-				t.Fatal("status leaked nonpublic inventory fields", err)
-			}
-			if filesEnabled {
-				manifest := status.Share.Manifest
-				if uint64(status.Share.Version) != version || status.Share.MaterialVersion != digest || manifest.Metadata.FileSeeds != "template-files" || manifest.FormatVersion != 2 || manifest.FileManifestSHA256 != digest || len(manifest.Requires) != 1 || manifest.Requires[0] != "template_files_v1" || manifest.Files == nil || manifest.Files.Version != 1 || manifest.Files.Root != "template-assets/" || len(manifest.Files.Entries) != 1 || manifest.Files.Entries[0] != (TemplateFileEntry{Path: "documents/guide.txt", Size: 3, SHA256: digest, ContentType: "text/plain"}) {
-					t.Fatal("new material identity or public file inventory was lost")
-				}
-				if !strings.Contains(string(encoded), `"version":"`+strconv.FormatUint(version, 10)+`"`) {
-					t.Fatal("publication version lost decimal-string precision")
-				}
-			} else {
-				for _, field := range []string{"material_version", "format_version", "requires", "file_seeds", "files", "version"} {
-					if strings.Contains(string(encoded), `"`+field+`":`) {
-						t.Fatal("legacy response acquired an unverified capability")
-					}
-				}
-			}
-		})
+func fixtureShareClient(t *testing.T, handler http.HandlerFunc) (Client, string) {
+	t.Helper()
+	mgr := httptest.NewServer(handler)
+	t.Cleanup(mgr.Close)
+	store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
+	if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
 	}
+	auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Client{Auth: auth}, mgr.URL
 }
 
 func TestSharedSourceDownloadIntegrity(t *testing.T) {
 	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes"}`, "app.js": "demo"})
 	sum := sha256.Sum256(data)
-	for _, mode := range []string{"valid", "long body", "redirect", "wrong digest"} {
+	for _, mode := range []string{"valid", "market link", "long body", "redirect", "wrong digest"} {
 		t.Run(mode, func(t *testing.T) {
 			followed := 0
 			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,15 +58,31 @@ func TestSharedSourceDownloadIntegrity(t *testing.T) {
 			}))
 			defer object.Close()
 			mgr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/v1/shared-templates/a1b2c3d4e5f6/source" {
+				if r.URL.Path != "/api/v1/template-catalog/tpl-notes/source" {
 					t.Errorf("unexpected path %s", r.URL.Path)
+				}
+				wantChannel := "share"
+				if mode == "market link" {
+					wantChannel = "market"
+				}
+				if r.URL.Query().Get("channel") != wantChannel {
+					t.Errorf("channel=%q want=%q", r.URL.Query().Get("channel"), wantChannel)
 				}
 				size := len(data)
 				digest := hex.EncodeToString(sum[:])
 				if mode == "wrong digest" {
 					digest = strings.Repeat("0", 64)
 				}
-				json.NewEncoder(w).Encode(map[string]any{"name": "notes", "url": object.URL + "/source.zip?secret=SIGNED_SECRET", "size": size, "sha256": digest, "prompt": "build my notes"})
+				json.NewEncoder(w).Encode(map[string]any{
+					"template_id":   "tpl-notes",
+					"source_web_id": "a1b2c3d4e5f6",
+					"version":       "2",
+					"name":          "notes",
+					"url":           object.URL + "/source.zip?secret=SIGNED_SECRET",
+					"size":          size,
+					"sha256":        digest,
+					"prompt":        "build my notes",
+				})
 			}))
 			defer mgr.Close()
 			store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
@@ -132,9 +98,13 @@ func TestSharedSourceDownloadIntegrity(t *testing.T) {
 			u, _ := url.Parse(object.URL)
 			downloader.Jar.SetCookies(u, []*http.Cookie{{Name: "session", Value: "private"}})
 			target := filepath.Join(t.TempDir(), "notes")
-			result, err := (Client{Auth: auth, DownloadHTTP: downloader}).InitShare(t.Context(), mgr.URL+"/shared-templates/a1b2c3d4e5f6", target)
-			if mode == "valid" {
-				if err != nil || result.Prompt != "build my notes" {
+			link := mgr.URL + "/templates/tpl-notes"
+			if mode == "market link" {
+				link += "?channel=market"
+			}
+			result, err := (Client{Auth: auth, DownloadHTTP: downloader}).InitShare(t.Context(), link, target)
+			if mode == "valid" || mode == "market link" {
+				if err != nil || result.Prompt != "build my notes" || result.TemplateID != "tpl-notes" {
 					t.Fatalf("%+v %v", result, err)
 				}
 				if body, e := os.ReadFile(filepath.Join(target, "app.js")); e != nil || string(body) != "demo" {
@@ -155,209 +125,18 @@ func TestSharedSourceDownloadIntegrity(t *testing.T) {
 	}
 }
 
-func TestSharePublishUsesDirectUploadAndReturnsJobReceipt(t *testing.T) {
-	data := []byte("reviewed install archive")
-	uploaded, completed := false, false
-	object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
-			t.Error("account credential sent to storage")
-		}
-		if err := r.ParseMultipartForm(1024); err != nil {
-			t.Error(err)
-			w.WriteHeader(400)
-			return
-		}
-		defer r.MultipartForm.RemoveAll()
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			t.Error(err)
-			w.WriteHeader(400)
-			return
-		}
-		defer file.Close()
-		body, err := io.ReadAll(file)
-		if err != nil || string(body) != string(data) || r.FormValue("key") != "tenant/templates/web/uploads/7/install.zip" {
-			t.Errorf("upload body=%q err=%v", body, err)
-		}
-		uploaded = true
-		w.WriteHeader(204)
-	}))
-	defer object.Close()
-	mgr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer account-token" {
-			t.Error("missing MGR credential")
-		}
-		switch r.URL.Path {
-		case "/api/v1/web-projects/a1b2c3d4e5f6/share-template/uploads":
-			var request struct {
-				Size      int64  `json:"size"`
-				RequestID string `json:"request_id"`
-			}
-			json.NewDecoder(r.Body).Decode(&request)
-			if request.Size != int64(len(data)) || request.RequestID == "" {
-				t.Errorf("request=%+v", request)
-			}
-			json.NewEncoder(w).Encode(map[string]any{"job_id": 7, "status": "uploading", "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "tenant/templates/web/uploads/7/install.zip"}}})
-		case "/api/v1/web-projects/a1b2c3d4e5f6/share-template/uploads/7/complete":
-			if !uploaded {
-				t.Error("completed before direct upload")
-			}
-			completed = true
-			json.NewEncoder(w).Encode(map[string]any{"job_id": 7, "status": "pending"})
-		default:
-			t.Errorf("unexpected path %s", r.URL.Path)
-			w.WriteHeader(404)
-		}
-	}))
-	defer mgr.Close()
-	store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
-	if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-		t.Fatal(err)
+func TestShareLinkRejectsLegacyPath(t *testing.T) {
+	calls := 0
+	client, origin := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(404)
+	})
+	target := filepath.Join(t.TempDir(), "legacy-project")
+	_, err := client.InitShare(t.Context(), origin+"/shared-templates/legacy-web", target)
+	if err == nil || calls != 0 {
+		t.Fatalf("expected legacy link rejection before network: err=%v calls=%d", err, calls)
 	}
-	auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	file := filepath.Join(t.TempDir(), "install.zip")
-	if err = os.WriteFile(file, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	result, err := (Client{Auth: auth}).PublishShare(t.Context(), "a1b2c3d4e5f6", file)
-	if err != nil || result.JobID != 7 || result.Status != "pending" || result.Form != nil || !completed {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
-}
-
-func fixtureShareClient(t *testing.T, handler http.HandlerFunc) (Client, string) {
-	t.Helper()
-	mgr := httptest.NewServer(handler)
-	t.Cleanup(mgr.Close)
-	store := authclient.NewFileStore(filepath.Join(t.TempDir(), "auth.json"), mgr.URL)
-	if err := store.Save(authclient.Credential{AccessToken: "account-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
-	auth, err := authclient.NewWithConfig(authclient.Config{Origin: mgr.URL, Store: store, HTTPClient: mgr.Client()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return Client{Auth: auth}, mgr.URL
-}
-
-func TestShareWaitRequiresPublicationAndSourceIdentity(t *testing.T) {
-	for _, tc := range []struct {
-		name, web string
-		job       uint64
-		wantError bool
-	}{
-		{"legacy success", "source-web", 7, false},
-		{"wrong Web", "another-web", 7, true},
-		{"missing Web", "", 7, true},
-		{"zero job", "source-web", 0, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			calls := 0
-			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				if r.Method != "GET" || r.URL.Path != "/api/v1/web-projects/source-web/share-template" {
-					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-				}
-				json.NewEncoder(w).Encode(map[string]any{"share": map[string]any{"web_id": tc.web, "package_id": 7, "version": uint64(18446744073709551615)}})
-			})
-			_, err := client.WaitShare(t.Context(), "source-web", tc.job)
-			if (err != nil) != tc.wantError {
-				t.Fatalf("error=%v", err)
-			}
-			if tc.job == 0 && calls != 0 {
-				t.Fatal("zero job queried server")
-			}
-		})
-	}
-}
-
-func TestSharedSourceUnavailableNeverDownloadsInstallMaterials(t *testing.T) {
-	for _, mode := range []string{"no source", "withdrawn", "deleted", "zero size", "missing descriptor"} {
-		t.Run(mode, func(t *testing.T) {
-			downloads := 0
-			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				downloads++
-				t.Error("unavailable source triggered object download")
-			}))
-			defer object.Close()
-			calls := 0
-			client, origin := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				if r.Method != "GET" || r.URL.Path != "/api/v1/shared-templates/legacy-web/source" {
-					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-				}
-				if mode == "zero size" || mode == "missing descriptor" {
-					if mode == "missing descriptor" {
-						io.WriteString(w, "{}")
-						return
-					}
-					json.NewEncoder(w).Encode(map[string]any{"url": object.URL + "/site.tweb", "size": 0})
-					return
-				}
-				w.WriteHeader(404)
-				io.WriteString(w, `{"error":{"code":"TEMPLATE_NOT_FOUND","message":"template not found"}}`)
-			})
-			target := filepath.Join(t.TempDir(), "new-project")
-			_, err := client.InitShare(t.Context(), origin+"/shared-templates/legacy-web", target)
-			if err == nil || calls != 1 || downloads != 0 {
-				t.Fatalf("error=%v calls=%d downloads=%d", err, calls, downloads)
-			}
-			if _, err := os.Stat(target); !os.IsNotExist(err) {
-				t.Fatal("created target without source")
-			}
-		})
-	}
-}
-
-func TestSharePublishRejectsUnboundReceiptsWithoutReplay(t *testing.T) {
-	for _, mode := range []string{"missing begin id", "changed complete id", "missing complete id"} {
-		t.Run(mode, func(t *testing.T) {
-			uploads, begins, completes := 0, 0, 0
-			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				uploads++
-				io.Copy(io.Discard, r.Body)
-				w.WriteHeader(204)
-			}))
-			defer object.Close()
-			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/api/v1/web-projects/source-web/share-template/uploads":
-					begins++
-					id := uint64(7)
-					if mode == "missing begin id" {
-						id = 0
-					}
-					json.NewEncoder(w).Encode(map[string]any{"job_id": id, "status": "uploading", "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "synthetic/install.zip"}}})
-				case "/api/v1/web-projects/source-web/share-template/uploads/7/complete":
-					completes++
-					if mode == "missing complete id" {
-						io.WriteString(w, `{"status":"pending"}`)
-					} else {
-						io.WriteString(w, `{"job_id":8,"status":"pending"}`)
-					}
-				default:
-					t.Errorf("unexpected request %s", r.URL.Path)
-					w.WriteHeader(404)
-				}
-			})
-			file := filepath.Join(t.TempDir(), "install.zip")
-			if err := os.WriteFile(file, []byte("reviewed archive"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			_, err := client.PublishShare(t.Context(), "source-web", file)
-			if err == nil || begins != 1 {
-				t.Fatalf("error=%v begins=%d", err, begins)
-			}
-			expected := 1
-			if mode == "missing begin id" {
-				expected = 0
-			}
-			if uploads != expected || completes != expected {
-				t.Fatalf("uploads=%d completes=%d", uploads, completes)
-			}
-		})
+	if _, e := os.Stat(target); !os.IsNotExist(e) {
+		t.Fatal("created target for rejected legacy link")
 	}
 }

@@ -90,3 +90,50 @@ func TestUnifiedRejectsForeignReceiptAndEmptyUpdates(t *testing.T) {
 		t.Fatal("empty update accessed server")
 	}
 }
+func TestUnifiedTemplateDecodesWireCategoryIDAndAuthorShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		payload    string
+		wantCat    DecimalUint64
+		wantAuthor string
+	}{
+		{
+			name:       "wire string category zero and object author",
+			payload:    `{"template_id":"tpl-1","source_web_id":"web-1","category_id":"0","author":{"principal_id":"usr_1","display_name":"Alice"},"distribution":{"share_enabled":false,"market_enabled":false},"permissions":{"can_download_source":true,"can_install":true,"can_edit_metadata":true}}`,
+			wantCat:    0,
+			wantAuthor: "Alice",
+		},
+		{
+			name:       "wire string category max uint64-2 and string author",
+			payload:    `{"template_id":"tpl-1","source_web_id":"web-1","category_id":"18446744073709551614","author":"Bob","distribution":{"share_enabled":true,"market_enabled":true}}`,
+			wantCat:    18446744073709551614,
+			wantAuthor: "Bob",
+		},
+		{
+			name:       "numeric category and null author",
+			payload:    `{"template_id":"tpl-1","source_web_id":"web-1","category_id":6,"author":null,"distribution":{"share_enabled":false,"market_enabled":true}}`,
+			wantCat:    6,
+			wantAuthor: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, tc.payload)
+			})
+			got, err := client.TemplateStatus(t.Context(), "tpl-1")
+			if err != nil {
+				t.Fatalf("TemplateStatus failed: %v", err)
+			}
+			if got.CategoryID != tc.wantCat {
+				t.Fatalf("CategoryID=%d want %d", got.CategoryID, tc.wantCat)
+			}
+			var gotAuthor string
+			if got.Author != nil {
+				gotAuthor = got.Author.DisplayName
+			}
+			if gotAuthor != tc.wantAuthor {
+				t.Fatalf("Author=%+v want %q", got.Author, tc.wantAuthor)
+			}
+		})
+	}
+}

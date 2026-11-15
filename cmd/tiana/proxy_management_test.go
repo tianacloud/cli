@@ -208,20 +208,20 @@ func TestLoginStatusAndTemplateDownloadThroughAllProxy(t *testing.T) {
 					io.WriteString(w, testSpaceResponse)
 				case "/api/v1/usage":
 					io.WriteString(w, testQuotaResponse)
-				case "/api/v1/web-templates":
-					io.WriteString(w, `{"items":[{"name":"notes","description":"proxy fixture"}],"next_cursor":""}`)
-				case "/api/v1/web-templates/notes/init":
-					json.NewEncoder(w).Encode(map[string]any{"name": "notes", "zip_size": zipped.Len(), "zip_sha256": hex.EncodeToString(digest[:]), "download_url": origin + "/private.zip?signature=synthetic-signed-url"})
-				case "/api/v1/shared-templates/a1b2c3d4e5f6/source":
-					json.NewEncoder(w).Encode(map[string]any{"name": "notes", "size": zipped.Len(), "sha256": hex.EncodeToString(digest[:]), "url": origin + "/private.zip?signature=synthetic-signed-url"})
-				case "/api/v1/web-projects/a1b2c3d4e5f6/share-template/uploads":
-					json.NewEncoder(w).Encode(map[string]any{"job_id": 7, "status": "uploading", "form": map[string]any{"url": origin + "/share-upload", "fields": map[string]string{"key": "synthetic-share-object"}}})
-				case "/api/v1/web-projects/a1b2c3d4e5f6/share-template/uploads/7/complete":
+				case "/api/v1/template-catalog":
+					io.WriteString(w, `{"items":[{"template_id":"tpl-notes","source_web_id":"a1b2c3d4e5f6","display_name":"Notes","description":"proxy fixture","distribution":{"share_enabled":true,"market_enabled":true},"current_version":{"version":"2","has_source":true,"installable":true}}],"next_cursor":""}`)
+				case "/api/v1/template-catalog/tpl-notes/source":
+					json.NewEncoder(w).Encode(map[string]any{"template_id": "tpl-notes", "source_web_id": "a1b2c3d4e5f6", "version": "2", "name": "notes", "size": zipped.Len(), "sha256": hex.EncodeToString(digest[:]), "url": origin + "/private.zip?signature=synthetic-signed-url"})
+				case "/api/v1/templates":
+					io.WriteString(w, `{"template_id":"tpl-notes","source_web_id":"a1b2c3d4e5f6","distribution":{"share_enabled":false,"market_enabled":false}}`)
+				case "/api/v1/templates/tpl-notes/uploads":
+					json.NewEncoder(w).Encode(map[string]any{"template_id": "tpl-notes", "job_id": 7, "status": "uploading", "published_version": nil, "form": map[string]any{"url": origin + "/share-upload", "fields": map[string]string{"key": "synthetic-share-object"}}})
+				case "/api/v1/templates/tpl-notes/uploads/7/complete":
 					shareCompletes.Add(1)
 					if shareWrites.Load() != 1 {
 						t.Error("share completed before upload")
 					}
-					io.WriteString(w, `{"job_id":7,"status":"pending"}`)
+					io.WriteString(w, `{"template_id":"tpl-notes","job_id":7,"status":"pending","published_version":null}`)
 				case "/private.zip":
 					downloads.Add(1)
 					if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
@@ -263,7 +263,7 @@ func TestLoginStatusAndTemplateDownloadThroughAllProxy(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(build, "app.js"), []byte("export function mount() {}"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			for _, args := range [][]string{{"login", "--start", "--no-open", "--json"}, {"login", "--resume", "--json"}, {"status", "--json"}, {"sqlite", "list", "--json"}, {"web", "list-template", "--json"}, {"web", "init-template", "notes", "--dir", target, "--json"}, {"web", "publish", "a1b2c3d4e5f6", "--dir", build, "--json"}, {"web", "status", "a1b2c3d4e5f6", "--json"}, {"web", "status", "a1b2c3d4e5f6", "--publish-id", "receipt", "--json"}, {"file", "get", "hello.txt", download, "--json"}, {"file", "put", source, "hello.txt", "--json"}, {"web", "init-share-template", origin + "/shared-templates/a1b2c3d4e5f6", "--dir", sharedTarget, "--json"}, {"web", "publish-share-template", "a1b2c3d4e5f6", "--file", installZIP, "--json"}} {
+			for _, args := range [][]string{{"login", "--start", "--no-open", "--json"}, {"login", "--resume", "--json"}, {"status", "--json"}, {"sqlite", "list", "--json"}, {"web", "list-template", "--json"}, {"web", "init-template", "tpl-notes", "--dir", target, "--json"}, {"web", "publish", "a1b2c3d4e5f6", "--dir", build, "--json"}, {"web", "status", "a1b2c3d4e5f6", "--json"}, {"web", "status", "a1b2c3d4e5f6", "--publish-id", "receipt", "--json"}, {"file", "get", "hello.txt", download, "--json"}, {"file", "put", source, "hello.txt", "--json"}, {"web", "init-share-template", origin + "/templates/tpl-notes", "--dir", sharedTarget, "--json"}, {"web", "publish-share-template", "a1b2c3d4e5f6", "--request-id", "proxy-req-1", "--file", installZIP, "--json"}} {
 				if args[0] == "status" {
 					forceRefresh.Store(true)
 				}

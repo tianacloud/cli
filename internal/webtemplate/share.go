@@ -2,7 +2,6 @@ package webtemplate
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -12,20 +11,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/tianacloud/cli/internal/fileclient"
 )
-
-// Publication versions are decoded losslessly from MGR integers and printed as
-// decimal strings, including values above JavaScript's safe integer range.
-type publicationVersion uint64
-
-func (v publicationVersion) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Quote(strconv.FormatUint(uint64(v), 10))), nil
-}
 
 type TemplateFileEntry struct {
 	Path        string `json:"path"`
@@ -39,149 +27,6 @@ type TemplateFileManifest struct {
 	Entries []TemplateFileEntry `json:"entries"`
 }
 
-type Share struct {
-	Version         publicationVersion `json:"version,omitempty"`
-	MaterialVersion string             `json:"material_version,omitempty"`
-	WebID           string             `json:"web_id"`
-	PackageID       uint64             `json:"package_id"`
-	URL             string             `json:"url"`
-	HasSource       bool               `json:"has_source"`
-	InstallCount    uint64             `json:"install_count"`
-	Manifest        struct {
-		Metadata           Template              `json:"metadata"`
-		FormatVersion      int                   `json:"format_version,omitempty"`
-		FileManifestSHA256 string                `json:"file_manifest_sha256,omitempty"`
-		Requires           []string              `json:"requires,omitempty"`
-		Files              *TemplateFileManifest `json:"files,omitempty"`
-	} `json:"manifest"`
-}
-type ShareJob struct {
-	JobID     uint64 `json:"job_id"`
-	Kind      string `json:"kind"`
-	Status    string `json:"status"`
-	LastError string `json:"last_error,omitempty"`
-}
-type ShareStatus struct {
-	Share         Share      `json:"share"`
-	Jobs          []ShareJob `json:"jobs"`
-	StorageBytes  uint64     `json:"storage_bytes"`
-	ReservedBytes uint64     `json:"reserved_bytes"`
-}
-type Publication struct {
-	JobID     uint64           `json:"job_id"`
-	Status    string           `json:"status"`
-	LastError string           `json:"last_error,omitempty"`
-	Form      *fileclient.Form `json:"form,omitempty"`
-}
-
-func shareAPI(web string) string {
-	return "/api/v1/web-projects/" + url.PathEscape(web) + "/share-template"
-}
-func (c Client) ShareStatus(ctx context.Context, web string) (ShareStatus, error) {
-	var result ShareStatus
-	_, err := c.Auth.DoJSON(ctx, "GET", shareAPI(web), nil, nil, &result)
-	return result, err
-}
-func (c Client) WithdrawShare(ctx context.Context, web string) (uint64, error) {
-	var result struct {
-		JobID uint64 `json:"cleanup_job_id"`
-	}
-	_, err := c.Auth.DoJSON(ctx, "DELETE", shareAPI(web), struct{}{}, nil, &result)
-	return result.JobID, err
-}
-func (c Client) PublishShare(ctx context.Context, web, filename string) (Publication, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return Publication{}, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Publication{}, err
-	}
-	if !info.Mode().IsRegular() || info.Size() <= 0 {
-		return Publication{}, errors.New("install.zip must be a nonempty regular file")
-	}
-	var random [16]byte
-	if _, err = rand.Read(random[:]); err != nil {
-		return Publication{}, err
-	}
-	request := map[string]any{"request_id": "share-template-" + hex.EncodeToString(random[:]), "size": info.Size()}
-	var result Publication
-	if _, err = c.Auth.DoJSON(ctx, "POST", shareAPI(web)+"/uploads", request, nil, &result); err != nil {
-		return result, err
-	}
-	if result.JobID == 0 {
-		return Publication{}, errors.New("publication has no job identity; inspect status-share-template before starting another upload")
-	}
-	if result.Form == nil {
-		return result, fmt.Errorf("publication %d has no active upload authorization; inspect status-share-template", result.JobID)
-	}
-	jobID := result.JobID
-	uploader := fileclient.Client{HTTP: c.Auth.FileHTTPClient()}
-	uploadErr := uploader.Upload(ctx, *result.Form, "install.zip", info.Size(), f)
-	// Complete resolves a lost OSS response by HEAD; it never authorizes a second key.
-	result = Publication{}
-	_, err = c.Auth.DoJSON(ctx, "POST", fmt.Sprintf("%s/uploads/%d/complete", shareAPI(web), jobID), struct{}{}, nil, &result)
-	result.Form = nil
-	if err != nil {
-		if uploadErr != nil {
-			return Publication{JobID: jobID}, fmt.Errorf("publication %d: %w; inspect status-share-template before starting another upload", jobID, uploadErr)
-		}
-		return Publication{JobID: jobID}, err
-	}
-	if result.JobID != jobID {
-		return Publication{JobID: jobID}, fmt.Errorf("publication %d receipt identity changed; inspect status-share-template", jobID)
-	}
-	if result.Status == "uploading" {
-		return Publication{JobID: jobID, Status: result.Status}, fmt.Errorf("publication %d remains uploading; inspect status-share-template", jobID)
-	}
-	if result.Status == "fail" {
-		return result, fmt.Errorf("publication %d failed: %s", jobID, result.LastError)
-	}
-	switch result.Status {
-	case "pending", "running", "complete":
-	default:
-		return result, fmt.Errorf("publication %d has unknown status; inspect status-share-template", jobID)
-	}
-	return result, nil
-}
-func (c Client) WaitShare(ctx context.Context, web string, id uint64) (ShareStatus, error) {
-	if id == 0 {
-		return ShareStatus{}, errors.New("publication job identity must be nonzero")
-	}
-	for {
-		status, err := c.ShareStatus(ctx, web)
-		if err != nil {
-			return status, err
-		}
-		if status.Share.PackageID == id {
-			if status.Share.WebID != web {
-				return status, errors.New("publication source Web identity does not match")
-			}
-			return status, nil
-		}
-		found := false
-		for _, j := range status.Jobs {
-			if j.JobID == id {
-				found = true
-				if j.Status == "fail" {
-					return status, fmt.Errorf("publication %d failed: %s", id, j.LastError)
-				}
-			}
-		}
-		if !found {
-			return status, fmt.Errorf("publication %d is no longer current; inspect status-share-template", id)
-		}
-		timer := time.NewTimer(time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return status, ctx.Err()
-		case <-timer.C:
-		}
-	}
-}
 func (c Client) InitShare(ctx context.Context, link, target string) (Result, error) {
 	if err := requireAbsent(target); err != nil {
 		return Result{}, err
@@ -191,23 +36,23 @@ func (c Client) InitShare(ctx context.Context, link, target string) (Result, err
 		return Result{}, errors.New("invalid template share link")
 	}
 	origin, _ := url.Parse(c.Auth.Origin())
-	if shared.Scheme != origin.Scheme || shared.Host != origin.Host || shared.User != nil || shared.RawQuery != "" || shared.Fragment != "" || (!strings.HasPrefix(shared.Path, "/shared-templates/") && !strings.HasPrefix(shared.Path, "/templates/")) {
-		return Result{}, errors.New("use a template share link from the current Tiana environment")
+	if shared.Scheme != origin.Scheme || shared.Host != origin.Host || shared.User != nil || shared.Fragment != "" || !strings.HasPrefix(shared.Path, "/templates/") {
+		return Result{}, errors.New("use a unified template link (/templates/TEMPLATE_ID) from the current Tiana environment")
 	}
-	if strings.HasPrefix(shared.Path, "/templates/") {
-		id := strings.TrimPrefix(shared.Path, "/templates/")
-		return c.InitUnifiedTemplate(ctx, id, "share", "", target)
+	channel := "share"
+	if shared.RawQuery != "" {
+		q := shared.Query()
+		ch := q.Get("channel")
+		if len(q) != 1 || (ch != "share" && ch != "market") {
+			return Result{}, errors.New("use a template share link without unexpected query parameters")
+		}
+		channel = ch
 	}
-	web := strings.TrimPrefix(shared.Path, "/shared-templates/")
-	if web == "" || strings.Contains(web, "/") {
+	id := strings.TrimPrefix(shared.Path, "/templates/")
+	if id == "" || strings.Contains(id, "/") {
 		return Result{}, errors.New("invalid template share link")
 	}
-	var descriptor sourceDownload
-	_, err = c.Auth.DoJSON(ctx, "GET", "/api/v1/shared-templates/"+url.PathEscape(web)+"/source", nil, nil, &descriptor)
-	if err != nil {
-		return Result{}, err
-	}
-	return c.downloadSource(ctx, descriptor, target)
+	return c.InitUnifiedTemplate(ctx, id, channel, "", target)
 }
 
 func (c Client) downloadSource(ctx context.Context, descriptor sourceDownload, target string) (Result, error) {

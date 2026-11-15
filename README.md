@@ -55,7 +55,7 @@ To start from a current Web template:
 
 ```sh
 tiana web list-template --json
-tiana web init-template ledger --dir ./my-ledger --json
+tiana web init-template TEMPLATE_ID --dir ./my-ledger --json
 ```
 
 Read `metadata.json` and the generated README, replace every declared placeholder,
@@ -774,14 +774,14 @@ remove its retained local archive explicitly; no command replays it automaticall
 
 ## Web 模板初始化
 
-每次创建应用时查询当前目录，列表每项包含 `name`、`display_name`、`description`，再按返回的 name 初始化；通过 `next_cursor` 和 `--after` 继续查询下一页：
+每次创建应用时查询当前统一模板目录，列表每项包含 `template_id`、`display_name`、`description` 及 `current_version`，再按返回的 `template_id` 初始化；通过 `next_cursor` 和 `--after` 继续查询下一页：
 
 ```sh
 tiana web list-template --json
-tiana web init-template ledger --dir ./my-ledger --json
+tiana web init-template TEMPLATE_ID --dir ./my-ledger --json
 ```
 
-CLI 从当前登录环境的 MGR 取得 15 分钟下载签名，校验 ZIP 的大小与 SHA-256，原样解压到指定的新目录。读取根部 metadata.json 和 README 后，Agent 按声明的文件替换变量、初始化 SQLite，再完成 Git、构建和 Web 发布。CLI 按模板名称调用，不需要模板版本参数。
+CLI 从当前登录环境的 MGR 取得 15 分钟下载签名，校验 ZIP 的大小与 SHA-256，原样解压到指定的新目录。读取根部 metadata.json 和 README 后，Agent 按声明的文件替换变量、初始化 SQLite，再完成 Git、构建和 Web 发布。CLI 按 `template_id` 调用；如需固定版本可传入 `--version`。
 
 模板含外置素材时，还须按[模板素材文件](docs/template-files.md)准备当前应用的文件目录。
 `init-template` 和 `init-share-template` 保留 `template-files/` 原始字节；下载源码不会

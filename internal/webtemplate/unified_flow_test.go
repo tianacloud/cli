@@ -114,10 +114,10 @@ func TestUnifiedWaitRejectsIncompleteUnknownAndForeignReceipts(t *testing.T) {
 	}
 }
 
-func TestUnifiedSourceBindsVersionAndPreservesLegacyLink(t *testing.T) {
+func TestUnifiedSourceBindsVersionAndChannelLinks(t *testing.T) {
 	data := zipFixture(t, map[string]string{"metadata.json": `{"name":"notes"}`, "app.js": "demo"})
 	sum := sha256.Sum256(data)
-	for _, mode := range []string{"new link", "fixed market version", "no source", "wrong version", "legacy link"} {
+	for _, mode := range []string{"new link", "fixed market version", "no source", "wrong version", "market link"} {
 		t.Run(mode, func(t *testing.T) {
 			downloads := 0
 			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,24 +129,18 @@ func TestUnifiedSourceBindsVersionAndPreservesLegacyLink(t *testing.T) {
 			}))
 			defer object.Close()
 			client, origin := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
-				if mode == "legacy link" {
-					if r.URL.Path != "/api/v1/shared-templates/old-web/source" {
-						t.Errorf("legacy path %s", r.URL.Path)
+				if r.URL.Path != "/api/v1/template-catalog/stable-template/source" {
+					t.Errorf("path %s", r.URL.Path)
+				}
+				channel := "share"
+				if mode == "fixed market version" || mode == "wrong version" || mode == "market link" {
+					channel = "market"
+					if mode != "market link" && r.URL.Query().Get("version") != "2" {
+						t.Error("version lost")
 					}
-				} else {
-					if r.URL.Path != "/api/v1/template-catalog/stable-template/source" {
-						t.Errorf("path %s", r.URL.Path)
-					}
-					channel := "share"
-					if mode == "fixed market version" || mode == "wrong version" {
-						channel = "market"
-						if r.URL.Query().Get("version") != "2" {
-							t.Error("version lost")
-						}
-					}
-					if r.URL.Query().Get("channel") != channel {
-						t.Error("channel lost")
-					}
+				}
+				if r.URL.Query().Get("channel") != channel {
+					t.Error("channel lost")
 				}
 				if mode == "no source" {
 					w.WriteHeader(409)
@@ -166,8 +160,8 @@ func TestUnifiedSourceBindsVersionAndPreservesLegacyLink(t *testing.T) {
 				result, err = client.InitUnifiedTemplate(t.Context(), "stable-template", "market", "2", target)
 			} else {
 				link := origin + "/templates/stable-template"
-				if mode == "legacy link" {
-					link = origin + "/shared-templates/old-web"
+				if mode == "market link" {
+					link += "?channel=market"
 				}
 				result, err = client.InitShare(t.Context(), link, target)
 			}
@@ -183,7 +177,7 @@ func TestUnifiedSourceBindsVersionAndPreservesLegacyLink(t *testing.T) {
 			if err != nil || downloads != 1 {
 				t.Fatalf("err=%v downloads=%d", err, downloads)
 			}
-			if mode != "legacy link" && (result.TemplateID != "stable-template" || result.Version != "2") {
+			if result.TemplateID != "stable-template" || result.Version != "2" {
 				t.Fatalf("identity lost: %+v", result)
 			}
 		})
@@ -253,24 +247,6 @@ func TestUnifiedPublicationReplayNeverReuploadsExistingJob(t *testing.T) {
 	}
 }
 
-func TestLegacyPublicationCompleteFailureIsNotSuccess(t *testing.T) {
-	object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.Copy(io.Discard, r.Body); w.WriteHeader(204) }))
-	defer object.Close()
-	client, _ := fixtureShareClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/complete") {
-			io.WriteString(w, `{"job_id":7,"status":"fail","last_error":"fixture failure"}`)
-			return
-		}
-		json.NewEncoder(w).Encode(map[string]any{"job_id": 7, "status": "uploading", "form": map[string]any{"url": object.URL, "fields": map[string]string{"key": "fixture/install.zip"}}})
-	})
-	file := filepath.Join(t.TempDir(), "install.zip")
-	os.WriteFile(file, []byte("reviewed"), 0600)
-	receipt, err := client.PublishShare(t.Context(), "original-web", file)
-	if err == nil || receipt.JobID != 7 || receipt.Status != "fail" {
-		t.Fatalf("receipt=%+v err=%v", receipt, err)
-	}
-}
-
 func TestUnifiedListRejectsMissingItems(t *testing.T) {
 	for _, tc := range []struct {
 		body string
@@ -287,7 +263,7 @@ func TestUnifiedListRejectsMissingItems(t *testing.T) {
 }
 
 func TestUploadFailureStillUploadingIsNotAccepted(t *testing.T) {
-	for _, mode := range []string{"unified", "legacy"} {
+	for _, mode := range []string{"unified"} {
 		t.Run(mode, func(t *testing.T) {
 			object := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
 			defer object.Close()
@@ -310,16 +286,9 @@ func TestUploadFailureStillUploadingIsNotAccepted(t *testing.T) {
 			if err := os.WriteFile(file, []byte("reviewed"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if mode == "unified" {
-				r, err := client.PublishTemplate(t.Context(), "stable-template", "request-1", file)
-				if err == nil || r.JobID != 7 {
-					t.Fatalf("receipt=%+v err=%v", r, err)
-				}
-			} else {
-				r, err := client.PublishShare(t.Context(), "source-web", file)
-				if err == nil || r.JobID != 7 {
-					t.Fatalf("receipt=%+v err=%v", r, err)
-				}
+			r, err := client.PublishTemplate(t.Context(), "stable-template", "request-1", file)
+			if err == nil || r.JobID != 7 {
+				t.Fatalf("receipt=%+v err=%v", r, err)
 			}
 		})
 	}
