@@ -355,7 +355,11 @@ names are ambiguous. An `ep-...` Endpoint ID is not an instance ID.
 including in a terminal, without prompting.
 The `MESSAGE` column displays the instance description; no engine column is shown.
 `web list` also displays all applications without prompting; `--json` retains its
-structured output. `show --url` prints only the connection URL.
+structured output. For a single 20-item page, use `tiana web list --page 1 --json`.
+Its data includes `page`, `page_size`, `total`, `total_pages` and `items`; zero totals
+are omitted. Increment `--page` only when another page is needed. With `--page`,
+`--search TEXT` filters names or instance IDs on the server before pagination.
+No `--page` preserves the original all-page behavior. `show --url` prints only the connection URL.
 Connection metadata must be available before this URL can be used.
 
 ### Wait for creation

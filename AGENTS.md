@@ -46,9 +46,14 @@ are verbatim valid UTF-8, <=2048 bytes for both instances and Web (Web descripti
 
 SQLite/Git instance list, SQLite branch list and Web list fetch all API pages before
 printing one complete table, including on terminals. There is no More prompt or
-list-input consumption. Web JSON output also includes all pages. Keep existing
+list-input consumption. Without `--page`, Web JSON output also includes all pages. Keep existing
 product filters, authentication, cursor validation and error handling; a failed
-page must not produce a partial successful table. API pagination remains internal.
+page must not produce a partial successful table. Default traversal owns API pagination.
+Web's explicit `--page` mode reads one 20-item API page and exposes its pagination
+metadata; `--search` requires that mode and delegates name/instance-ID filtering
+before pagination. Preserve the default all-page behavior and frozen account scope.
+Verify single-request pages, invalid arguments before network and all-page compatibility;
+rollback removes only the additive flags and their consumers.
 Branch list preserves search and the optional starting --after cursor across pages,
 rejects cursor cycles, and retains the same 10000-page bound as Web traversal.
 
@@ -527,7 +532,7 @@ the outcome. Report fixture, live-service, cross-build and native CI separately.
 ## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.15. Core SDK is pinned to published v1.1.1; SQLite SDK remains
+dependencies are 1.0.30. Core SDK is pinned to published v1.3.0; SQLite SDK remains
 v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication
