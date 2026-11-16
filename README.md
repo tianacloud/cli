@@ -218,9 +218,9 @@ Put global options before the subcommand, especially when using `connect`.
 ### QwenWork connector entrypoint
 
 The QwenWork desktop package supplies a native `tiana` entrypoint alongside
-`libexec/tiana` (both `.exe` on Windows). It defaults an absent `TIANA_FROM` to
-`qwenwork`, preserves explicit environment values, and forwards business commands
-to the bundled core. `auth init` performs blocking browser login;
+`libexec/tiana` (both `.exe` on Windows). The packaging script compiles the
+source default into that core. The entrypoint inherits the environment and
+forwards business commands to the bundled core. `auth init` performs blocking browser login;
 `auth show --status` checks/refreshes account authentication without quota;
 `auth logout` clears the account; `identity whoami` returns nonsecret identity.
 Ordinary unauthenticated status exits 0 with `{"status":"unauthorized"}`;

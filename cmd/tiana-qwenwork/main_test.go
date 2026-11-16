@@ -11,23 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"testing"
 	"time"
 )
-
-func TestSourceEnvironment(t *testing.T) {
-	for _, env := range [][]string{nil, {"OTHER=x"}, {"TIANA_FROM="}, {"TIANA_FROM=workbuddy"}} {
-		got := sourceEnvironment(env)
-		want := slices.Clone(env)
-		if len(env) == 0 || env[0] == "OTHER=x" {
-			want = append(want, "TIANA_FROM=qwenwork")
-		}
-		if !slices.Equal(got, want) {
-			t.Fatalf("got=%v want=%v", got, want)
-		}
-	}
-}
 
 func TestConnectorWithRealCore(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -39,7 +25,7 @@ func TestConnectorWithRealCore(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(core), 0700); err != nil {
 		t.Fatal(err)
 	}
-	build := exec.Command("go", "build", "-o", core, "../tiana")
+	build := exec.Command("go", "build", "-ldflags", "-X github.com/tianacloud/cli/internal/buildconfig.DefaultAcquisitionSource=channel-a", "-o", core, "../tiana")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
@@ -58,7 +44,10 @@ func TestConnectorWithRealCore(t *testing.T) {
 	}
 	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("XDG_CONFIG_HOME", root)
-	t.Setenv("TIANA_FROM", "qwenwork")
+	t.Setenv("TIANA_FROM", "")
+	if err := os.Unsetenv("TIANA_FROM"); err != nil {
+		t.Fatal(err)
+	}
 	source := ""
 	unavailable := false
 	pending := false
@@ -119,7 +108,7 @@ func TestConnectorWithRealCore(t *testing.T) {
 	if c, o, e := call("auth", "show", "--status"); c != 0 || o != "{\"status\":\"unauthorized\"}\n" || e != "" {
 		t.Fatalf("before: %d %s %s", c, o, e)
 	}
-	if c, o, e := call("auth", "init"); c != 0 || o != "{\"status\":\"authorized\"}\n" || e != "" || source != "qwenwork" {
+	if c, o, e := call("auth", "init"); c != 0 || o != "{\"status\":\"authorized\"}\n" || e != "" || source != "channel-a" {
 		t.Fatalf("login: %d %s %s source=%s", c, o, e, source)
 	}
 	<-started
@@ -136,6 +125,25 @@ func TestConnectorWithRealCore(t *testing.T) {
 	unavailable = false
 	if c, o, e := call("auth", "logout"); c != 0 {
 		t.Fatalf("logout: %d %s %s", c, o, e)
+	}
+	for _, tc := range []struct {
+		env  string
+		args []string
+		want string
+	}{
+		{"channel-b", []string{"auth", "init"}, "channel-b"},
+		{"", []string{"auth", "init"}, ""},
+		{"channel-b", []string{"login", "--from", "channel-c", "--json"}, "channel-c"},
+		{"channel-b", []string{"login", "--from", "", "--json"}, ""},
+	} {
+		t.Setenv("TIANA_FROM", tc.env)
+		if c, o, e := call(tc.args...); c != 0 || source != tc.want {
+			t.Fatalf("source priority: %d %s %s source=%q want=%q", c, o, e, source, tc.want)
+		}
+		<-started
+		if c, o, e := call("auth", "logout"); c != 0 {
+			t.Fatalf("logout: %d %s %s", c, o, e)
+		}
 	}
 	pending = true
 	ctx, cancel := context.WithCancel(t.Context())

@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	version = "1.0.28"
+	version = "1.0.29"
 	// SQLite's pinned SDK still uses a build-selected physical Gateway port.
 	gatewayPort = "443"
 )

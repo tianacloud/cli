@@ -578,7 +578,7 @@ inputs in the CLI and pass `auth.Config.AcquisitionSource`; validate at transact
 creation, so pending reuse/resume retains the original source. Verify priority,
 blocking/split login and real registration persistence through the Web login flow.
 The QwenWork native entrypoint owns its auth/status/identity command projections,
-absent-env source default and connector-manifest version; business commands run
+connector-manifest version; business commands run
 the relative bundled core with inherited environment and cancellation. Ship the
 entrypoint and core together; rollback selects the prior complete connector.
 Keep normal `tiana status` and core version semantics independent of this adapter.

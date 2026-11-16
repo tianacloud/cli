@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"syscall"
 	"time"
 
@@ -35,23 +34,12 @@ func main() {
 	os.Exit(run(ctx, executable, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func sourceEnvironment(env []string) []string {
-	for _, entry := range env {
-		key, _, _ := strings.Cut(entry, "=")
-		if key == "TIANA_FROM" || runtime.GOOS == "windows" && strings.EqualFold(key, "TIANA_FROM") {
-			return env
-		}
-	}
-	return append(slices.Clone(env), "TIANA_FROM=qwenwork")
-}
-
 func child(ctx context.Context, executable string, args []string, input io.Reader, output, diagnostics io.Writer) int {
 	name := "tiana"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	command := exec.CommandContext(ctx, filepath.Join(filepath.Dir(executable), "libexec", name), args...)
-	command.Env = sourceEnvironment(os.Environ())
 	command.Stdin = input
 	command.Stdout = output
 	command.Stderr = diagnostics
