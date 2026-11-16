@@ -106,6 +106,47 @@ func TestWebListOutputFailure(t *testing.T) {
 	}
 }
 
+func TestWebListSinglePageAndSearch(t *testing.T) {
+	for _, page := range []string{"1", "2"} {
+		t.Run(page, func(t *testing.T) {
+			calls := 0
+			webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.URL.Query().Get("page") != page || r.URL.Query().Get("search") != "中文 & notes" || r.URL.Query().Get("engine") != "web" {
+					t.Errorf("unexpected query %s", r.URL.RawQuery)
+				}
+				n := 1
+				if page == "2" {
+					n = 2
+				}
+				writeWebInstancePage(t, w, n, 2, apppublish.WebProject{ID: "web-a", Name: "Match"})
+			})
+			var out, diag bytes.Buffer
+			code := runCLI(t.Context(), []string{"web", "list", "--page", page, "--search", "中文 & notes", "--json"}, nil, &out, &diag)
+			var result struct {
+				Data apppublish.WebProjectPage `json:"data"`
+			}
+			if code != 0 || calls != 1 || json.Unmarshal(out.Bytes(), &result) != nil || len(result.Data.Items) != 1 || result.Data.PageSize != 20 || result.Data.TotalPages != 2 {
+				t.Fatalf("code=%d calls=%d out=%s diag=%s", code, calls, &out, &diag)
+			}
+		})
+	}
+}
+
+func TestWebListInvalidPageBeforeNetwork(t *testing.T) {
+	calls := 0
+	webManagementFixture(t, func(w http.ResponseWriter, r *http.Request) { calls++ })
+	for _, args := range [][]string{
+		{"--page", "0"}, {"--page", "-1"}, {"--page", "10001"}, {"--page", "no"},
+		{"--search", "test"}, {"--page", "1", "--search", strings.Repeat("x", 201)},
+	} {
+		var out, diag bytes.Buffer
+		if code := runCLI(t.Context(), append([]string{"web", "list"}, args...), nil, &out, &diag); code != 2 || calls != 0 {
+			t.Fatalf("args=%v code=%d calls=%d", args, code, calls)
+		}
+	}
+}
+
 func writeWebInstancePage(t *testing.T, w http.ResponseWriter, page, totalPages int, project apppublish.WebProject) {
 	t.Helper()
 	err := json.NewEncoder(w).Encode(authclient.InstancePage{Page: page, PageSize: 20, Total: totalPages, TotalPages: totalPages, Items: []authclient.Instance{{ID: "instance-" + project.ID, DisplayName: project.Name, Notes: project.Description, Engine: "web", ProductRevision: "1", CreatedAt: "2026-10-05T00:00:00Z", Web: &authclient.WebInstanceMetadata{Endpoint: project.Endpoint, ID: project.ID}, Connection: &authclient.InstanceConnection{URL: project.Endpoint}}}})

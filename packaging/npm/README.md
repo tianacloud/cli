@@ -19,7 +19,7 @@ exit status. Native binaries are included in npm packages.
 
 ```sh
 tiana web list-template --json
-tiana web init-template ledger --dir ./my-ledger --json
+tiana web init-template TEMPLATE_ID --dir ./my-ledger --json
 ```
 
 Read the generated metadata.json and README.md, fill the declared variables,
@@ -28,3 +28,9 @@ initialize your SQLite instance, then build and publish your application.
 Supports macOS x64/arm64, Linux x64/arm64/riscv64 and Windows x64/arm64.
 If the native dependency is missing, rerun the installation with
 `--include=optional`. Installation with `--ignore-scripts` works as well.
+
+## Web application lists
+
+`tiana web list` and `tiana web list --json` print the complete list without prompts.
+To read only one 20-item page, use `tiana web list --page 1 --json`. Add
+`--search TEXT` with `--page` to filter names or instance IDs before pagination.
