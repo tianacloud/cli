@@ -309,3 +309,13 @@ The npm package README now describes deployment selection generically: set
 `TIANA_API_ORIGIN` to a management origin in each CLI/Git process environment.
 Package and build defaults are 1.0.25; runtime behavior, embedded trust assets and
 SDK pins are unchanged.
+
+## 1.0.30 opt-in Web list pagination
+
+`web list --page N` reads one 20-item page and exposes page metadata with `--json`.
+`--search TEXT` requires `--page` and filters by name or instance ID on the server
+before pagination. Without `--page`, both the table and JSON commands still fetch
+and print the complete list without prompting for input.
+
+The main npm package, seven exact native dependencies and source/build defaults
+use 1.0.30. SDK pins, helper contract, credentials and server APIs are unchanged.

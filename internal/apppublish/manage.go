@@ -31,6 +31,10 @@ type WebProjectPage struct {
 	RequestID  string       `json:"-"`
 	Items      []WebProject `json:"items"`
 	NextCursor string       `json:"next_cursor,omitempty"`
+	Page       int          `json:"page,omitempty"`
+	PageSize   int          `json:"page_size,omitempty"`
+	Total      int          `json:"total,omitempty"`
+	TotalPages int          `json:"total_pages,omitempty"`
 }
 
 // Bind freezes account/tenant identity across pages, target resolution and confirmation.
@@ -52,6 +56,11 @@ func (r Runner) boundRequest(ctx context.Context, method, path string, body any)
 	return r.request(ctx, identity{r.PrincipalID, r.TenantID}, method, path, body)
 }
 func (r Runner) ListPage(ctx context.Context, after string) (WebProjectPage, *Error) {
+	return r.ListSearchPage(ctx, after, "")
+}
+
+// ListSearchPage applies the service's instance search before reading one page.
+func (r Runner) ListSearchPage(ctx context.Context, after, search string) (WebProjectPage, *Error) {
 	pageNumber := 1
 	if after != "" {
 		n, err := strconv.Atoi(after)
@@ -61,6 +70,9 @@ func (r Runner) ListPage(ctx context.Context, after string) (WebProjectPage, *Er
 		pageNumber = n
 	}
 	query := url.Values{"engine": {"web"}, "page": {strconv.Itoa(pageNumber)}, "page_size": {"20"}}
+	if search != "" {
+		query.Set("search", search)
+	}
 	res, e := r.boundRequest(ctx, "GET", "/api/v1/instances?"+query.Encode(), nil)
 	if e != nil {
 		return WebProjectPage{}, e
@@ -69,7 +81,7 @@ func (r Runner) ListPage(ctx context.Context, after string) (WebProjectPage, *Er
 	if json.Unmarshal(res.Body, &source) != nil || source.Items == nil || source.Page != pageNumber || source.PageSize != 20 || source.TotalPages < 0 || source.Total < 0 || len(source.Items) > 20 {
 		return WebProjectPage{}, invalidWebResponse(res.RequestID)
 	}
-	result := WebProjectPage{RequestID: res.RequestID, Items: []WebProject{}}
+	result := WebProjectPage{RequestID: res.RequestID, Items: []WebProject{}, Page: source.Page, PageSize: source.PageSize, Total: source.Total, TotalPages: source.TotalPages}
 	seen := map[string]bool{}
 	for _, i := range source.Items {
 		if i.Engine != "web" || i.Web == nil || !appID(i.Web.ID) || !validInstanceID(i.ID) || seen[i.Web.ID] {
