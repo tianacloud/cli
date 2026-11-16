@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	version = "1.0.25"
+	version = "1.0.26"
 	// SQLite's pinned SDK still uses a build-selected physical Gateway port.
 	gatewayPort = "443"
 )
@@ -149,7 +149,7 @@ func newAuthClient(ctx context.Context, output io.Writer, nonInteractive bool) (
 	if err != nil {
 		return nil, err
 	}
-	config := authclient.Config{Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive, HTTPClient: &http.Client{Transport: transport}}
+	config := authclient.Config{AcquisitionSource: loginSource(ctx), Origin: origin, Store: store, Output: output, NonInteractive: nonInteractive, HTTPClient: &http.Client{Transport: transport}}
 	config.OnRequestID = func(id string) { requestdiag.Write(ctx, "mgr", id) }
 	if trust := clientconfig.FromContext(ctx); trust != nil {
 		config.RootCAs = trust.Roots

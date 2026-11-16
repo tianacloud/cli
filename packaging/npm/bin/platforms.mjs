@@ -4,6 +4,8 @@ export const targets = [
   'windows-amd64', 'windows-arm64',
 ];
 
+export const qwenTargets = ['darwin-amd64', 'darwin-arm64', 'windows-amd64'];
+
 export function platformDirectory(platform, arch) {
   const target = `${platform === 'win32' ? 'windows' : platform}-${arch === 'x64' ? 'amd64' : arch}`;
   return targets.includes(target) ? target : undefined;

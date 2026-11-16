@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { targets, binaryName, platformPackage } from '../packaging/npm/bin/platforms.mjs';
+import { targets, qwenTargets, binaryName, platformPackage } from '../packaging/npm/bin/platforms.mjs';
 
 const [assetsArgument, outputArgument, versionArgument, ...extra] = process.argv.slice(2);
 if (!assetsArgument || !outputArgument || extra.length) {
@@ -32,9 +32,10 @@ for (const target of targets) {
   if (manifest.version !== pkg.version || `${manifest.platform}-${manifest.arch}` !== target || manifest.insecure_tls !== false) {
     throw new Error(`${target}: version, platform or TLS policy does not match this release`);
   }
-  const name = binaryName(target);
-  if (sha(path.join(directory, name)) !== manifest.files?.[name]) throw new Error(`${target}/${name}: checksum does not match its manifest`);
-  if (!architectureMatches(readFileSync(path.join(directory, name)), target)) throw new Error(`${target}/${name}: wrong executable architecture`);
+  for (const name of [binaryName(target), ...(qwenTargets.includes(target) ? [target.startsWith('windows-') ? 'tiana-qwenwork.exe' : 'tiana-qwenwork'] : [])]) {
+    if (sha(path.join(directory, name)) !== manifest.files?.[name]) throw new Error(`${target}/${name}: checksum does not match its manifest`);
+    if (!architectureMatches(readFileSync(path.join(directory, name)), target)) throw new Error(`${target}/${name}: wrong executable architecture`);
+  }
 }
 mkdirSync(output);
 const release = { version: pkg.version, packages: [] };
@@ -52,6 +53,11 @@ for (const target of targets) {
   const binary = binaryName(target);
   copyFileSync(path.join(assets, target, binary), path.join(directory, 'bin', binary));
   chmodSync(path.join(directory, 'bin', binary), 0o755);
+  if (qwenTargets.includes(target)) {
+    const adapter = os === 'windows' ? 'tiana-qwenwork.exe' : 'tiana-qwenwork';
+    copyFileSync(path.join(assets, target, adapter), path.join(directory, 'bin', adapter));
+    chmodSync(path.join(directory, 'bin', adapter), 0o755);
+  }
   copyFileSync(path.join(assets, target, 'manifest.json'), path.join(directory, 'manifest.json'));
   copyFileSync(path.join(template, 'README.md'), path.join(directory, 'README.md'));
   copyFileSync(license, path.join(directory, 'LICENSE'));

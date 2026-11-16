@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -57,13 +58,26 @@ func (w *loginProgressWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+type loginSourceKey struct{}
+
+func loginSource(ctx context.Context) string {
+	if source, ok := ctx.Value(loginSourceKey{}).(string); ok {
+		return source
+	}
+	return os.Getenv("TIANA_FROM")
+}
+
 func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
 	return &cli.Command{Name: "login", Usage: "Sign in through a browser", Flags: []cli.Flag{
+		&cli.StringFlag{Name: "from", Usage: "Registration source (overrides TIANA_FROM; empty clears it)"},
 		&cli.BoolFlag{Name: "start", Usage: "Return a reusable browser sign-in link without waiting"},
 		&cli.BoolFlag{Name: "resume", Usage: "Check browser approval once and save the account session"},
 		&cli.BoolFlag{Name: "json", Usage: "Emit a structured login result; blocking progress goes to stderr"},
 		&cli.BoolFlag{Name: "no-open", Usage: "Print the login link without opening a browser"},
 	}, Action: func(ctx context.Context, cmd *cli.Command) error {
+		if cmd.IsSet("from") {
+			ctx = context.WithValue(ctx, loginSourceKey{}, cmd.String("from"))
+		}
 		if cmd.NArg() != 0 || (cmd.Bool("start") && cmd.Bool("resume")) {
 			return argumentFailure(ctx, cmd, "login accepts no arguments; choose at most one of --start and --resume")
 		}

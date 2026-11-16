@@ -124,6 +124,14 @@ placeholders.
 The CLI has no management configuration-file option. Connection parameters
 after `connect --` belong to the native client and are passed through unchanged.
 
+`login --from CHANNEL` selects the first-registration channel. An explicit flag
+(including `--from ""` to clear it) overrides `TIANA_FROM`; otherwise the CLI
+inherits that environment variable. New transactions accept 1–64 ASCII letters,
+digits, `_` or `-`, without trimming or changing case. Reused pending logins and
+`login --resume` retain the original transaction's source. The browser carries it
+to the existing registration flow; signing in to an existing account preserves
+its original registration source.
+
 `login` prints a URL, attempts to open the default browser, and waits for browser
 approval and credential persistence before exiting successfully. Use `--no-open`
 over SSH or when a connector opens the printed URL. Browser launch failure leaves
@@ -201,6 +209,21 @@ TLS verifies certificates and hostnames. `--ca-file` takes precedence over
 staging Console adds `internal/clientconfig/staging-root.crt` to system trust.
 The same invocation trust reaches management, Git, SQLite, Web and native helpers.
 Put global options before the subcommand, especially when using `connect`.
+
+### QwenWork connector entrypoint
+
+The QwenWork desktop package supplies a native `tiana` entrypoint alongside
+`libexec/tiana` (both `.exe` on Windows). It defaults an absent `TIANA_FROM` to
+`qwenwork`, preserves explicit environment values, and forwards business commands
+to the bundled core. `auth init` performs blocking browser login;
+`auth show --status` checks/refreshes account authentication without quota;
+`auth logout` clears the account; `identity whoami` returns nonsecret identity.
+Ordinary unauthenticated status exits 0 with `{"status":"unauthorized"}`;
+operational errors exit nonzero with JSON `code`/`message` on stderr.
+`--version` reads the connector manifest version; `version` reports the core CLI
+version. Update the connector as a unit and continue using its entrypoint.
+The native npm packages for Windows x64 and both macOS architectures include
+`tiana-qwenwork` for the connector packager; the ordinary npm command stays `tiana`.
 
 ### Outbound proxies
 

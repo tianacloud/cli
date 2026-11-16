@@ -566,3 +566,16 @@ explicit job failure remains failed. A completion still uploading is not success
 Keep local locks and receipts intact on rollback; removing the commands does not
 reverse remote writes. Verify pending exclusion, lost response, cancellation,
 original-job readback and upload failure independently of deployed acceptance.
+
+## Connector registration source
+
+The published SDK v1.3.0 supplies `auth.Config.AcquisitionSource`.
+`login --from` overrides `TIANA_FROM`, including an explicit empty value. Resolve
+inputs in the CLI and pass `auth.Config.AcquisitionSource`; validate at transaction
+creation, so pending reuse/resume retains the original source. Verify priority,
+blocking/split login and real registration persistence through the Web login flow.
+The QwenWork native entrypoint owns its auth/status/identity command projections,
+absent-env source default and connector-manifest version; business commands run
+the relative bundled core with inherited environment and cancellation. Ship the
+entrypoint and core together; rollback selects the prior complete connector.
+Keep normal `tiana status` and core version semantics independent of this adapter.

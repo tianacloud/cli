@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { targets, binaryName } from '../packaging/npm/bin/platforms.mjs';
+import { targets, qwenTargets, binaryName } from '../packaging/npm/bin/platforms.mjs';
 
 const [target, outputArgument, versionArgument, ...extra] = process.argv.slice(2);
 if (!targets.includes(target) || !outputArgument || extra.length) {
@@ -25,6 +25,14 @@ execFileSync('go', ['build', '-mod=readonly', '-buildvcs=false', '-trimpath', '-
 });
 chmodSync(path.join(bundle, name), 0o755);
 const files = { [name]: createHash('sha256').update(readFileSync(path.join(bundle, name))).digest('hex') };
+if (qwenTargets.includes(target)) {
+  const adapter = platform === 'windows' ? 'tiana-qwenwork.exe' : 'tiana-qwenwork';
+  execFileSync('go', ['build', '-mod=readonly', '-buildvcs=false', '-trimpath', '-ldflags', '-s -w', '-o', path.join(bundle, adapter), './cmd/tiana-qwenwork'], {
+    cwd: repo, stdio: 'inherit', env: { ...process.env, GOWORK: 'off', GOFLAGS: '', GOOS: platform, GOARCH: arch, CGO_ENABLED: '0' },
+  });
+  chmodSync(path.join(bundle, adapter), 0o755);
+  files[adapter] = createHash('sha256').update(readFileSync(path.join(bundle, adapter))).digest('hex');
+}
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).length > 0;
 writeFileSync(path.join(bundle, 'manifest.json'), JSON.stringify({ version, platform, arch, cli: { revision, dirty }, runtime: 'native-go', insecure_tls: false, files }, null, 2) + '\n', { flag: 'wx' });
