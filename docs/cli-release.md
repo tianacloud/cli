@@ -327,3 +327,10 @@ of an existing Web. Writes use the observed project revision. Unbinding preserve
 the original instance and data; uncertain writes require readback before another
 change. The main package, seven native dependencies and build defaults use
 1.0.31. SDK pins and credential storage are unchanged.
+
+## 1.0.32 Web map SDK resources
+
+Local Web previews allow HTTPS map SDK scripts and images, plus same-origin and
+Blob Web Workers. The authenticated browser fixture loads map resource fixtures
+and exchanges a worker message while retaining the existing WebAssembly checks.
+The main package, seven native dependencies and build defaults use 1.0.32.
