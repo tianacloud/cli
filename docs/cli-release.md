@@ -319,3 +319,11 @@ and print the complete list without prompting for input.
 
 The main npm package, seven exact native dependencies and source/build defaults
 use 1.0.30. SDK pins, helper contract, credentials and server APIs are unchanged.
+
+## 1.0.31 Web resource bindings
+
+`web bindings get/bind/unbind` manages the current SQLite and Git associations
+of an existing Web. Writes use the observed project revision. Unbinding preserves
+the original instance and data; uncertain writes require readback before another
+change. The main package, seven native dependencies and build defaults use
+1.0.31. SDK pins and credential storage are unchanged.
