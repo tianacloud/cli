@@ -3,23 +3,30 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/tianacloud/cli/internal/buildconfig"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	"testing"
 )
 
 func TestLoginSourcePriorityAndPendingReuse(t *testing.T) {
 	for _, tc := range []struct {
-		name, env string
-		flags     []string
-		want      string
+		name, env   string
+		buildSource string
+		envAbsent   bool
+		flags       []string
+		want        string
 	}{
-		{"unknown", "", nil, ""}, {"environment", "workbuddy", nil, "workbuddy"},
-		{"flag", "", []string{"--from", "doubao"}, "doubao"},
-		{"override", "invalid environment", []string{"--from", "doubao"}, "doubao"},
-		{"clear", "workbuddy", []string{"--from", ""}, ""},
+		{name: "unknown", envAbsent: true},
+		{name: "build default", buildSource: "channel-a", envAbsent: true, want: "channel-a"},
+		{name: "environment", env: "channel-b", buildSource: "channel-a", want: "channel-b"},
+		{name: "empty environment", buildSource: "channel-a"},
+		{name: "flag", buildSource: "channel-a", envAbsent: true, flags: []string{"--from", "channel-c"}, want: "channel-c"},
+		{name: "override", env: "invalid environment", buildSource: "channel-a", flags: []string{"--from", "channel-c"}, want: "channel-c"},
+		{name: "clear", env: "channel-b", buildSource: "channel-a", flags: []string{"--from", ""}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			creates := 0
@@ -49,6 +56,14 @@ func TestLoginSourcePriorityAndPendingReuse(t *testing.T) {
 			t.Setenv("TIANA_API_ORIGIN", server.URL)
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			t.Setenv("TIANA_FROM", tc.env)
+			if tc.envAbsent {
+				if err := os.Unsetenv("TIANA_FROM"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			previous := buildconfig.DefaultAcquisitionSource
+			buildconfig.DefaultAcquisitionSource = tc.buildSource
+			t.Cleanup(func() { buildconfig.DefaultAcquisitionSource = previous })
 			var out, diag bytes.Buffer
 			args := append([]string{"login", "--start", "--json", "--no-open"}, tc.flags...)
 			if code := runCLI(t.Context(), args, nil, &out, &diag); code != 3 {
@@ -66,5 +81,27 @@ func TestLoginSourcePriorityAndPendingReuse(t *testing.T) {
 				t.Fatalf("created %d transactions", creates)
 			}
 		})
+	}
+}
+
+func TestVersionReportsBuildSourceIndependentlyOfEnvironment(t *testing.T) {
+	previous := buildconfig.DefaultAcquisitionSource
+	buildconfig.DefaultAcquisitionSource = "channel-a"
+	t.Cleanup(func() { buildconfig.DefaultAcquisitionSource = previous })
+	t.Setenv("TIANA_FROM", "channel-b")
+	var out, diag bytes.Buffer
+	if code := runCLI(t.Context(), []string{"version", "--json"}, nil, &out, &diag); code != 0 {
+		t.Fatalf("code=%d %s", code, &diag)
+	}
+	var result struct {
+		Data struct {
+			Source string `json:"default_acquisition_source"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Data.Source != "channel-a" {
+		t.Fatalf("source=%q", result.Data.Source)
 	}
 }

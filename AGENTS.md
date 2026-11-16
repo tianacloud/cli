@@ -570,7 +570,10 @@ original-job readback and upload failure independently of deployed acceptance.
 ## Connector registration source
 
 The published SDK v1.3.0 supplies `auth.Config.AcquisitionSource`.
-`login --from` overrides `TIANA_FROM`, including an explicit empty value. Resolve
+`login --from` overrides a present `TIANA_FROM`, including explicit empty values;
+an absent environment input uses buildconfig.DefaultAcquisitionSource. Generic
+builds leave it empty; only the distribution packaging script chooses its value.
+version --json exposes the build default for matching distribution upgrades. Resolve
 inputs in the CLI and pass `auth.Config.AcquisitionSource`; validate at transaction
 creation, so pending reuse/resume retains the original source. Verify priority,
 blocking/split login and real registration persistence through the Web login flow.

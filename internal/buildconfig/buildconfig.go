@@ -14,3 +14,7 @@ var InsecureTLS = "false"
 func TLSInsecure() bool {
 	return strings.EqualFold(strings.TrimSpace(InsecureTLS), "true")
 }
+
+// DefaultAcquisitionSource is the registration source embedded by a distributor.
+// Generic builds leave it empty; explicit login inputs take precedence.
+var DefaultAcquisitionSource string

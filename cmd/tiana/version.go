@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tianacloud/cli/internal/apppublish"
+	"github.com/tianacloud/cli/internal/buildconfig"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/netconfig"
 	"github.com/tianacloud/cli/internal/supervisor"
@@ -29,7 +30,7 @@ func newVersionCommand(output, diagnostics io.Writer, checker updatecheck.Checke
 			return argumentFailure(ctx, cmd, "version does not accept arguments")
 		}
 		if managementJSON(ctx) {
-			return statusError(writeAppResult(apppublish.Success(map[string]any{"version": version, "helper_contract": supervisor.HelperContractVersion}), true, output, diagnostics))
+			return statusError(writeAppResult(apppublish.Success(map[string]any{"version": version, "helper_contract": supervisor.HelperContractVersion, "default_acquisition_source": buildconfig.DefaultAcquisitionSource}), true, output, diagnostics))
 		}
 		if printCurrentVersion(output) != nil {
 			return statusError(1)

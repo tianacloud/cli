@@ -14,6 +14,7 @@ import (
 
 	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
+	"github.com/tianacloud/cli/internal/buildconfig"
 	"github.com/tianacloud/cli/internal/localstate"
 	"github.com/urfave/cli/v3"
 )
@@ -64,7 +65,10 @@ func loginSource(ctx context.Context) string {
 	if source, ok := ctx.Value(loginSourceKey{}).(string); ok {
 		return source
 	}
-	return os.Getenv("TIANA_FROM")
+	if source, ok := os.LookupEnv("TIANA_FROM"); ok {
+		return source
+	}
+	return buildconfig.DefaultAcquisitionSource
 }
 
 func newLoginCommand(output, diagnostics io.Writer) *cli.Command {
