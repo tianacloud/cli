@@ -288,7 +288,11 @@ Origin/CSRF and connection POST `{}`. No browser refresh token or instance-token
 fallback. Coordinate CLI/Web/MGR provider contracts and data-plane synchronization;
 trusted app code has tenant scope. Recover lookups but never replay SQL.
 
-Web project entry and optional Git/SQLite associations are fixed at create.
+Web project entry is fixed at create. Optional Git/SQLite associations support
+`web bindings get/bind/unbind`; see README Web resource bindings. Omitted targets
+remain unchanged; writes use the existing management lock, bound identity and
+revision CAS. Unknown outcomes require readback, never automatic replay.
+Removing the CLI commands leaves the current server bindings in place.
 source_commit and web update are retired. Web list uses space-scoped generic
 instance pagination with engine=web; name/description/revision project generic
 instance metadata. Generic revision strings must retain uint64 precision.
@@ -357,7 +361,7 @@ public/VPN network scenarios require their own verification and authorization.
 ## Web Project metadata v1.1
 
 The approved design supersedes earlier Web manifests, versioned publication and
-styles guidance: MGR Web Project stores create-only entry and optional DB/Git,
+styles guidance: MGR Web Project stores create-only entry and current DB/Git,
 revision CAS and owner/admin Site gates. Generic instance config has no Web fields.
 tiana.app.json is retired; entry JS loads CSS. Publish packages empty root web.yaml
 plus data/, validates the fixed entry, and uploads channel 1. Channel 0 remains
@@ -441,7 +445,7 @@ independent administrator block or special unblock workflow; an owner can enable
 an instance after an administrator disables it. MGR Web project metadata has no
 access columns; fresh Control enabled is required for Site access, and missing or
 stale observations fail closed. Metadata remains readable while status is stale.
-Preserve fixed Web associations, generic metadata CAS and durable deletion plans.
+Preserve current Web associations, generic metadata CAS and durable deletion plans.
 Existing authentication, private management ingress and mutation audit remain.
 
 This task removes the newly introduced generic admin-block without reverting
