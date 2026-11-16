@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { targets, binaryName, platformPackage } from './npm/bin/platforms.mjs';
+import { targets, qwenTargets, binaryName, platformPackage } from './npm/bin/platforms.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const packager = path.join(repo, 'scripts/package-cli.mjs');
@@ -26,6 +26,11 @@ test('seven platform packages and an npm launcher package', { timeout: 180000, s
       cwd: repo, env: { ...process.env, GOOS: os, GOARCH: arch, CGO_ENABLED: '0', GOWORK: 'off' },
     });
     const files = { [name]: digest(path.join(directory, name)) };
+    if (qwenTargets.includes(target)) {
+      const adapter = os === 'windows' ? 'tiana-qwenwork.exe' : 'tiana-qwenwork';
+      copyFileSync(path.join(directory, name), path.join(directory, adapter));
+      files[adapter] = digest(path.join(directory, adapter));
+    }
     writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({ version, platform: os, arch, insecure_tls: false, files }));
   }
   await t.test('packs seven native npm packages and exact optional dependencies', () => {
@@ -54,6 +59,11 @@ test('seven platform packages and an npm launcher package', { timeout: 180000, s
         assert.equal(createHash('sha256').update(bytes).digest('hex'),digest(path.join(assets,target,binaryName(target))));
         const manifest=JSON.parse(execFileSync('tar',['-xOzf',tarball,'package/manifest.json'],{encoding:'utf8'}));
         assert.equal(manifest.version,version);
+        if (qwenTargets.includes(target)) {
+          const adapter = os === 'windows' ? 'tiana-qwenwork.exe' : 'tiana-qwenwork';
+          const bytes = execFileSync('tar', ['-xOzf', tarball, 'package/bin/' + adapter], {maxBuffer:32*1024*1024});
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), manifest.files[adapter]);
+        }
       }
     }
   });
