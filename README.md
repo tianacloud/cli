@@ -733,7 +733,7 @@ New instance detail/list `current_job_id`, revision, quota quantities and millis
 
 `status --json` returns verified `logged_in`, `user`, `space`, `quota`, `sync_status` and an optional decimal-string `job_id`. A space or quota read failure retains the verified account and available results, with the failed section set to `null`. `sqlite shell --json` is a non-interactive alias for `--format json`, preserving the SQL result contract; it conflicts with other formats. Native `connect` and Git remote-helper retain their protocol streams.
 
-Local preview permits WebAssembly compilation through `script-src 'self' 'wasm-unsafe-eval'`. Bundle `.wasm` assets with the application and load them from the preview origin. The bootstrap browser test verifies execution alongside authentication and asset loading.
+Local preview permits HTTPS scripts and images for online map SDKs, same-origin and Blob Web Workers, and WebAssembly compilation through `wasm-unsafe-eval`. Bundle `.wasm` assets with the application and load them from the preview origin. The bootstrap browser test verifies execution alongside authentication and asset loading.
 
 `web serve --json` emits one startup result with `port`, `preview_url`, `launch_url` and `authorization`. The CLI-authorized launch URL is a short-lived capability and must not be written to ordinary logs or source; Console fallback has `launch_url:null`. Running logs stay on stderr.
 

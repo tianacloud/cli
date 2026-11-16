@@ -27,6 +27,33 @@ try {
   return instance.exports.answer();
  });
  assert.equal(wasmAnswer,42);
+
+ await context.route('https://maps.example.test/sdk.js',r=>r.fulfill({contentType:'text/javascript',body:'window.mapSDKLoaded=true;'}));
+ await context.route('https://maps.example.test/icon.svg',r=>r.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'}));
+ const mapResources=await page.evaluate(async()=>{
+  await new Promise((resolve,reject)=>{
+   const script=document.createElement('script');
+   script.src='https://maps.example.test/sdk.js';script.onload=resolve;script.onerror=()=>reject(new Error('HTTPS map SDK blocked'));
+   document.head.append(script);
+  });
+  await new Promise((resolve,reject)=>{
+   const image=new Image();image.onload=resolve;image.onerror=()=>reject(new Error('HTTPS map image blocked'));
+   image.src='https://maps.example.test/icon.svg';
+  });
+  const url=URL.createObjectURL(new Blob(['onmessage=event=>postMessage(event.data+1)'],{type:'text/javascript'}));
+  const worker=new Worker(url);
+  try {
+   const answer=await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('Map worker timeout')),5000);
+    worker.onmessage=event=>{clearTimeout(timer);resolve(event.data)};
+    worker.onerror=()=>{clearTimeout(timer);reject(new Error('Map worker blocked'))};
+    worker.postMessage(41);
+   });
+   return {sdk:window.mapSDKLoaded,answer};
+  }finally{worker.terminate();URL.revokeObjectURL(url)}
+ });
+ assert.deepEqual(mapResources,{sdk:true,answer:42});
+
  assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
  assert.equal(new URL(page.url()).pathname,'/web/billing/');
  assert.equal(new URL(page.url()).search,'?view=fixture');

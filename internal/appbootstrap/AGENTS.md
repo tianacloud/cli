@@ -111,3 +111,9 @@ adds no persistent data migration.
 Local preview CSP permits WebAssembly compilation with `wasm-unsafe-eval`.
 Keep the authenticated bootstrap browser test exercising a real WASM module;
 application packaging and usage are documented in README.
+
+Local preview permits HTTPS map SDK scripts/images and same-origin or Blob Web
+Workers. Keep the authenticated browser test loading the external fixtures and
+exchanging a real worker message alongside WebAssembly. The policy is a static
+response header with no added request or proxy. Reverting it prevents those map
+resources from loading and does not change account state.
