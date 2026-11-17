@@ -334,3 +334,13 @@ Local Web previews allow HTTPS map SDK scripts and images, plus same-origin and
 Blob Web Workers. The authenticated browser fixture loads map resource fixtures
 and exchanges a worker message while retaining the existing WebAssembly checks.
 The main package, seven native dependencies and build defaults use 1.0.32.
+
+
+## 1.0.33 Web app cache version notification
+
+After confirmed Web upload, notify MGR to advance the application's cache version.
+Retry only the notification, never the upload; unknown upload results do not notify.
+Notification failures preserve upload success and provide a separate recovery path.
+Requires the matching MGR version endpoint before upgrading CLI. The main package,
+seven native dependencies and source/build defaults use 1.0.33. SDK pins and
+credential storage are unchanged.
