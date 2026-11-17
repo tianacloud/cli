@@ -65,8 +65,19 @@ func (s *fakeWebFetch) Do(_ context.Context, r fetch.Request) (*fetch.Response, 
 	return &fetch.Response{Status: 200, Body: io.NopCloser(bytes.NewReader(raw))}, nil
 }
 func TestServerlessPublicationUsesAccountCredentialAndDoesNotReplay(t *testing.T) {
+	bumps := 0
 	r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, q *http.Request) {
 		switch q.URL.Path {
+		case "/api/v1/web-projects/web-one/version":
+			if q.Method != "POST" {
+				t.Error(q.Method)
+			}
+			body, _ := io.ReadAll(q.Body)
+			if len(body) != 0 {
+				t.Errorf("notification body %s", body)
+			}
+			bumps++
+			w.WriteHeader(204)
 		case "/api/v1/web-projects/web-one":
 			io.WriteString(w, `{"id":"web-one","endpoint":"https://site.example.test/web/web-one/","instance_id":"web-instance","owner_id":"prn-test","tenant_id":"ten-test"}`)
 		case "/api/v1/instances/web-instance":
@@ -86,7 +97,7 @@ func TestServerlessPublicationUsesAccountCredentialAndDoesNotReplay(t *testing.T
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("site"), 0600)
 	result := r.Run(t.Context(), Options{Command: "publish", ID: "web-one", Dir: dir})
-	if result.Error != nil || fake.calls != 1 || fake.lastID == "" {
+	if result.Error != nil || fake.calls != 1 || fake.lastID == "" || bumps != 1 {
 		t.Fatalf("publish result %+v", result)
 	}
 	if result.Data.(map[string]any)["endpoint"] != "https://site.example.test/web/web-one/" {
@@ -163,6 +174,8 @@ func TestServerlessControlUsesExplicitCredentialsWithoutFallback(t *testing.T) {
 			}
 			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, q *http.Request) {
 				switch q.URL.Path {
+				case "/api/v1/web-projects/web-one/version":
+					w.WriteHeader(204)
 				case "/api/v1/web-projects/web-one":
 					io.WriteString(w, `{"id":"web-one","instance_id":"web-instance","owner_id":"prn-test","tenant_id":"ten-test"}`)
 				case "/api/v1/instances/web-instance":
@@ -247,6 +260,67 @@ func TestServerlessControlRejectsAccountSwitchAndChangedTarget(t *testing.T) {
 			}}
 			if result := runner.Run(t.Context(), Options{Command: "status", ID: "web-one"}); result.Error == nil {
 				t.Fatal("changed account or target accepted")
+			}
+		})
+	}
+}
+
+func TestVersionNotificationRetriesNeverReplayConfirmedUpload(t *testing.T) {
+	for _, mode := range []string{"retry", "failure", "denied", "unknown"} {
+		t.Run(mode, func(t *testing.T) {
+			bumps := 0
+			r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, q *http.Request) {
+				switch q.URL.Path {
+				case "/api/v1/web-projects/web-one":
+					io.WriteString(w, `{"id":"web-one","instance_id":"web-instance","owner_id":"prn-test","tenant_id":"ten-test"}`)
+				case "/api/v1/instances/web-instance":
+					io.WriteString(w, `{"id":"web-instance","engine":"web","product_state":"ACTIVE","connection":{"hostname":"ep-01j5c9m7q2v8x4k6n3r0t1w2yz.example.test","url":"https://ep-01j5c9m7q2v8x4k6n3r0t1w2yz.example.test"}}`)
+				case "/api/v1/web-projects/web-one/version":
+					bumps++
+					body, _ := io.ReadAll(q.Body)
+					if q.Method != "POST" || len(body) != 0 || q.Header.Get("Authorization") == "" {
+						t.Error("invalid notification")
+					}
+					if mode == "retry" && bumps == 2 {
+						w.WriteHeader(204)
+					} else if mode == "denied" {
+						w.WriteHeader(403)
+					} else {
+						w.WriteHeader(503)
+					}
+				default:
+					t.Error(q.URL.Path)
+					w.WriteHeader(404)
+				}
+			})
+			f := &fakeWebFetch{t: t, unknown: mode == "unknown"}
+			r.Fetch = func(fetch.Config) (FetchTransport, error) { return f, nil }
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("site"), 0600)
+			result := r.Run(t.Context(), Options{Command: "publish", ID: "web-one", Dir: dir})
+			if f.calls != 1 {
+				t.Fatal("upload replayed", f.calls)
+			}
+			want := map[string]int{"retry": 2, "failure": 3, "denied": 1, "unknown": 0}[mode]
+			if bumps != want {
+				t.Fatal(bumps, want)
+			}
+			if mode == "retry" {
+				if result.Error != nil {
+					t.Fatal(result.Error)
+				}
+			} else if result.Error == nil {
+				t.Fatal("failure hidden")
+			}
+			if mode == "failure" || mode == "denied" {
+				if result.Data.(map[string]any)["uploaded"] != true || result.Error.Code != "WEB_VERSION_NOTIFICATION_FAILED" {
+					t.Fatal(result)
+				}
+			}
+			if data, ok := result.Data.(map[string]any); ok {
+				if _, exists := data["version"]; exists {
+					t.Fatal("CLI exposed app version")
+				}
 			}
 		})
 	}

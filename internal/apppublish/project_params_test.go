@@ -36,6 +36,8 @@ func TestWebPublishRequiresFixedEntryAndRejectsRetiredManifest(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			runner, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
+				case "/api/v1/web-projects/web-one/version":
+					w.WriteHeader(204)
 				case "/api/v1/web-projects/web-one":
 					json.NewEncoder(w).Encode(WebProject{WebProjectParams: WebProjectParams{Entry: "assets/app.js"}, ID: "web-one", InstanceID: "web-instance", OwnerID: "prn-test", TenantID: "ten-test"})
 				case "/api/v1/instances/web-instance":

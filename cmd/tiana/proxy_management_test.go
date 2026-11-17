@@ -187,6 +187,11 @@ func TestLoginStatusAndTemplateDownloadThroughAllProxy(t *testing.T) {
 					json.NewEncoder(w).Encode(map[string]any{"transaction_id": "proxy-login", "client_secret": "synthetic-secret", "user_code": "TEST", "verification_uri_complete": origin + "/approve", "expires_in": 600, "poll_interval": 1})
 				case "/api/v1/auth/transactions/proxy-login/poll":
 					io.WriteString(w, `{"status":"approved","authorization_code":"synthetic-code"}`)
+				case "/api/v1/web-projects/a1b2c3d4e5f6/version":
+					if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer "+accessToken.Load().(string) {
+						t.Error("invalid version notification through proxy")
+					}
+					w.WriteHeader(204)
 				case "/api/v1/auth/token":
 					exchanges.Add(1)
 					io.WriteString(w, `{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","expires_in":3600,"user":{"user_id":"owner","tenant_id":"tenant"}}`)

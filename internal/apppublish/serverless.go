@@ -197,6 +197,11 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		retainArchive = false
 	}
 	body["endpoint"] = project.Endpoint
+	if o.Command == "publish" {
+		if failure := bound.notifyAppVersion(ctx, project.ID); failure != nil {
+			return Result{Status: "failed", Data: body, Error: failure}
+		}
+	}
 	body["console_url"] = project.ConsoleURL
 	body["mini_program_url"] = project.MiniProgramURL
 	body["mini_program_code_url"] = project.MiniProgramCodeURL
@@ -206,4 +211,19 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 type FetchTransport interface {
 	Do(context.Context, fetch.Request) (*fetch.Response, error)
 	Close()
+}
+
+// Retry only the harmless invalidation signal, never the upload. A lost response
+// may advance twice; generations are not release counts.
+func (r Runner) notifyAppVersion(ctx context.Context, id string) *Error {
+	for attempt := 0; attempt < 3; attempt++ {
+		result, failure := r.boundRequest(ctx, "POST", "/api/v1/web-projects/"+url.PathEscape(id)+"/version", nil)
+		if failure == nil && result.Status == 204 {
+			return nil
+		}
+		if ctx.Err() != nil || (failure != nil && failure.HTTPStatus > 0 && failure.HTTPStatus < 500 && failure.HTTPStatus != 429) {
+			break
+		}
+	}
+	return &Error{Code: "WEB_VERSION_NOTIFICATION_FAILED", Message: "Application uploaded, but cache update notification failed", NextAction: "Retry the empty POST /api/v1/web-projects/" + id + "/version notification; do not upload again", ExitCode: 1}
 }

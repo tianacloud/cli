@@ -591,3 +591,9 @@ connector-manifest version; business commands run
 the relative bundled core with inherited environment and cancellation. Ship the
 entrypoint and core together; rollback selects the prior complete connector.
 Keep normal `tiana status` and core version semantics independent of this adapter.
+
+App cache generation: confirmed Web upload sends an empty tenant-scoped POST
+/api/v1/web-projects/{id}/version (204). At most three notification-only attempts;
+never replay upload, never display the generation. Unknown upload sends no bump.
+A failed notification reports confirmed upload and a separate recovery path.
+No new publish identity/digest or persistent release record is introduced.

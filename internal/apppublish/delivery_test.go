@@ -14,6 +14,8 @@ func TestPublishByNameLoadsDeliveryAddressesFromResolvedID(t *testing.T) {
 	details := 0
 	r, _, _, _ := runnerForTest(t, func(w http.ResponseWriter, q *http.Request) {
 		switch q.URL.Path {
+		case "/api/v1/web-projects/abcdefghijkl/version":
+			w.WriteHeader(204)
 		case "/api/v1/web-projects/abcdefghijkl":
 			details++
 			io.WriteString(w, `{"id":"abcdefghijkl","endpoint":"https://site.example.test/web/abcdefghijkl/","console_url":"https://console.example.test/console/web/abcdefghijkl","mini_program_url":"https://console.example.test/mini-program/apps/abcdefghijkl","mini_program_code_url":"https://console.example.test/api/v1/mini-program/apps/abcdefghijkl/code","instance_id":"web-instance","owner_id":"prn-test","tenant_id":"ten-test"}`)

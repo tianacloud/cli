@@ -994,3 +994,11 @@ pending requests still need an administrator. The result reports actual manageme
 and approval permissions, global availability, limits and the invitation URL.
 If a write's response is lost, read the same app in the original account and space
 before another change. Publication, sharing and automatic approval have separate results.
+
+After a confirmed successful Web publish, CLI sends an authenticated empty POST
+to `/api/v1/web-projects/{id}/version` to invalidate desktop icon caches. It retries
+only this notification up to three times and never reuploads because notification
+failed. The app version is not printed. A notification failure reports upload
+success separately and names the empty POST recovery path. Deploy MGR support
+before upgrading CLI. Existing data-plane publication receipt IDs and checksums
+remain unchanged; older/direct publishers must notify separately.
