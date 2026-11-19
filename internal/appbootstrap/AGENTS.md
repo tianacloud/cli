@@ -117,3 +117,9 @@ Workers. Keep the authenticated browser test loading the external fixtures and
 exchanging a real worker message alongside WebAssembly. The policy is a static
 response header with no added request or proxy. Reverting it prevents those map
 resources from loading and does not change account state.
+
+Authenticated local preview application routes (`/web/<id>/`, `_tiana/bootstrap.js`,
+and `state == "ready"` application routes) use `previewApplicationCSP`, adding
+`blob:` to `script-src`, `style-src` and `font-src` while keeping `'unsafe-eval'`
+forbidden. Pre-authentication redirects, `_tiana/authorize` and its assets, and
+error responses retain `previewDefaultCSP` without those `blob:` allowances.

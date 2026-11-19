@@ -1,7 +1,51 @@
+import {mkdirSync} from 'node:fs';
+import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const {chromium}=await import(pathToFileURL(process.argv[2]).href);
 const origin=process.argv[3];
+const evidenceDir=process.env.TIANA_UI_EVIDENCE_DIR||'';
+
+function makeMinimalTTF() {
+ const u16=(b,o,v)=>b.writeUInt16BE(v>>>0,o);
+ const i16=(b,o,v)=>b.writeInt16BE(v,o);
+ const u32=(b,o,v)=>b.writeUInt32BE(v>>>0,o);
+ const head=Buffer.alloc(54);
+ u32(head,0,0x00010000);u32(head,4,0x00010000);u32(head,12,0x5F0F3CF5);
+ u16(head,16,0x000B);u16(head,18,1000);i16(head,36,0);i16(head,38,0);i16(head,40,500);i16(head,42,700);u16(head,46,8);i16(head,48,2);
+ const hhea=Buffer.alloc(36);
+ u32(hhea,0,0x00010000);i16(hhea,4,800);i16(hhea,6,-200);u16(hhea,10,500);u16(hhea,34,2);
+ const maxp=Buffer.alloc(32);
+ u32(maxp,0,0x00010000);u16(maxp,4,2);u16(maxp,6,4);u16(maxp,8,1);u16(maxp,14,1);
+ const hmtx=Buffer.alloc(8);
+ u16(hmtx,0,500);u16(hmtx,4,500);
+ const g1=Buffer.from([0,1,0,0,0,0,1,244,2,188,0,2,0,0,0x33,0x33,0x33,100,200,0,100,0,200,0]);
+ const loca=Buffer.alloc(6);
+ u16(loca,0,0);u16(loca,2,0);u16(loca,4,g1.length/2);
+ const cmapSub=Buffer.alloc(32);
+ u16(cmapSub,0,4);u16(cmapSub,2,32);u16(cmapSub,6,4);u16(cmapSub,8,4);u16(cmapSub,10,1);u16(cmapSub,12,0);
+ u16(cmapSub,14,0x0041);u16(cmapSub,16,0xFFFF);u16(cmapSub,20,0x0041);u16(cmapSub,22,0xFFFF);i16(cmapSub,24,-64);i16(cmapSub,26,1);
+ const cmap=Buffer.alloc(12+cmapSub.length);
+ u16(cmap,2,1);u16(cmap,4,3);u16(cmap,6,1);u32(cmap,8,12);cmapSub.copy(cmap,12);
+ const name=Buffer.alloc(6);u16(name,4,6);
+ const os2=Buffer.alloc(78);
+ u16(os2,0,0);i16(os2,2,500);u16(os2,4,400);u16(os2,6,5);u16(os2,62,0x0040);u16(os2,64,0x0041);u16(os2,66,0x0041);i16(os2,68,800);i16(os2,70,-200);u16(os2,74,800);u16(os2,76,200);
+ const post=Buffer.alloc(32);u32(post,0,0x00030000);
+ const tables=[['OS/2',os2],['cmap',cmap],['glyf',g1],['head',head],['hhea',hhea],['hmtx',hmtx],['loca',loca],['maxp',maxp],['name',name],['post',post]];
+ const num=tables.length;
+ const out=[Buffer.alloc(12+num*16)];
+ u32(out[0],0,0x00010000);u16(out[0],4,num);u16(out[0],6,128);u16(out[0],8,3);u16(out[0],10,(num-8)*16);
+ let offset=12+num*16;
+ tables.forEach(([tag,buf],idx)=>{
+  const padded=Buffer.concat([buf,Buffer.alloc((4-(buf.length%4))%4)]);
+  let sum=0;for(let i=0;i<padded.length;i+=4)sum=(sum+padded.readUInt32BE(i))>>>0;
+  out[0].write(tag,12+idx*16,4,'ascii');
+  u32(out[0],12+idx*16+4,sum);u32(out[0],12+idx*16+8,offset);u32(out[0],12+idx*16+12,buf.length);
+  out.push(padded);offset+=padded.length;
+ });
+ return [...Buffer.concat(out)];
+}
+
 const browser=await chromium.launch({headless:true,args:['--ignore-certificate-errors-spki-list='+process.argv[5]]});
 try {
  const context=await browser.newContext({ignoreHTTPSErrors:true});
@@ -10,7 +54,11 @@ try {
  const page=await context.newPage();
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  const denied=await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js');assert.equal(denied.status(),401);
- await page.goto(origin+'/web/billing?view=fixture#/transactions');
+ const authorizeResp=await page.goto(origin+'/web/billing?view=fixture#/transactions');
+ const authorizeCSP=authorizeResp.headers()['content-security-policy']||'';
+ assert.ok(!authorizeCSP.includes("script-src 'self' https: blob:"),'unauthenticated authorize page must not allow script-src blob:');
+ assert.ok(!authorizeCSP.includes("style-src 'self' blob:"),'unauthenticated authorize page must not allow style-src blob:');
+ assert.ok(!authorizeCSP.includes("font-src 'self' data: blob:"),'unauthenticated authorize page must not allow font-src blob:');
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
  const popupPromise=context.waitForEvent('page');
  await page.locator('#tiana-sign-in').click();
@@ -53,6 +101,69 @@ try {
   }finally{worker.terminate();URL.revokeObjectURL(url)}
  });
  assert.deepEqual(mapResources,{sdk:true,answer:42});
+
+ const ttfBytes=makeMinimalTTF();
+ const blobProbe=await page.evaluate(async(fontData)=>{
+  const violations=[];
+  const onViolation=e=>violations.push(e.violatedDirective+':'+e.blockedURI);
+  document.addEventListener('securitypolicyviolation',onViolation);
+  try {
+   const classicUrl=URL.createObjectURL(new Blob(['window.__previewBlobClassic=77;'],{type:'text/javascript'}));
+   await new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=classicUrl;s.onload=()=>{s.remove();URL.revokeObjectURL(classicUrl);resolve()};
+    s.onerror=()=>reject(new Error('preview classic blob script blocked'));
+    document.head.append(s);
+   });
+   const depUrl=URL.createObjectURL(new Blob(['export const n=100;'],{type:'text/javascript'}));
+   const esmUrl=URL.createObjectURL(new Blob(['import {n} from "'+depUrl+'"; export const v=n+23;'],{type:'text/javascript'}));
+   const mod=await import(esmUrl);
+   URL.revokeObjectURL(depUrl);URL.revokeObjectURL(esmUrl);
+
+   const fontUrl=URL.createObjectURL(new Blob([new Uint8Array(fontData)],{type:'font/ttf'}));
+   const ff=new FontFace('PreviewBlobFont','url("'+fontUrl+'")');
+   await ff.load();
+   document.fonts.add(ff);
+   const fontLoaded=ff.status==='loaded'&&document.fonts.check('16px PreviewBlobFont');
+
+   const cssUrl=URL.createObjectURL(new Blob(['#preview-blob-badge{color:rgb(34, 85, 136);font-family:"PreviewBlobFont",sans-serif;padding:8px;margin-top:8px;border:1px solid #258}'],{type:'text/css'}));
+   const link=document.createElement('link');
+   await new Promise((resolve,reject)=>{
+    link.rel='stylesheet';link.href=cssUrl;link.onload=resolve;
+    link.onerror=()=>reject(new Error('preview blob stylesheet blocked'));
+    document.head.append(link);
+   });
+   const badge=document.createElement('div');
+   badge.id='preview-blob-badge';
+   badge.textContent='CLI Preview CSP Blob OK: esm='+mod.v+', font='+fontLoaded;
+   document.body.append(badge);
+   const color=getComputedStyle(badge).color;
+   const violationsBeforeEval=[...violations];
+
+   let evalBlocked=false;
+   try{eval('window.__previewEvalRan=1')}catch(err){evalBlocked=err instanceof EvalError}
+
+   return {classic:window.__previewBlobClassic,esm:mod.v,fontLoaded,color,evalBlocked,violationsBeforeEval,cssUrl,fontUrl};
+  } finally {
+   document.removeEventListener('securitypolicyviolation',onViolation);
+  }
+ },ttfBytes);
+ assert.equal(blobProbe.classic,77);
+ assert.equal(blobProbe.esm,123);
+ assert.equal(blobProbe.fontLoaded,true);
+ assert.equal(blobProbe.color,'rgb(34, 85, 136)');
+ assert.equal(blobProbe.evalBlocked,true);
+ assert.deepEqual(blobProbe.violationsBeforeEval,[]);
+ if(evidenceDir){
+  mkdirSync(evidenceDir,{recursive:true});
+  await page.screenshot({path:join(evidenceDir,'cli-preview-blob-csp.png'),fullPage:true});
+ }
+ await page.evaluate(({cssUrl,fontUrl})=>{
+  document.querySelector('#preview-blob-badge')?.remove();
+  document.querySelectorAll('link[href^="blob:"]').forEach(el=>el.remove());
+  URL.revokeObjectURL(cssUrl);URL.revokeObjectURL(fontUrl);
+  delete window.__previewBlobClassic;
+ },{cssUrl:blobProbe.cssUrl,fontUrl:blobProbe.fontUrl});
 
  assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
  assert.equal(new URL(page.url()).pathname,'/web/billing/');

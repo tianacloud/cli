@@ -134,6 +134,7 @@ func TestBootstrapBrowser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "node", "browser.test.mjs", module, origin, gateway.URL, functionFixtureSPKI(gateway))
+	command.Env = os.Environ()
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("browser verification failed: %v\n%s", err, output)

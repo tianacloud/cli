@@ -139,6 +139,11 @@ func (s *Server) Close() {
 		delete(s.sessions, k)
 	}
 }
+
+const previewDefaultCSP = "default-src 'self'; script-src 'self' https: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+
+const previewApplicationCSP = "default-src 'self'; script-src 'self' https: blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' blob: 'unsafe-inline'; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; font-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestID := r.Header.Get("X-Request-ID")
 	if requestID == "" {
@@ -156,7 +161,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	w.Header().Set("Content-Security-Policy", previewDefaultCSP)
 	publicNavigation := (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (r.URL.Path == s.config.BasePath || r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/")
 	if r.Host != s.host || (r.Header.Get("Sec-Fetch-Site") == "cross-site" && !publicNavigation) {
 		s.failure(w, 403, "ORIGIN_REJECTED")
@@ -200,7 +205,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.applicationDocument(w, r)
 		return
 	}
-	if (p == "_tiana/bootstrap.js" || p == "_tiana/authorize.js" || p == "_tiana/authorize.css") && (r.Method == "GET" || r.Method == "HEAD") {
+	if p == "_tiana/bootstrap.js" && (r.Method == "GET" || r.Method == "HEAD") {
+		w.Header().Set("Content-Security-Policy", previewApplicationCSP)
+		s.platformFile(w, r, "bootstrap.js")
+		return
+	}
+	if (p == "_tiana/authorize.js" || p == "_tiana/authorize.css") && (r.Method == "GET" || r.Method == "HEAD") {
 		s.platformFile(w, r, path.Base(p))
 		return
 	}
@@ -280,6 +290,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 401, "LOGIN_REQUIRED")
 		return
 	}
+	w.Header().Set("Content-Security-Policy", previewApplicationCSP)
 	switch {
 	case p == "_tiana/app" && r.Method == http.MethodGet:
 		s.json(w, 200, s.config.Build.Manifest)
@@ -473,6 +484,7 @@ func (s *Server) applicationDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	document := bytes.Replace(template, []byte("__TIANA_BOOTSTRAP_SCRIPT__"), []byte(s.config.BasePath+"/_tiana/bootstrap.js"), 1)
 	document = bytes.Replace(document, []byte("__TIANA_BOOTSTRAP_DATA__"), data, 1)
+	w.Header().Set("Content-Security-Policy", previewApplicationCSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(document)))
 	if r.Method != http.MethodHead {

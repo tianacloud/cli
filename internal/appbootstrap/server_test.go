@@ -271,3 +271,97 @@ func TestPreviewCanonicalEntryPreservesVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewApplicationCSPBoundaries(t *testing.T) {
+	s := previewFixture(t, nil)
+	if strings.Contains(previewApplicationCSP, "'unsafe-eval'") || strings.Contains(previewDefaultCSP, "'unsafe-eval'") {
+		t.Fatal("unsafe-eval must remain forbidden")
+	}
+	for _, required := range []string{
+		"script-src 'self' https: blob: 'wasm-unsafe-eval'",
+		"style-src 'self' blob: 'unsafe-inline'",
+		"font-src 'self' data: blob:",
+		"worker-src 'self' blob:",
+	} {
+		if !strings.Contains(previewApplicationCSP, required) {
+			t.Fatalf("previewApplicationCSP missing %q: %s", required, previewApplicationCSP)
+		}
+	}
+	for _, forbidden := range []string{
+		"script-src 'self' https: blob:",
+		"style-src 'self' blob:",
+		"font-src 'self' data: blob:",
+	} {
+		if strings.Contains(previewDefaultCSP, forbidden) {
+			t.Fatalf("previewDefaultCSP leaked blob directive %q: %s", forbidden, previewDefaultCSP)
+		}
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		for _, path := range []string{
+			"/web/billing/",
+			"/web/billing/_tiana/authorize",
+			"/web/billing/_tiana/authorize.js",
+			"/web/billing/_tiana/authorize.css",
+			"/web/billing/_tiana/app",
+			"/web/billing/_tiana/files/assets/app.js",
+			"/web/other",
+		} {
+			w := previewRequest(s, method, path, nil)
+			if got := w.Header().Get("Content-Security-Policy"); got != previewDefaultCSP {
+				t.Fatalf("unauthenticated %s %s CSP = %q, want default", method, path, got)
+			}
+		}
+	}
+
+	link, err := s.AuthorizeLocalAccount(Identity{ID: "owner", TenantID: "tenant", Connection: func(context.Context) (Connection, error) {
+		return Connection{InstanceID: "ins_billing", Token: "account-access"}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := strings.Split(link, "#tiana_launch=")[1]
+	loginReq := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4174/web/billing/_tiana/local-login", nil)
+	loginReq.Header.Set("Origin", "http://127.0.0.1:4174")
+	loginReq.Header.Set("X-Tiana-Bootstrap", "1")
+	loginReq.Header.Set("X-Tiana-Launch", proof)
+	loginRec := httptest.NewRecorder()
+	s.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("local-login status=%d", loginRec.Code)
+	}
+	cookie := loginRec.Result().Cookies()[0]
+
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		for _, appPath := range []string{
+			"/web/billing/",
+			"/web/billing/_tiana/bootstrap.js",
+			"/web/billing/_tiana/files/assets/app.js",
+		} {
+			w := previewRequest(s, method, appPath, cookie)
+			if w.Code != http.StatusOK {
+				t.Fatalf("authenticated %s %s status=%d", method, appPath, w.Code)
+			}
+			if got := w.Header().Get("Content-Security-Policy"); got != previewApplicationCSP {
+				t.Fatalf("authenticated %s %s CSP = %q, want previewApplicationCSP", method, appPath, got)
+			}
+		}
+		for _, authPath := range []string{
+			"/web/billing/_tiana/authorize",
+			"/web/billing/_tiana/authorize.js",
+			"/web/billing/_tiana/authorize.css",
+		} {
+			w := previewRequest(s, method, authPath, cookie)
+			if w.Code != http.StatusOK {
+				t.Fatalf("authorize asset %s %s status=%d", method, authPath, w.Code)
+			}
+			if got := w.Header().Get("Content-Security-Policy"); got != previewDefaultCSP {
+				t.Fatalf("authorize route %s %s CSP = %q, want previewDefaultCSP", method, authPath, got)
+			}
+		}
+	}
+	appManifest := previewRequest(s, http.MethodGet, "/web/billing/_tiana/app", cookie)
+	if appManifest.Code != http.StatusOK || appManifest.Header().Get("Content-Security-Policy") != previewApplicationCSP {
+		t.Fatalf("authenticated _tiana/app status=%d csp=%q", appManifest.Code, appManifest.Header().Get("Content-Security-Policy"))
+	}
+}
