@@ -20,7 +20,8 @@ func TestLoginSourcePriorityAndPendingReuse(t *testing.T) {
 		flags       []string
 		want        string
 	}{
-		{name: "unknown", envAbsent: true},
+		{name: "generic default", buildSource: buildconfig.DefaultAcquisitionSource, envAbsent: true, want: "cli"},
+		{name: "explicit empty build", envAbsent: true},
 		{name: "build default", buildSource: "channel-a", envAbsent: true, want: "channel-a"},
 		{name: "environment", env: "channel-b", buildSource: "channel-a", want: "channel-b"},
 		{name: "empty environment", buildSource: "channel-a"},

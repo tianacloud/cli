@@ -532,7 +532,7 @@ the outcome. Report fixture, live-service, cross-build and native CI separately.
 ## CLI release boundaries
 
 Source/default build versions, the main npm package and its seven exact optional
-dependencies are 1.0.33. Core SDK is pinned to published v1.3.0; SQLite SDK remains
+dependencies are 1.0.34. Core SDK is pinned to published v1.3.0; SQLite SDK remains
 v1.0.1. A source tag must
 match the package version and stay immutable. Tag-push release workflows
 automatically test, build and publish npm packages. Account for that publication
@@ -581,7 +581,7 @@ original-job readback and upload failure independently of deployed acceptance.
 The published SDK v1.3.0 supplies `auth.Config.AcquisitionSource`.
 `login --from` overrides a present `TIANA_FROM`, including explicit empty values;
 an absent environment input uses buildconfig.DefaultAcquisitionSource. Generic
-builds leave it empty; only the distribution packaging script chooses its value.
+builds default to `cli`; distribution packaging may override that value.
 version --json exposes the build default for matching distribution upgrades. Resolve
 inputs in the CLI and pass `auth.Config.AcquisitionSource`; validate at transaction
 creation, so pending reuse/resume retains the original source. Verify priority,

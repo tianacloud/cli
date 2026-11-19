@@ -16,5 +16,5 @@ func TLSInsecure() bool {
 }
 
 // DefaultAcquisitionSource is the registration source embedded by a distributor.
-// Generic builds leave it empty; explicit login inputs take precedence.
-var DefaultAcquisitionSource string
+// Generic builds use "cli"; explicit login inputs take precedence.
+var DefaultAcquisitionSource = "cli"

@@ -127,7 +127,7 @@ after `connect --` belong to the native client and are passed through unchanged.
 `login --from CHANNEL` selects the first-registration channel. An explicit flag
 (including `--from ""` to clear it) overrides `TIANA_FROM`; otherwise the CLI
 uses that environment variable when present (including empty), then the build
-default. Generic builds leave the default empty. Distributors inject
+default. Generic builds use `cli`. Distributors inject
 `github.com/tianacloud/cli/internal/buildconfig.DefaultAcquisitionSource` with
 `go build -ldflags -X`. `version --json` reports it as
 `data.default_acquisition_source` independently of the environment, so an updater

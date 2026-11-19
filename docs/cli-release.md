@@ -344,3 +344,12 @@ Notification failures preserve upload success and provide a separate recovery pa
 Requires the matching MGR version endpoint before upgrading CLI. The main package,
 seven native dependencies and source/build defaults use 1.0.33. SDK pins and
 credential storage are unchanged.
+
+## 1.0.34 Default CLI registration source
+
+Generic CLI builds use `cli` as the default first-registration source. Explicit
+`login --from`, present `TIANA_FROM` (including empty), and distributor-injected
+build defaults retain their existing precedence. Resuming a pending login keeps
+its original transaction source. `version --json` reports the build default.
+No SDK, protocol, schema or credential format changes. Main npm package, all seven
+exact native dependencies and source/build defaults use 1.0.34.
