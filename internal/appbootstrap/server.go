@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"mime"
 	"net/http"
@@ -105,7 +106,7 @@ func (s *Server) AuthorizeLocalAccount(identity Identity) (string, error) {
 	s.launchProof = base64.RawURLEncoding.EncodeToString(proof)
 	s.launchIdentity = identity
 	s.launchExpires = time.Now().Add(5 * time.Minute)
-	return s.config.Origin + s.config.BasePath + "/_tiana/authorize#tiana_launch=" + s.launchProof, nil
+	return s.config.Origin + "/_tiana/authorize#tiana_launch=" + s.launchProof, nil
 }
 func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
@@ -124,6 +125,7 @@ func (s *Server) localLogin(w http.ResponseWriter, r *http.Request) {
 	s.sessions[id] = &session{identity: s.launchIdentity, state: "ready", expires: time.Now().Add(time.Hour), cancel: func() {}}
 	s.launchProof = ""
 	s.launchIdentity = Identity{}
+	w.Header().Set("Clear-Site-Data", clearPreviewStorageHeader)
 	http.SetCookie(w, &http.Cookie{Name: s.cookie, Value: id, Path: s.config.BasePath, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 3600})
 	s.json(w, 200, map[string]string{"state": "ready"})
 }
@@ -139,6 +141,8 @@ func (s *Server) Close() {
 		delete(s.sessions, k)
 	}
 }
+
+const clearPreviewStorageHeader = `"storage"`
 
 const previewDefaultCSP = "default-src 'self'; script-src 'self' https: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
@@ -158,11 +162,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Request-ID", requestID)
 	r = r.WithContext(auth.WithRequestID(r.Context(), requestID))
 
+	w.Header().Del("Service-Worker-Allowed")
+	w.Header().Del("Clear-Site-Data")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", previewDefaultCSP)
-	publicNavigation := (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (r.URL.Path == s.config.BasePath || r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/")
+	publicNavigation := (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (r.URL.Path == s.config.BasePath || r.URL.Path == s.config.BasePath+"/" || r.URL.Path == "/" || r.URL.Path == "/_tiana/authorize")
 	if r.Host != s.host || (r.Header.Get("Sec-Fetch-Site") == "cross-site" && !publicNavigation) {
 		s.failure(w, 403, "ORIGIN_REJECTED")
 		return
@@ -180,6 +186,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failure(w, 405, "METHOD_NOT_ALLOWED")
 		return
 	}
+	if (r.URL.Path == "/_tiana/authorize.js" || r.URL.Path == "/_tiana/authorize.css") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		s.platformFile(w, r, path.Base(r.URL.Path))
+		return
+	}
+	if r.URL.Path == "/_tiana/authorize" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		s.authorizeDocument(w, r)
+		return
+	}
 	if r.URL.Path == s.config.BasePath || r.URL.Path == "/" {
 		destination := s.config.BasePath + "/"
 		if r.URL.RawQuery != "" {
@@ -195,7 +209,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, s.config.BasePath), "/")
 	if p == "" && (r.Method == "GET" || r.Method == "HEAD") {
 		if _, state := s.identity(r); state != "ready" {
-			destination := s.config.BasePath + "/_tiana/authorize"
+			destination := "/_tiana/authorize"
 			if r.URL.RawQuery != "" {
 				destination += "?" + r.URL.RawQuery
 			}
@@ -215,8 +229,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == "_tiana/authorize" && (r.Method == "GET" || r.Method == "HEAD") {
-
-		s.platformFile(w, r, "authorize.html")
+		s.authorizeDocument(w, r)
 		return
 	}
 	if strings.HasPrefix(p, "_tiana/sdk/") && (r.Method == "GET" || r.Method == "HEAD") {
@@ -231,7 +244,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(p, "_tiana/file-storage/") {
 		identity, state := s.identity(r)
 		if state != "ready" {
-			s.failure(w, 401, "LOGIN_REQUIRED")
+			s.loginRequired(w, r)
 			return
 		}
 		s.fileStorage(w, r, identity, strings.TrimPrefix(p, "_tiana/file-storage/"))
@@ -282,12 +295,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			s.json(w, 200, map[string]any{"status": "SESSION_ACTIVE", "user": map[string]string{"user_id": identity.ID, "username": identity.Username, "display_name": identity.DisplayName}, "tenant_id": identity.TenantID, "web_id": s.config.Build.Manifest.WebID, "is_app_owner": isAppOwner})
 		default:
-			s.failure(w, 401, "LOGIN_REQUIRED")
+			s.loginRequired(w, r)
 		}
 		return
 	}
 	if state != "ready" {
-		s.failure(w, 401, "LOGIN_REQUIRED")
+		s.loginRequired(w, r)
 		return
 	}
 	w.Header().Set("Content-Security-Policy", previewApplicationCSP)
@@ -323,7 +336,75 @@ func (s *Server) platformFile(w http.ResponseWriter, r *http.Request, name strin
 		w.Write(bytes)
 	}
 }
+func (s *Server) authorizeDocument(w http.ResponseWriter, r *http.Request) {
+	template, err := runtimeFiles.ReadFile("runtime/authorize.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	document := bytes.Replace(template, []byte("__TIANA_APP_BASE__"), []byte(html.EscapeString(s.config.BasePath+"/")), 1)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(document)))
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(document)
+	}
+}
+func isServiceWorkerScriptRequest(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Service-Worker")), "script")
+}
+
+func isJavaScriptMediaType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	return mediaType == "text/javascript" || mediaType == "application/javascript"
+}
+
+func hasSingleJavaScriptContentType(h http.Header) bool {
+	values := h.Values("Content-Type")
+	return len(values) == 1 && isJavaScriptMediaType(values[0])
+}
+
+type serviceWorkerScriptWriter struct {
+	http.ResponseWriter
+	scope       string
+	wroteHeader bool
+}
+
+func (w *serviceWorkerScriptWriter) applyHeaders(statusCode int) {
+	h := w.Header()
+	h.Set("Cache-Control", "no-store")
+	h.Set("Content-Security-Policy", previewApplicationCSP)
+	if statusCode == http.StatusOK && hasSingleJavaScriptContentType(h) {
+		h.Set("Service-Worker-Allowed", w.scope)
+	} else {
+		h.Del("Service-Worker-Allowed")
+	}
+}
+
+func (w *serviceWorkerScriptWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.applyHeaders(statusCode)
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *serviceWorkerScriptWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *serviceWorkerScriptWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 func (s *Server) applicationFile(w http.ResponseWriter, r *http.Request, name string) {
+	w.Header().Del("Service-Worker-Allowed")
 	if !safePath(name) || !s.config.Build.files[name] {
 		http.NotFound(w, r)
 		return
@@ -344,7 +425,14 @@ func (s *Server) applicationFile(w http.ResponseWriter, r *http.Request, name st
 		contentType = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", contentType)
-	http.ServeContent(w, r, name, stat.ModTime(), f)
+	var dst http.ResponseWriter = w
+	if isServiceWorkerScriptRequest(r) && hasSingleJavaScriptContentType(w.Header()) {
+		dst = &serviceWorkerScriptWriter{
+			ResponseWriter: w,
+			scope:          s.config.BasePath + "/",
+		}
+	}
+	http.ServeContent(dst, r, name, stat.ModTime(), f)
 }
 func (s *Server) identity(r *http.Request) (Identity, string) {
 	cookie, err := r.Cookie(s.cookie)
@@ -422,6 +510,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	flowCtx, stop := context.WithDeadline(auth.WithRequestID(context.Background(), r.Header.Get("X-Request-ID")), flow.ExpiresAt)
 	v := &session{state: "pending", prompt: flow.VerificationURL, expires: flow.ExpiresAt, cancel: stop}
 	s.sessions[id] = v
+	w.Header().Set("Clear-Site-Data", clearPreviewStorageHeader)
 	http.SetCookie(w, &http.Cookie{Name: s.cookie, Value: id, Path: s.config.BasePath, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 3600})
 	go func() {
 		defer stop()
@@ -452,6 +541,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 			delete(s.sessions, cookie.Value)
 		}
 	}
+	w.Header().Set("Clear-Site-Data", clearPreviewStorageHeader)
 	http.SetCookie(w, &http.Cookie{Name: s.cookie, Path: s.config.BasePath, MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	w.WriteHeader(204)
 }
@@ -459,6 +549,12 @@ func (s *Server) json(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(value)
+}
+func (s *Server) loginRequired(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Tiana-Bootstrap") == "1" {
+		w.Header().Set("Clear-Site-Data", clearPreviewStorageHeader)
+	}
+	s.failure(w, http.StatusUnauthorized, "LOGIN_REQUIRED")
 }
 func (s *Server) failure(w http.ResponseWriter, status int, code string) {
 	s.json(w, status, map[string]string{"error": code})

@@ -54,11 +54,30 @@ try {
  const page=await context.newPage();
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  const denied=await context.request.get(origin+'/web/billing/_tiana/files/assets/app.js');assert.equal(denied.status(),401);
+ const unauthSessionPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/_tiana/session');
  const authorizeResp=await page.goto(origin+'/web/billing?view=fixture#/transactions');
+ const unauthSessionResp=await unauthSessionPromise;
+ assert.equal(new URL(page.url()).pathname,'/_tiana/authorize');
  const authorizeCSP=authorizeResp.headers()['content-security-policy']||'';
  assert.ok(!authorizeCSP.includes("script-src 'self' https: blob:"),'unauthenticated authorize page must not allow script-src blob:');
  assert.ok(!authorizeCSP.includes("style-src 'self' blob:"),'unauthenticated authorize page must not allow style-src blob:');
  assert.ok(!authorizeCSP.includes("font-src 'self' data: blob:"),'unauthenticated authorize page must not allow font-src blob:');
+ assert.equal((await authorizeResp.allHeaders())['clear-site-data'],undefined,'/_tiana/authorize itself must not emit Clear-Site-Data');
+ const authRedirectReq=authorizeResp.request().redirectedFrom();
+ assert.ok(authRedirectReq,'expected 303 redirect from /web/billing/ to /_tiana/authorize');
+ assert.equal(new URL(authRedirectReq.url()).pathname,'/web/billing/');
+ const authRedirectResp=await authRedirectReq.response();
+ assert.equal(authRedirectResp.status(),303);
+ assert.equal((await authRedirectResp.allHeaders())['clear-site-data'],undefined,'unauthenticated /web/billing/ 303 must not emit Clear-Site-Data');
+ assert.equal(unauthSessionResp.status(),401);
+ assert.equal((await unauthSessionResp.request().allHeaders())['x-tiana-bootstrap'],'1');
+ assert.equal((await unauthSessionResp.allHeaders())['clear-site-data'],'"storage"','same-origin X-Tiana-Bootstrap session 401 must emit Clear-Site-Data: "storage"');
+ const canonRedirectReq=authRedirectReq.redirectedFrom();
+ assert.ok(canonRedirectReq,'expected 307 redirect from /web/billing to /web/billing/');
+ assert.equal(new URL(canonRedirectReq.url()).pathname,'/web/billing');
+ const canonRedirectResp=await canonRedirectReq.response();
+ assert.equal(canonRedirectResp.status(),307);
+ assert.equal((await canonRedirectResp.allHeaders())['clear-site-data'],undefined,'canonical 307 redirect must not emit Clear-Site-Data');
  await page.locator('#tiana-sign-in').waitFor({state:'visible'});
  const popupPromise=context.waitForEvent('page');
  await page.locator('#tiana-sign-in').click();
@@ -164,6 +183,82 @@ try {
   URL.revokeObjectURL(cssUrl);URL.revokeObjectURL(fontUrl);
   delete window.__previewBlobClassic;
  },{cssUrl:blobProbe.cssUrl,fontUrl:blobProbe.fontUrl});
+
+ // Verify same-origin Service Worker registration within /web/billing/ and rejection of root scope /.
+ const swProbe=await page.evaluate(async()=>{
+  const swURL=window.__previewSwScriptURL;
+  if(!swURL||!swURL.endsWith('/web/billing/_tiana/files/assets/sw.js'))throw new Error('unexpected sw URL: '+swURL);
+  let rootScopeError=null;
+  try {
+   await navigator.serviceWorker.register(swURL,{scope:'/',updateViaCache:'none'});
+  } catch (err) {
+   rootScopeError={name:err.name,message:err.message};
+  }
+  const reg=await navigator.serviceWorker.register(swURL,{scope:'/web/billing/',updateViaCache:'none'});
+  await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller){
+   await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('SW controller claim timeout')),5000);
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve();},{once:true});
+    if(navigator.serviceWorker.controller){clearTimeout(timer);resolve();}
+   });
+  }
+  const pingResp=await fetch('/web/billing/_sw_probe/ping',{cache:'no-store'});
+  const pingText=await pingResp.text();
+  const pingHeader=pingResp.headers.get('x-preview-sw');
+  const card=document.createElement('section');
+  card.id='preview-sw-card';
+  card.style.cssText='margin-top:16px;padding:12px 16px;border:1px solid #0f766e;border-radius:8px;font:14px/1.5 system-ui,sans-serif;background:#f0fdfa;color:#134e4a;max-width:640px';
+  const title=document.createElement('h2');
+  title.style.cssText='margin:0 0 8px;font-size:15px';
+  title.textContent='CLI Preview Service Worker Active (R1)';
+  const details=document.createElement('pre');
+  details.style.cssText='margin:0 0 8px;white-space:pre-wrap;font:12px/1.5 ui-monospace,monospace';
+  details.textContent=[
+   'scope: '+new URL(reg.scope).pathname,
+   'controller: '+new URL(navigator.serviceWorker.controller.scriptURL).pathname,
+   'subresource fetch: '+pingResp.status+' '+pingText+' (X-Preview-SW='+pingHeader+')',
+   'root scope (/) rejected: '+(rootScopeError?rootScopeError.name+': '+rootScopeError.message:'NONE')
+  ].join('\n');
+  const img=new Image();
+  img.id='preview-sw-img';
+  img.alt='SW intercepted SVG badge';
+  await new Promise((resolve,reject)=>{
+   img.onload=resolve;
+   img.onerror=()=>reject(new Error('SW intercepted <img> subresource failed'));
+   img.src='/web/billing/_sw_probe/badge.svg';
+  });
+  card.append(title,details,img);
+  document.body.append(card);
+  return {
+   scopePath:new URL(reg.scope).pathname,
+   controllerPath:new URL(navigator.serviceWorker.controller.scriptURL).pathname,
+   pingStatus:pingResp.status,
+   pingText,
+   pingHeader,
+   imgWidth:img.naturalWidth,
+   imgHeight:img.naturalHeight,
+   rootScopeError
+  };
+ });
+ assert.equal(swProbe.scopePath,'/web/billing/');
+ assert.equal(swProbe.controllerPath,'/web/billing/_tiana/files/assets/sw.js');
+ assert.equal(swProbe.pingStatus,200);
+ assert.equal(swProbe.pingText,'sw-intercepted-ok');
+ assert.equal(swProbe.pingHeader,'active');
+ assert.equal(swProbe.imgWidth,140);
+ assert.equal(swProbe.imgHeight,28);
+ assert.ok(swProbe.rootScopeError,'root scope / registration must be rejected');
+ assert.equal(swProbe.rootScopeError.name,'SecurityError');
+ if(evidenceDir){
+  mkdirSync(evidenceDir,{recursive:true});
+  await page.screenshot({path:join(evidenceDir,'r1-cli-sw-active.png'),fullPage:true});
+ }
+ await page.evaluate(async()=>{
+  document.querySelector('#preview-sw-card')?.remove();
+  const regs=await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map(r=>r.unregister()));
+ });
 
  assert.equal(await page.locator('#app').getAttribute('data-route'),'#/transactions');
  assert.equal(new URL(page.url()).pathname,'/web/billing/');
@@ -287,6 +382,329 @@ try {
  await replay.getByText('本地授权链接已失效，请重新启动预览或使用 Console 登录。',{exact:false}).waitFor();
  assert.equal((await stranger.request.get(origin+'/web/billing/_tiana/app')).status(),401);
  await stranger.close();
+
+ // R2 security regression: cross-logout and cross-restart/re-login SW isolation & eviction WITHOUT manual registration.unregister().
+ await context.request.post(origin+'/_fixture/sw-spy-reset');
+ const registerOldProbeSW=async()=>page.evaluate(async()=>{
+  const swURL=window.__previewOldProbeSwURL;
+  if(!swURL||!swURL.endsWith('/web/billing/_tiana/files/assets/old-probe-sw.js'))throw new Error('unexpected old probe sw URL: '+swURL);
+  const reg=await navigator.serviceWorker.register(swURL,{scope:'/web/billing/',updateViaCache:'none'});
+  await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller||new URL(navigator.serviceWorker.controller.scriptURL).pathname!=='/web/billing/_tiana/files/assets/old-probe-sw.js'){
+   await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('old probe SW controller claim timeout')),5000);
+    const check=()=>{if(navigator.serviceWorker.controller&&new URL(navigator.serviceWorker.controller.scriptURL).pathname==='/web/billing/_tiana/files/assets/old-probe-sw.js'){clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',check);resolve();}};
+    navigator.serviceWorker.addEventListener('controllerchange',check);
+    check();
+   });
+  }
+  const baseline=await fetch('/web/billing/_sw_spy_baseline',{cache:'no-store'});
+  return {scope:new URL(reg.scope).pathname,baselineStatus:baseline.status,baselineText:await baseline.text(),regCount:(await navigator.serviceWorker.getRegistrations()).length};
+ });
+
+ // Case A: Server-side logout evicts old probe SW via Clear-Site-Data: "storage" (no manual unregister).
+ // Note: server-side logout eviction applies when the logout request reaches the server; cross-restart /
+ // re-authorization eviction in Case B works unconditionally via out-of-scope /_tiana/authorize.
+ const logoutBaseline=await registerOldProbeSW();
+ assert.equal(logoutBaseline.scope,'/web/billing/');
+ assert.equal(logoutBaseline.baselineStatus,200);
+ assert.equal(logoutBaseline.baselineText,'old-probe-active');
+ assert.equal(logoutBaseline.regCount,1);
+ const baselineEventsA=await (await context.request.get(origin+'/_fixture/sw-spy-events')).json();
+ assert.ok(Array.isArray(baselineEventsA)&&baselineEventsA.some(ev=>ev.kind==='baseline'),'old probe SW must be verified active before logout');
+ const logoutRespPromise=page.waitForResponse(r=>r.url().endsWith('/web/billing/_tiana/logout'));
+ const logoutCheck=await page.evaluate(async()=>{
+  const resp=await fetch('/web/billing/_tiana/logout',{method:'POST',headers:{'X-Tiana-Bootstrap':'1'}});
+  const regs=await navigator.serviceWorker.getRegistrations();
+  return {status:resp.status,regCount:regs.length};
+ });
+ const logoutResp=await logoutRespPromise;
+ assert.equal(logoutCheck.status,204);
+ assert.equal((await logoutResp.allHeaders())['clear-site-data'],'"storage"');
+ assert.equal(logoutCheck.regCount,0,'logout Clear-Site-Data must evict old probe SW without manual unregister');
+
+ // Case B: Simulated server restart (sessions wiped without logout or unregister), followed by AuthorizeLocalAccount #tiana_launch=<secret2> re-login.
+ const launch1=await (await context.request.get(origin+'/_fixture/launch?token=fixture-session1-access')).json();
+ assert.equal(new URL(launch1.url).pathname,'/_tiana/authorize');
+ await page.goto(launch1.url);
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal((await page.evaluate(()=>window.tiana.connection())).tianaToken,'fixture-session1-access');
+ await context.request.post(origin+'/_fixture/sw-spy-reset');
+ const restartBaseline=await registerOldProbeSW();
+ assert.equal(restartBaseline.scope,'/web/billing/');
+ assert.equal(restartBaseline.baselineStatus,200);
+ assert.equal(restartBaseline.baselineText,'old-probe-active');
+ assert.equal(restartBaseline.regCount,1);
+ const baselineEventsB=await (await context.request.get(origin+'/_fixture/sw-spy-events')).json();
+ assert.ok(Array.isArray(baselineEventsB)&&baselineEventsB.some(ev=>ev.kind==='baseline'),'old probe SW must be verified active before simulated restart');
+
+ // Restart server (clears all server-side sessions) while old probe SW remains registered and controlling /web/billing/.
+ assert.equal((await context.request.post(origin+'/_fixture/restart')).status(),204);
+ assert.equal(await page.evaluate(async()=>(await navigator.serviceWorker.getRegistrations()).length),1,'old probe SW must still be registered prior to re-login');
+ const launch2=await (await context.request.get(origin+'/_fixture/launch?token=fixture-session2-access')).json();
+ const launch2URL=new URL(launch2.url);
+ assert.equal(launch2URL.pathname,'/_tiana/authorize','AuthorizeLocalAccount must point outside /web/<id>/ SW scope');
+ const secret2=new URLSearchParams(launch2URL.hash.slice(1)).get('tiana_launch');
+ assert.ok(secret2&&secret2.length>10,'missing launch secret2');
+
+ // Reset spy log right before opening the new launch link; NEVER call registration.unregister().
+ await context.request.post(origin+'/_fixture/sw-spy-reset');
+ await page.goto(launch2.url);
+ await page.waitForFunction(()=>document.querySelector('#app')?.textContent==='Browser ledger');
+ const session2=await page.evaluate(async()=>{
+  const conn=await window.tiana.connection();
+  const regs=await navigator.serviceWorker.getRegistrations();
+  return {
+   pathname:location.pathname,
+   hash:location.hash,
+   token:conn.tianaToken,
+   regCount:regs.length,
+   controller:navigator.serviceWorker.controller?navigator.serviceWorker.controller.scriptURL:null
+  };
+ });
+ assert.equal(session2.pathname,'/web/billing/');
+ assert.equal(session2.hash,'');
+ assert.equal(session2.token,'fixture-session2-access');
+ assert.equal(session2.regCount,0,'old probe SW must be completely evicted after re-login without manual unregister');
+ assert.equal(session2.controller,null,'build 2 document must not be controlled by old probe SW');
+ const spyAfterRestart=await (await context.request.get(origin+'/_fixture/sw-spy-events')).json();
+ const events=Array.isArray(spyAfterRestart)?spyAfterRestart:[];
+ const capturedLaunch=events.filter(ev=>(ev.url||'').includes('tiana_launch')||(ev.url||'').includes(secret2)||(ev.launchHeader||'').includes(secret2));
+ const capturedLocalLogin=events.filter(ev=>(ev.url||'').includes('local-login'));
+ const capturedConnection=events.filter(ev=>(ev.url||'').includes('_tiana/connection')||(ev.body||'').includes('fixture-session2-access'));
+ assert.deepEqual(capturedLaunch,[],'old probe SW must never capture #tiana_launch=<secret2>');
+ assert.deepEqual(capturedLocalLogin,[],'old probe SW must never capture local-login');
+ assert.deepEqual(capturedConnection,[],'old probe SW must never capture session 2 connection or tianaToken');
+ assert.deepEqual(events,[],'old probe SW must capture zero events across restart and re-login');
+
+ if(evidenceDir){
+  await page.evaluate(({launch2Path,regCount,eventCount,token})=>{
+   const card=document.createElement('section');
+   card.id='preview-sw-r2-card';
+   card.style.cssText='margin-top:16px;padding:12px 16px;border:1px solid #1d4ed8;border-radius:8px;font:14px/1.5 system-ui,sans-serif;background:#eff6ff;color:#1e3a8a;max-width:680px';
+   const title=document.createElement('h2');
+   title.style.cssText='margin:0 0 8px;font-size:15px';
+   title.textContent='CLI Preview SW Isolation & Eviction Verified (R2)';
+   const details=document.createElement('pre');
+   details.style.cssText='margin:0;white-space:pre-wrap;font:12px/1.5 ui-monospace,monospace';
+   details.textContent=[
+    'authorize entry path (outside /web/billing/ scope): '+launch2Path,
+    'manual registration.unregister(): NOT CALLED',
+    'session 2 tianaToken verified: '+(token==='fixture-session2-access'),
+    'old probe SW captured events (launch/local-login/connection): '+eventCount,
+    'remaining SW registrations in session 2: '+regCount
+   ].join('\n');
+   card.append(title,details);
+   document.body.append(card);
+  },{launch2Path:launch2URL.pathname,regCount:session2.regCount,eventCount:events.length,token:session2.token});
+  mkdirSync(evidenceDir,{recursive:true});
+  await page.screenshot({path:join(evidenceDir,'r2-cli-sw-isolation-eviction.png'),fullPage:true});
+  await page.evaluate(()=>document.querySelector('#preview-sw-r2-card')?.remove());
+ }
+
+ // R3 regression: authenticated session visiting "/" and "/_tiana/authorize" must preserve localStorage and active /web/billing/ SW.
+ const r3Setup=await page.evaluate(async()=>{
+  localStorage.setItem('keep','1');
+  const swURL=window.__previewSwScriptURL;
+  if(!swURL||!swURL.endsWith('/web/billing/_tiana/files/assets/sw.js'))throw new Error('unexpected sw URL: '+swURL);
+  const reg=await navigator.serviceWorker.register(swURL,{scope:'/web/billing/',updateViaCache:'none'});
+  await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller||new URL(navigator.serviceWorker.controller.scriptURL).pathname!=='/web/billing/_tiana/files/assets/sw.js'){
+   await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('R3 SW controller claim timeout')),5000);
+    const check=()=>{if(navigator.serviceWorker.controller&&new URL(navigator.serviceWorker.controller.scriptURL).pathname==='/web/billing/_tiana/files/assets/sw.js'){clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',check);resolve();}};
+    navigator.serviceWorker.addEventListener('controllerchange',check);
+    check();
+   });
+  }
+  const regs=await navigator.serviceWorker.getRegistrations();
+  return {keep:localStorage.getItem('keep'),scope:new URL(reg.scope).pathname,regCount:regs.length};
+ });
+ assert.equal(r3Setup.keep,'1');
+ assert.equal(r3Setup.scope,'/web/billing/');
+ assert.equal(r3Setup.regCount,1);
+
+ // 1) Navigate to same-origin root "/" while authenticated: 307 -> /web/billing/ (200), preserving localStorage & SW.
+ const rootNavResp=await page.goto(origin+'/');
+ await page.waitForFunction(()=>location.pathname==='/web/billing/'&&document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(rootNavResp.status(),200,'GET / -> /web/billing/ must settle with 200');
+ assert.equal((await rootNavResp.allHeaders())['clear-site-data'],undefined,'authenticated /web/billing/ must not emit Clear-Site-Data');
+ const rootRedirectReq=rootNavResp.request().redirectedFrom();
+ assert.ok(rootRedirectReq,'GET / must 307-redirect to /web/billing/');
+ assert.equal(new URL(rootRedirectReq.url()).pathname,'/');
+ const rootRedirectResp=await rootRedirectReq.response();
+ assert.equal(rootRedirectResp.status(),307);
+ assert.equal((await rootRedirectResp.allHeaders())['clear-site-data'],undefined,'GET / 307 must not emit Clear-Site-Data');
+ const afterRootNav=await page.evaluate(async()=>{
+  const regs=await navigator.serviceWorker.getRegistrations();
+  const ping=await fetch('/web/billing/_sw_probe/ping',{cache:'no-store'});
+  return {
+   keep:localStorage.getItem('keep'),
+   regCount:regs.length,
+   controller:navigator.serviceWorker.controller?new URL(navigator.serviceWorker.controller.scriptURL).pathname:null,
+   pingStatus:ping.status,
+   pingText:await ping.text()
+  };
+ });
+ assert.equal(afterRootNav.keep,'1','GET / must preserve localStorage for authenticated session');
+ assert.equal(afterRootNav.regCount,1,'GET / must preserve active /web/billing/ SW registration');
+ assert.equal(afterRootNav.controller,'/web/billing/_tiana/files/assets/sw.js');
+ assert.equal(afterRootNav.pingStatus,200);
+ assert.equal(afterRootNav.pingText,'sw-intercepted-ok');
+
+ // 2) Navigate directly to "/_tiana/authorize" while authenticated: 200 (no Clear-Site-Data) -> session 200 -> openApp() -> /web/billing/ (200), preserving localStorage & SW.
+ const authDocPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/_tiana/authorize'&&r.request().isNavigationRequest());
+ const session200Promise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/_tiana/session');
+ const appDocPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/'&&r.request().isNavigationRequest());
+ await page.goto(origin+'/_tiana/authorize',{waitUntil:'commit'});
+ const [authDocResp,session200Resp,appDocResp]=await Promise.all([authDocPromise,session200Promise,appDocPromise]);
+ await page.waitForFunction(()=>location.pathname==='/web/billing/'&&document.querySelector('#app')?.textContent==='Browser ledger');
+ assert.equal(authDocResp.status(),200);
+ assert.equal((await authDocResp.allHeaders())['clear-site-data'],undefined,'GET /_tiana/authorize must not emit Clear-Site-Data');
+ assert.equal(session200Resp.status(),200);
+ assert.equal((await session200Resp.allHeaders())['clear-site-data'],undefined,'GET /web/billing/_tiana/session 200 must not emit Clear-Site-Data');
+ assert.equal(appDocResp.status(),200);
+ assert.equal((await appDocResp.allHeaders())['clear-site-data'],undefined,'GET /web/billing/ 200 must not emit Clear-Site-Data');
+ const afterAuthNav=await page.evaluate(async()=>{
+  const regs=await navigator.serviceWorker.getRegistrations();
+  const ping=await fetch('/web/billing/_sw_probe/ping',{cache:'no-store'});
+  return {
+   keep:localStorage.getItem('keep'),
+   regCount:regs.length,
+   controller:navigator.serviceWorker.controller?new URL(navigator.serviceWorker.controller.scriptURL).pathname:null,
+   pingStatus:ping.status,
+   pingText:await ping.text()
+  };
+ });
+ assert.equal(afterAuthNav.keep,'1','GET /_tiana/authorize while authenticated must preserve localStorage');
+ assert.equal(afterAuthNav.regCount,1,'GET /_tiana/authorize while authenticated must preserve active /web/billing/ SW registration');
+ assert.equal(afterAuthNav.controller,'/web/billing/_tiana/files/assets/sw.js');
+ assert.equal(afterAuthNav.pingStatus,200);
+ assert.equal(afterAuthNav.pingText,'sw-intercepted-ok');
+
+ if(evidenceDir){
+  await page.evaluate(({afterRoot,afterAuth})=>{
+   const card=document.createElement('section');
+   card.id='preview-sw-r3-card';
+   card.style.cssText='margin-top:16px;padding:12px 16px;border:1px solid #047857;border-radius:8px;font:14px/1.5 system-ui,sans-serif;background:#ecfdf5;color:#065f46;max-width:680px';
+   const title=document.createElement('h2');
+   title.style.cssText='margin:0 0 8px;font-size:15px';
+   title.textContent='CLI Preview Authenticated Storage & SW Preserved (R3)';
+   const details=document.createElement('pre');
+   details.style.cssText='margin:0;white-space:pre-wrap;font:12px/1.5 ui-monospace,monospace';
+   details.textContent=[
+    'after GET / (307 -> /web/billing/ 200): keep='+afterRoot.keep+', regs='+afterRoot.regCount+', controller='+afterRoot.controller+', ping='+afterRoot.pingText,
+    'after GET /_tiana/authorize (200 -> session 200 -> /web/billing/ 200): keep='+afterAuth.keep+', regs='+afterAuth.regCount+', controller='+afterAuth.controller+', ping='+afterAuth.pingText
+   ].join('\n');
+   card.append(title,details);
+   document.body.append(card);
+  },{afterRoot:afterRootNav,afterAuth:afterAuthNav});
+  mkdirSync(evidenceDir,{recursive:true});
+  await page.screenshot({path:join(evidenceDir,'r3-cli-sw-storage-preserved.png'),fullPage:true});
+  await page.evaluate(()=>document.querySelector('#preview-sw-r3-card')?.remove());
+ }
+
+ // R4 regression: real cross-site top-level link clicks to "/" and "/web/billing/" withhold SameSite=Strict cookie,
+ // bounce through 303 -> /_tiana/authorize -> same-origin session 200 -> /web/billing/ 200, and MUST preserve localStorage & active SW.
+ await context.route('https://external.example/link',route=>route.fulfill({
+  contentType:'text/html; charset=utf-8',
+  body:'<!doctype html><meta charset="utf-8"><title>External Link Fixture</title><h1>External Page</h1><p><a id="cross-site-root" href="'+origin+'/">Open Preview Root</a></p><p><a id="cross-site-app" href="'+origin+'/web/billing/">Open Preview App</a></p>'
+ }));
+ const runCrossSiteClick=async(selector,expectRootRedirect)=>{
+  await page.goto('https://external.example/link');
+  const root307Promise=expectRootRedirect?page.waitForResponse(r=>new URL(r.url()).pathname==='/'&&r.status()===307):null;
+  const crossSite303Promise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/'&&r.status()===303);
+  const crossSiteAuthPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/_tiana/authorize'&&r.status()===200);
+  const sameOriginSessionPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/_tiana/session'&&r.status()===200);
+  const recoveredAppPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/'&&r.status()===200);
+  await page.locator(selector).click();
+  const [root307Resp,crossSite303Resp,crossSiteAuthResp,sameOriginSessionResp,recoveredAppResp]=await Promise.all([
+   root307Promise,
+   crossSite303Promise,
+   crossSiteAuthPromise,
+   sameOriginSessionPromise,
+   recoveredAppPromise
+  ]);
+  await page.waitForFunction(()=>location.pathname==='/web/billing/'&&document.querySelector('#app')?.textContent==='Browser ledger');
+  if(expectRootRedirect){
+   assert.equal(root307Resp.headers()['location'],'/web/billing/','cross-site click to / must 307 to /web/billing/');
+   assert.equal((await root307Resp.allHeaders())['clear-site-data'],undefined,'cross-site GET / 307 must not emit Clear-Site-Data');
+  }
+  const bounceReqHeaders=await crossSite303Resp.request().allHeaders();
+  assert.equal(crossSite303Resp.headers()['location'],'/_tiana/authorize','cross-site /web/billing/ without SameSite=Strict cookie must 303 to /_tiana/authorize');
+  assert.equal(bounceReqHeaders['cookie'],undefined,'SameSite=Strict session cookie must be withheld on cross-site top-level navigation');
+  assert.equal((await crossSite303Resp.allHeaders())['clear-site-data'],undefined,'cross-site GET /web/billing/ 303 must not emit Clear-Site-Data');
+  assert.equal((await crossSiteAuthResp.allHeaders())['clear-site-data'],undefined,'GET /_tiana/authorize must not emit Clear-Site-Data');
+  const sessionReqHeaders=await sameOriginSessionResp.request().allHeaders();
+  assert.equal(sessionReqHeaders['x-tiana-bootstrap'],'1','authorize.js session probe must send X-Tiana-Bootstrap: 1');
+  assert.equal((await sameOriginSessionResp.allHeaders())['clear-site-data'],undefined,'authenticated session 200 must not emit Clear-Site-Data');
+  assert.equal((await recoveredAppResp.allHeaders())['clear-site-data'],undefined,'recovered /web/billing/ 200 must not emit Clear-Site-Data');
+  const state=await page.evaluate(async()=>{
+   const regs=await navigator.serviceWorker.getRegistrations();
+   const ping=await fetch('/web/billing/_sw_probe/ping',{cache:'no-store'});
+   return {
+    keep:localStorage.getItem('keep'),
+    regCount:regs.length,
+    controller:navigator.serviceWorker.controller?new URL(navigator.serviceWorker.controller.scriptURL).pathname:null,
+    pingStatus:ping.status,
+    pingText:await ping.text()
+   };
+  });
+  assert.equal(state.keep,'1','cross-site click '+selector+' must preserve localStorage');
+  assert.equal(state.regCount,1,'cross-site click '+selector+' must preserve active /web/billing/ SW registration');
+  assert.equal(state.controller,'/web/billing/_tiana/files/assets/sw.js');
+  assert.equal(state.pingStatus,200);
+  assert.equal(state.pingText,'sw-intercepted-ok');
+  return state;
+ };
+
+ const afterCrossSiteRoot=await runCrossSiteClick('#cross-site-root',true);
+ const afterCrossSiteApp=await runCrossSiteClick('#cross-site-app',false);
+
+ if(evidenceDir){
+  await page.evaluate(({rootState,appState})=>{
+   const card=document.createElement('section');
+   card.id='preview-sw-r4-card';
+   card.style.cssText='margin-top:16px;padding:12px 16px;border:1px solid #6d28d9;border-radius:8px;font:14px/1.5 system-ui,sans-serif;background:#f5f3ff;color:#4c1d95;max-width:720px';
+   const title=document.createElement('h2');
+   title.style.cssText='margin:0 0 8px;font-size:15px';
+   title.textContent='CLI Preview Cross-Site SameSite=Strict Navigation Preserved (R4)';
+   const details=document.createElement('pre');
+   details.style.cssText='margin:0;white-space:pre-wrap;font:12px/1.5 ui-monospace,monospace';
+   details.textContent=[
+    'from https://external.example/link -> <a href="/"> (cross-site 307->303->/_tiana/authorize->session 200->/web/billing/ 200):',
+    '  keep='+rootState.keep+', regs='+rootState.regCount+', controller='+rootState.controller+', ping='+rootState.pingText,
+    'from https://external.example/link -> <a href="/web/billing/"> (cross-site 303->/_tiana/authorize->session 200->/web/billing/ 200):',
+    '  keep='+appState.keep+', regs='+appState.regCount+', controller='+appState.controller+', ping='+appState.pingText
+   ].join('\n');
+   card.append(title,details);
+   document.body.append(card);
+  },{rootState:afterCrossSiteRoot,appState:afterCrossSiteApp});
+  mkdirSync(evidenceDir,{recursive:true});
+  await page.screenshot({path:join(evidenceDir,'r4-cli-cross-site-nav-preserved.png'),fullPage:true});
+  await page.evaluate(()=>document.querySelector('#preview-sw-r4-card')?.remove());
+ }
+
+ // Verify genuine restart/unauthenticated bounce still evicts stale storage & SW synchronously on same-origin X-Tiana-Bootstrap: 1 session 401.
+ assert.equal((await context.request.post(origin+'/_fixture/restart')).status(),204);
+ await page.goto('https://external.example/link');
+ const restart303Promise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/'&&r.status()===303);
+ const restartAuthPromise=page.waitForResponse(r=>new URL(r.url()).pathname==='/_tiana/authorize'&&r.status()===200);
+ const restart401Promise=page.waitForResponse(r=>new URL(r.url()).pathname==='/web/billing/_tiana/session'&&r.status()===401);
+ await page.locator('#cross-site-app').click();
+ const [restart303Resp,restartAuthResp,restart401Resp]=await Promise.all([restart303Promise,restartAuthPromise,restart401Promise]);
+ await page.locator('#tiana-sign-in').waitFor({state:'visible'});
+ assert.equal((await restart303Resp.allHeaders())['clear-site-data'],undefined,'post-restart 303 must not emit Clear-Site-Data');
+ assert.equal((await restartAuthResp.allHeaders())['clear-site-data'],undefined,'post-restart /_tiana/authorize must not emit Clear-Site-Data');
+ assert.equal((await restart401Resp.request().allHeaders())['x-tiana-bootstrap'],'1');
+ assert.equal((await restart401Resp.allHeaders())['clear-site-data'],'"storage"','post-restart same-origin session 401 must emit Clear-Site-Data: "storage"');
+ const afterRestartEviction=await page.evaluate(async()=>({
+  keep:localStorage.getItem('keep'),
+  regCount:(await navigator.serviceWorker.getRegistrations()).length
+ }));
+ assert.equal(afterRestartEviction.keep,null,'post-restart same-origin session 401 must clear localStorage');
+ assert.equal(afterRestartEviction.regCount,0,'post-restart same-origin session 401 must evict stale SW without manual unregister');
+
  assert.deepEqual(errors,[]);
- console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout.');
+ console.log('Browser fixture passed: login, gated assets, nested module, runtime connection, hash route, refresh recovery with a clean document, HttpOnly cookie, logout, SW scope, cross-restart/re-login SW eviction, authenticated root/authorize storage preservation & cross-site SameSite=Strict link navigation.');
 } finally {await browser.close();}

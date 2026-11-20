@@ -1,4 +1,7 @@
-const base = new URL('../', import.meta.url);
+const appBaseMeta = document.querySelector('meta[name="tiana-app-base"]')?.getAttribute('content');
+const appBase = appBaseMeta
+  ? new URL(appBaseMeta.endsWith('/') ? appBaseMeta : appBaseMeta + '/', location.origin)
+  : new URL('../', import.meta.url);
 const button = document.querySelector('#tiana-sign-in');
 const status = document.querySelector('#tiana-status');
 const link = document.querySelector('#tiana-auth-link');
@@ -10,11 +13,11 @@ function showState(message, busy = false, error = false) {
   status.textContent = message;
   status.dataset.state = error ? 'error' : 'waiting';
 }
-const openApp = () => location.replace(base.href + location.search + location.hash);
+const openApp = () => location.replace(new URL(location.search + location.hash, appBase).href);
 async function request(path, method = 'GET', extraHeaders = {}) {
   const requestId = 'req-' + crypto.randomUUID();
   try {
-    const response = await fetch(new URL('_tiana/' + path, base), {method, cache:'no-store', headers:{'X-Tiana-Bootstrap':'1', 'X-Request-ID':requestId, ...extraHeaders}});
+    const response = await fetch(new URL('_tiana/' + path, appBase), {method, cache:'no-store', headers:{'X-Tiana-Bootstrap':'1', 'X-Request-ID':requestId, ...extraHeaders}});
     const data = await response.json();
     return {response, data, requestId};
   } catch (cause) {
