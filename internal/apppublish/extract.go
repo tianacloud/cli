@@ -116,7 +116,7 @@ func validateExtraNoZIP64(extra []byte) error {
 }
 
 // validateRawCentralDirectory parses the raw EOCD, central directory records,
-// and local file header flags/extras before archive/zip allocates memory.
+// and local file headers/extents before archive/zip allocates memory.
 func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 	if size < 22 || size > maxWebBytes {
 		return 0, errors.New("invalid archive size")
@@ -162,8 +162,15 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 		return 0, zip.ErrFormat
 	}
 
+	type localExtent struct {
+		start int64
+		end   int64
+	}
+	extents := make([]localExtent, 0, int(totalEntries))
+
 	var header [46]byte
 	var lfh [30]byte
+	var dd [12]byte
 	actual := 0
 	for cursor := cdOffset; cursor < eocdOffset; {
 		if eocdOffset-cursor < 46 {
@@ -175,6 +182,9 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 		if binary.LittleEndian.Uint32(header[:]) != 0x02014b50 {
 			return 0, zip.ErrFormat
 		}
+		if binary.LittleEndian.Uint16(header[6:]) > 20 {
+			return 0, errors.New("unsupported ZIP version")
+		}
 		flags := binary.LittleEndian.Uint16(header[8:])
 		if flags&0x1 != 0 || flags&^uint16(0x080e) != 0 {
 			return 0, errors.New("encrypted or unsupported ZIP entry flags")
@@ -183,15 +193,36 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 		if method != zip.Store && method != zip.Deflate {
 			return 0, errors.New("unsupported ZIP compression method")
 		}
+		cdCRC := binary.LittleEndian.Uint32(header[16:])
+		compSizeRaw := binary.LittleEndian.Uint32(header[20:])
+		uncompSizeRaw := binary.LittleEndian.Uint32(header[24:])
+		if compSizeRaw == 0xffffffff || uncompSizeRaw == 0xffffffff {
+			return 0, errors.New("ZIP64 entry size is forbidden")
+		}
+		compSize := int64(compSizeRaw)
+		uncompSize := int64(uncompSizeRaw)
+		if compSize > maxWebBytes || uncompSize > maxWebBytes {
+			return 0, errors.New("ZIP entry size exceeds limit")
+		}
+		if method == zip.Store && compSize != uncompSize {
+			return 0, errors.New("ZIP Store entry size mismatch")
+		}
 		if binary.LittleEndian.Uint16(header[34:]) != 0 {
 			return 0, errors.New("multi-disk ZIP entry is forbidden")
 		}
 		nameLen := int64(binary.LittleEndian.Uint16(header[28:]))
 		extraLen := int64(binary.LittleEndian.Uint16(header[30:]))
 		commentLen := int64(binary.LittleEndian.Uint16(header[32:]))
+		if nameLen == 0 || nameLen > 1024 {
+			return 0, errors.New("invalid ZIP entry name length")
+		}
 		next := cursor + 46 + nameLen + extraLen + commentLen
 		if next > eocdOffset {
 			return 0, zip.ErrFormat
+		}
+		cdName := make([]byte, int(nameLen))
+		if _, err := r.ReadAt(cdName, cursor+46); err != nil {
+			return 0, err
 		}
 		if extraLen > 0 {
 			extra := make([]byte, int(extraLen))
@@ -208,7 +239,7 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 			return 0, errors.New("ZIP64 local header offset is forbidden")
 		}
 		localOffset := int64(localOffsetRaw)
-		if localOffset < 0 || localOffset+30 > cdOffset {
+		if localOffset < 0 || localOffset > cdOffset || cdOffset-localOffset < 30 {
 			return 0, zip.ErrFormat
 		}
 		if _, err := r.ReadAt(lfh[:], localOffset); err != nil {
@@ -217,14 +248,34 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 		if binary.LittleEndian.Uint32(lfh[:]) != 0x04034b50 {
 			return 0, zip.ErrFormat
 		}
+		if binary.LittleEndian.Uint16(lfh[4:]) > 20 {
+			return 0, errors.New("unsupported local ZIP version")
+		}
 		lfhFlags := binary.LittleEndian.Uint16(lfh[6:])
 		if lfhFlags&0x1 != 0 || lfhFlags&^uint16(0x080e) != 0 {
 			return 0, errors.New("encrypted or unsupported local ZIP entry flags")
 		}
+		if lfhFlags != flags {
+			return 0, errors.New("ZIP local/central flags mismatch")
+		}
+		lfhMethod := binary.LittleEndian.Uint16(lfh[8:])
+		if lfhMethod != method {
+			return 0, errors.New("ZIP local/central compression method mismatch")
+		}
 		lfhNameLen := int64(binary.LittleEndian.Uint16(lfh[26:]))
 		lfhExtraLen := int64(binary.LittleEndian.Uint16(lfh[28:]))
-		if localOffset+30+lfhNameLen+lfhExtraLen > cdOffset {
+		if lfhNameLen != nameLen {
+			return 0, errors.New("ZIP local/central filename mismatch")
+		}
+		if lfhNameLen+lfhExtraLen > cdOffset-localOffset-30 {
 			return 0, zip.ErrFormat
+		}
+		lfhName := make([]byte, int(lfhNameLen))
+		if _, err := r.ReadAt(lfhName, localOffset+30); err != nil {
+			return 0, err
+		}
+		if !bytes.Equal(lfhName, cdName) {
+			return 0, errors.New("ZIP local/central filename mismatch")
 		}
 		if lfhExtraLen > 0 {
 			lfhExtra := make([]byte, int(lfhExtraLen))
@@ -236,6 +287,49 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 			}
 		}
 
+		dataOffset := localOffset + 30 + lfhNameLen + lfhExtraLen
+		if compSize > cdOffset-dataOffset {
+			return 0, errors.New("ZIP local record extends past central directory")
+		}
+		recordEnd := dataOffset + compSize
+
+		lfhCRC := binary.LittleEndian.Uint32(lfh[14:])
+		lfhCompSize := binary.LittleEndian.Uint32(lfh[18:])
+		lfhUncompSize := binary.LittleEndian.Uint32(lfh[22:])
+		if flags&0x0008 == 0 {
+			if lfhCRC != cdCRC || lfhCompSize != compSizeRaw || lfhUncompSize != uncompSizeRaw {
+				return 0, errors.New("ZIP local/central size or CRC mismatch")
+			}
+		} else {
+			if (lfhCRC != 0 && lfhCRC != cdCRC) ||
+				(lfhCompSize != 0 && lfhCompSize != compSizeRaw) ||
+				(lfhUncompSize != 0 && lfhUncompSize != uncompSizeRaw) {
+				return 0, errors.New("ZIP data-descriptor local header mismatch")
+			}
+			if cdOffset-recordEnd < 12 {
+				return 0, errors.New("truncated ZIP data descriptor")
+			}
+			if _, err := r.ReadAt(dd[:], recordEnd); err != nil {
+				return 0, err
+			}
+			if binary.LittleEndian.Uint32(dd[0:4]) == 0x08074b50 {
+				recordEnd += 4
+				if cdOffset-recordEnd < 12 {
+					return 0, errors.New("truncated ZIP data descriptor")
+				}
+				if _, err := r.ReadAt(dd[:], recordEnd); err != nil {
+					return 0, err
+				}
+			}
+			if binary.LittleEndian.Uint32(dd[0:4]) != cdCRC ||
+				binary.LittleEndian.Uint32(dd[4:8]) != compSizeRaw ||
+				binary.LittleEndian.Uint32(dd[8:12]) != uncompSizeRaw {
+				return 0, errors.New("ZIP data descriptor mismatch")
+			}
+			recordEnd += 12
+		}
+
+		extents = append(extents, localExtent{start: localOffset, end: recordEnd})
 		actual++
 		if actual > maxWebCDEntries {
 			return 0, errors.New("ZIP archive exceeds maximum entry count")
@@ -245,6 +339,30 @@ func validateRawCentralDirectory(r io.ReaderAt, size int64) (int, error) {
 	if actual != int(totalEntries) {
 		return 0, zip.ErrFormat
 	}
+
+	sort.Slice(extents, func(i, j int) bool {
+		if extents[i].start != extents[j].start {
+			return extents[i].start < extents[j].start
+		}
+		return extents[i].end < extents[j].end
+	})
+	if len(extents) > 0 && extents[0].start != 0 {
+		return 0, errors.New("self-extracting ZIP prefix is forbidden")
+	}
+	for i, ext := range extents {
+		if ext.end > cdOffset {
+			return 0, errors.New("ZIP local record extends past central directory")
+		}
+		if i > 0 {
+			if ext.start == extents[i-1].start {
+				return 0, errors.New("duplicate ZIP local header offset")
+			}
+			if ext.start < extents[i-1].end {
+				return 0, errors.New("overlapping ZIP local record extents")
+			}
+		}
+	}
+
 	return actual, nil
 }
 

@@ -711,3 +711,333 @@ func TestCopyBoundedRejectsOversize(t *testing.T) {
 		t.Fatalf("exact boundary failed: n=%d err=%v", n, err)
 	}
 }
+
+func buildRawZipWithPrefix(t *testing.T, prefix []byte, entries []rawZipEntry) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	out.Write(prefix)
+	type cdRec struct {
+		entry       rawZipEntry
+		localOffset uint32
+		compData    []byte
+		crc         uint32
+		uncompSize  uint32
+	}
+	records := make([]cdRec, 0, len(entries))
+	for _, e := range entries {
+		localOffset := uint32(out.Len())
+		compData := e.content
+		if e.method == zip.Deflate {
+			var cb bytes.Buffer
+			fw, err := flate.NewWriter(&cb, flate.BestCompression)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fw.Write(e.content); err != nil {
+				t.Fatal(err)
+			}
+			if err := fw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			compData = cb.Bytes()
+		}
+		crc := crc32IEEE(e.content)
+		uncompSize := uint32(len(e.content))
+		var lfh [30]byte
+		binary.LittleEndian.PutUint32(lfh[0:4], 0x04034b50)
+		binary.LittleEndian.PutUint16(lfh[4:6], 20)
+		binary.LittleEndian.PutUint16(lfh[6:8], e.flags)
+		binary.LittleEndian.PutUint16(lfh[8:10], e.method)
+		if e.flags&0x0008 == 0 {
+			binary.LittleEndian.PutUint32(lfh[14:18], crc)
+			binary.LittleEndian.PutUint32(lfh[18:22], uint32(len(compData)))
+			binary.LittleEndian.PutUint32(lfh[22:26], uncompSize)
+		}
+		binary.LittleEndian.PutUint16(lfh[26:28], uint16(len(e.name)))
+		binary.LittleEndian.PutUint16(lfh[28:30], uint16(len(e.extra)))
+		out.Write(lfh[:])
+		out.WriteString(e.name)
+		out.Write(e.extra)
+		out.Write(compData)
+		if e.flags&0x0008 != 0 {
+			var dd [12]byte
+			binary.LittleEndian.PutUint32(dd[0:4], crc)
+			binary.LittleEndian.PutUint32(dd[4:8], uint32(len(compData)))
+			binary.LittleEndian.PutUint32(dd[8:12], uncompSize)
+			out.Write(dd[:])
+		}
+		records = append(records, cdRec{
+			entry:       e,
+			localOffset: localOffset,
+			compData:    compData,
+			crc:         crc,
+			uncompSize:  uncompSize,
+		})
+	}
+	cdOffset := uint32(out.Len())
+	for _, rec := range records {
+		e := rec.entry
+		var cd [46]byte
+		binary.LittleEndian.PutUint32(cd[0:4], 0x02014b50)
+		binary.LittleEndian.PutUint16(cd[4:6], (3<<8)|20)
+		binary.LittleEndian.PutUint16(cd[6:8], 20)
+		binary.LittleEndian.PutUint16(cd[8:10], e.flags)
+		binary.LittleEndian.PutUint16(cd[10:12], e.method)
+		binary.LittleEndian.PutUint32(cd[16:20], rec.crc)
+		binary.LittleEndian.PutUint32(cd[20:24], uint32(len(rec.compData)))
+		binary.LittleEndian.PutUint32(cd[24:28], rec.uncompSize)
+		binary.LittleEndian.PutUint16(cd[28:30], uint16(len(e.name)))
+		binary.LittleEndian.PutUint16(cd[30:32], uint16(len(e.extra)))
+		binary.LittleEndian.PutUint32(cd[38:42], 0o100644<<16)
+		binary.LittleEndian.PutUint32(cd[42:46], rec.localOffset)
+		out.Write(cd[:])
+		out.WriteString(e.name)
+		out.Write(e.extra)
+	}
+	cdSize := uint32(out.Len()) - cdOffset
+	var eocd [22]byte
+	binary.LittleEndian.PutUint32(eocd[0:4], 0x06054b50)
+	binary.LittleEndian.PutUint16(eocd[8:10], uint16(len(records)))
+	binary.LittleEndian.PutUint16(eocd[10:12], uint16(len(records)))
+	binary.LittleEndian.PutUint32(eocd[12:16], cdSize)
+	binary.LittleEndian.PutUint32(eocd[16:20], cdOffset)
+	out.Write(eocd[:])
+	return out.Bytes()
+}
+
+func TestExtractArchiveAllowsUnsignatured12ByteDataDescriptor(t *testing.T) {
+	raw := buildRawZipWithPrefix(t, nil, []rawZipEntry{
+		{name: "web.yaml", method: zip.Store, flags: 0x0008},
+		{name: "data/index.html", content: []byte("<h1>ok</h1>\n"), method: zip.Deflate, flags: 0x0008},
+	})
+	parent := t.TempDir()
+	dest := filepath.Join(parent, "out")
+	got, err := extractArchive(t.Context(), bytes.NewReader(raw), int64(len(raw)), dest, "")
+	if err != nil {
+		t.Fatalf("expected 12-byte data descriptor archive to succeed: %v", err)
+	}
+	if got.FilesCount != 1 || got.TotalBytes != int64(len("<h1>ok</h1>\n")) {
+		t.Fatalf("unexpected stats: %+v", got)
+	}
+}
+
+func TestValidateRawCentralDirectoryLocalExtentAndHeaderAdversarial(t *testing.T) {
+	// Helper to build a minimal valid raw ZIP and return offsets of each LFH and CD record.
+	type zipParts struct {
+		data       []byte
+		lfhOffsets []int
+		cdOffsets  []int
+		cdStart    int
+	}
+	makeValid := func(entries []rawZipEntry) zipParts {
+		var out bytes.Buffer
+		var lfhOffsets []int
+		type rec struct {
+			e    rawZipEntry
+			off  uint32
+			comp []byte
+			crc  uint32
+		}
+		var recs []rec
+		for _, e := range entries {
+			off := uint32(out.Len())
+			lfhOffsets = append(lfhOffsets, int(off))
+			comp := e.content
+			if e.method == zip.Deflate {
+				var cb bytes.Buffer
+				fw, err := flate.NewWriter(&cb, flate.BestCompression)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := fw.Write(e.content); err != nil {
+					t.Fatal(err)
+				}
+				if err := fw.Close(); err != nil {
+					t.Fatal(err)
+				}
+				comp = cb.Bytes()
+			}
+			crc := crc32IEEE(e.content)
+			var lfh [30]byte
+			binary.LittleEndian.PutUint32(lfh[0:4], 0x04034b50)
+			binary.LittleEndian.PutUint16(lfh[4:6], 20)
+			binary.LittleEndian.PutUint16(lfh[6:8], e.flags)
+			binary.LittleEndian.PutUint16(lfh[8:10], e.method)
+			binary.LittleEndian.PutUint32(lfh[14:18], crc)
+			binary.LittleEndian.PutUint32(lfh[18:22], uint32(len(comp)))
+			binary.LittleEndian.PutUint32(lfh[22:26], uint32(len(e.content)))
+			binary.LittleEndian.PutUint16(lfh[26:28], uint16(len(e.name)))
+			binary.LittleEndian.PutUint16(lfh[28:30], uint16(len(e.extra)))
+			out.Write(lfh[:])
+			out.WriteString(e.name)
+			out.Write(e.extra)
+			out.Write(comp)
+			recs = append(recs, rec{e: e, off: off, comp: comp, crc: crc})
+		}
+		cdStart := out.Len()
+		var cdOffsets []int
+		for _, r := range recs {
+			cdOffsets = append(cdOffsets, out.Len())
+			var cd [46]byte
+			binary.LittleEndian.PutUint32(cd[0:4], 0x02014b50)
+			binary.LittleEndian.PutUint16(cd[4:6], (3<<8)|20)
+			binary.LittleEndian.PutUint16(cd[6:8], 20)
+			binary.LittleEndian.PutUint16(cd[8:10], r.e.flags)
+			binary.LittleEndian.PutUint16(cd[10:12], r.e.method)
+			binary.LittleEndian.PutUint32(cd[16:20], r.crc)
+			binary.LittleEndian.PutUint32(cd[20:24], uint32(len(r.comp)))
+			binary.LittleEndian.PutUint32(cd[24:28], uint32(len(r.e.content)))
+			binary.LittleEndian.PutUint16(cd[28:30], uint16(len(r.e.name)))
+			binary.LittleEndian.PutUint16(cd[30:32], uint16(len(r.e.extra)))
+			binary.LittleEndian.PutUint32(cd[38:42], 0o100644<<16)
+			binary.LittleEndian.PutUint32(cd[42:46], r.off)
+			out.Write(cd[:])
+			out.WriteString(r.e.name)
+			out.Write(r.e.extra)
+		}
+		cdSize := uint32(out.Len() - cdStart)
+		var eocd [22]byte
+		binary.LittleEndian.PutUint32(eocd[0:4], 0x06054b50)
+		binary.LittleEndian.PutUint16(eocd[8:10], uint16(len(recs)))
+		binary.LittleEndian.PutUint16(eocd[10:12], uint16(len(recs)))
+		binary.LittleEndian.PutUint32(eocd[12:16], cdSize)
+		binary.LittleEndian.PutUint32(eocd[16:20], uint32(cdStart))
+		out.Write(eocd[:])
+		return zipParts{data: out.Bytes(), lfhOffsets: lfhOffsets, cdOffsets: cdOffsets, cdStart: cdStart}
+	}
+
+	// 1. Two central-directory entries pointing to the same local header offset (aliased/duplicate offset)
+	aliasedSameName := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store},
+		})
+		// Point CD entry 2 at entry 1's local header offset so all local/central fields match.
+		binary.LittleEndian.PutUint32(p.data[p.cdOffsets[2]+42:p.cdOffsets[2]+46], uint32(p.lfhOffsets[1]))
+		return p.data
+	}()
+
+	// 2. Overlapping local data extents (entry1 compressed payload overlaps entry2's local header)
+	overlappingExtent := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Deflate},
+			{name: "data/b.txt", content: []byte("world-payload-padding"), method: zip.Store},
+		})
+		// Inflate entry 1's compressed size in BOTH LFH and CD so [start1, end1) overlaps lfhOffsets[2],
+		// while still ending before cdStart.
+		entry1Comp := binary.LittleEndian.Uint32(p.data[p.cdOffsets[1]+20 : p.cdOffsets[1]+24])
+		inflatedComp := entry1Comp + 16
+		binary.LittleEndian.PutUint32(p.data[p.lfhOffsets[1]+18:p.lfhOffsets[1]+22], inflatedComp)
+		binary.LittleEndian.PutUint32(p.data[p.cdOffsets[1]+20:p.cdOffsets[1]+24], inflatedComp)
+		return p.data
+	}()
+
+	// 3. Local/central filename mismatch (same length, different bytes)
+	filenameMismatch := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store},
+		})
+		copy(p.data[p.lfhOffsets[1]+30:p.lfhOffsets[1]+30+len("data/a.txt")], "data/b.txt")
+		return p.data
+	}()
+
+	// 4. Local/central method mismatch
+	methodMismatch := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store},
+		})
+		binary.LittleEndian.PutUint16(p.data[p.lfhOffsets[1]+8:p.lfhOffsets[1]+10], zip.Deflate)
+		return p.data
+	}()
+
+	// 5. Local/central flags mismatch
+	flagsMismatch := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store},
+		})
+		binary.LittleEndian.PutUint16(p.data[p.lfhOffsets[1]+6:p.lfhOffsets[1]+8], 0x0800)
+		return p.data
+	}()
+
+	// 6. Local/central size mismatch (flags bit 3 clear)
+	sizeMismatch := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Deflate},
+		})
+		binary.LittleEndian.PutUint32(p.data[p.lfhOffsets[1]+22:p.lfhOffsets[1]+26], 999)
+		return p.data
+	}()
+
+	// 7. Self-extracting prefix bytes before first local header (offset > 0)
+	sfxPrefix := buildRawZipWithPrefix(t, []byte("#!/bin/sh\necho sfx\n"), []rawZipEntry{
+		{name: "web.yaml", method: zip.Store},
+		{name: "data/index.html", content: []byte("hi"), method: zip.Store},
+	})
+
+	// 8. Local data extent reaching past central directory offset
+	extendsPastCD := func() []byte {
+		p := makeValid([]rawZipEntry{
+			{name: "web.yaml", method: zip.Store},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Deflate},
+		})
+		entry1Comp := binary.LittleEndian.Uint32(p.data[p.cdOffsets[1]+20 : p.cdOffsets[1]+24])
+		overshoot := entry1Comp + 1
+		binary.LittleEndian.PutUint32(p.data[p.lfhOffsets[1]+18:p.lfhOffsets[1]+22], overshoot)
+		binary.LittleEndian.PutUint32(p.data[p.cdOffsets[1]+20:p.cdOffsets[1]+24], overshoot)
+		return p.data
+	}()
+
+	// 9. Data descriptor mismatch
+	badDataDescriptor := func() []byte {
+		raw := buildRawZipWithPrefix(t, nil, []rawZipEntry{
+			{name: "web.yaml", method: zip.Store, flags: 0x0008},
+			{name: "data/a.txt", content: []byte("hello"), method: zip.Store, flags: 0x0008},
+		})
+		// Corrupt the first entry's 12-byte data descriptor (immediately after "web.yaml" LFH).
+		ddOff := 30 + len("web.yaml")
+		binary.LittleEndian.PutUint32(raw[ddOff:ddOff+4], 0xdeadbeef)
+		return raw
+	}()
+
+	cases := []struct {
+		name       string
+		data       []byte
+		wantSubstr string
+	}{
+		{name: "aliased duplicate local offset", data: aliasedSameName, wantSubstr: "duplicate ZIP local header offset"},
+		{name: "overlapping local data extents", data: overlappingExtent, wantSubstr: "overlapping ZIP local record extents"},
+		{name: "local central filename mismatch", data: filenameMismatch, wantSubstr: "filename mismatch"},
+		{name: "local central method mismatch", data: methodMismatch, wantSubstr: "compression method mismatch"},
+		{name: "local central flags mismatch", data: flagsMismatch, wantSubstr: "flags mismatch"},
+		{name: "local central size mismatch", data: sizeMismatch, wantSubstr: "size or CRC mismatch"},
+		{name: "self extracting prefix", data: sfxPrefix, wantSubstr: "self-extracting ZIP prefix"},
+		{name: "extent past central directory", data: extendsPastCD, wantSubstr: "extends past central directory"},
+		{name: "data descriptor mismatch", data: badDataDescriptor, wantSubstr: "data descriptor mismatch"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := validateRawCentralDirectory(bytes.NewReader(tc.data), int64(len(tc.data))); err == nil {
+				t.Fatalf("expected validateRawCentralDirectory to reject %q", tc.name)
+			} else if !strings.Contains(err.Error(), tc.wantSubstr) {
+				t.Fatalf("unexpected error for %q: got %q, want substring %q", tc.name, err.Error(), tc.wantSubstr)
+			}
+
+			parent := t.TempDir()
+			dest := filepath.Join(parent, "target")
+			if _, err := extractArchive(t.Context(), bytes.NewReader(tc.data), int64(len(tc.data)), dest, ""); err == nil {
+				t.Fatalf("expected extractArchive to reject %q", tc.name)
+			}
+			if _, err := os.Lstat(dest); !os.IsNotExist(err) {
+				t.Fatalf("destination %s must not exist on failure: %v", dest, err)
+			}
+			assertNoLeftoverTempEntries(t, parent)
+		})
+	}
+}
