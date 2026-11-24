@@ -66,8 +66,12 @@ func (o Options) Validate() *Error {
 		if o.Dir == "" || o.Name != "" || o.Description != "" || o.PublishID != "" {
 			return inputError("Use web publish ID --dir DIR")
 		}
+	case "pull":
+		if strings.TrimSpace(o.Dir) == "" || o.Name != "" || o.Description != "" || o.PublishID != "" {
+			return inputError("Use web pull ID --dir DIR")
+		}
 	default:
-		return inputError("Choose web create, publish or status")
+		return inputError("Choose web create, publish, pull or status")
 	}
 	return nil
 }

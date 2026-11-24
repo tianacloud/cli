@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tianacloud/cli/internal/authclient"
 	"github.com/tianacloud/cli/internal/clientconfig"
 	"github.com/tianacloud/cli/internal/localstate"
 	"github.com/tianacloud/cli/internal/netconfig"
@@ -23,43 +24,50 @@ type PublicationReceipt struct {
 	CreatedAt                                                                   time.Time
 }
 
-func (r Runner) runServerless(ctx context.Context, o Options) Result {
+type serverlessSession struct {
+	bound     Runner
+	project   WebProject
+	instance  authclient.Instance
+	transport FetchTransport
+}
+
+func (r Runner) openServerless(ctx context.Context, id, notReadyMessage string) (*serverlessSession, *Error) {
 	network, networkErr := netconfig.Policy(ctx)
 	if networkErr != nil {
-		return Failure(inputError(networkErr.Error()))
+		return nil, inputError(networkErr.Error())
 	}
 	bound, e := r.Bind(ctx)
 	if e != nil {
-		return Failure(e)
+		return nil, e
 	}
-	project, e := bound.Resolve(ctx, o.ID)
+	project, e := bound.Resolve(ctx, id)
 	if e != nil {
-		return Failure(e)
+		return nil, e
 	}
-	if project.ID != o.ID {
+	if project.ID != id {
 		project, e = bound.projectByID(ctx, project.ID)
 		if e != nil {
-			return Failure(e)
+			return nil, e
 		}
 	}
 	if project.InstanceID == "" {
-		return Failure(inputError("Web has no instance binding"))
+		return nil, inputError("Web has no instance binding")
 	}
 	instance, err := r.Client.GetInstance(ctx, project.InstanceID)
 	if err != nil || instance.ID != project.InstanceID || instance.Engine != "web" || instance.ProductState != "ACTIVE" || instance.DeletionPending || instance.Connection == nil {
-		return Failure(inputError("Web instance is not ready for publication"))
+		return nil, inputError(notReadyMessage)
 	}
 	origin, err := url.Parse(instance.Connection.URL)
 	if err != nil || origin.Scheme != "https" || origin.Hostname() != instance.Connection.Hostname || origin.Path != "" || origin.RawQuery != "" || origin.User != nil {
-		return Failure(inputError("Invalid Web Gateway connection"))
+		return nil, inputError("Invalid Web Gateway connection")
 	}
 	// Metadata is account-scoped; freeze the identity before opening the data path.
 	if _, e := bound.Bind(ctx); e != nil {
-		return Failure(e)
+		return nil, e
 	}
 	credential, err := r.Client.ConnectionCredential(ctx, bound.PrincipalID, bound.TenantID)
 	if err != nil {
-		return Failure(&Error{Code: "WEB_CREDENTIAL_UNAVAILABLE", Message: "Cannot resolve Web data credential", NextAction: "Check TIANA_TOKEN/TIANA_TOKEN_FILE or the current account login", ExitCode: 5})
+		return nil, &Error{Code: "WEB_CREDENTIAL_UNAVAILABLE", Message: "Cannot resolve Web data credential", NextAction: "Check TIANA_TOKEN/TIANA_TOKEN_FILE or the current account login", ExitCode: 5}
 	}
 	defer clear(credential)
 	config := fetch.Config{Endpoint: instance.Connection.Hostname, Token: string(credential), DialAddress: os.Getenv("TIANA_GATEWAY_ADDRESS"), Network: network}
@@ -77,9 +85,21 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		transport, err = fetch.NewClient(config)
 	}
 	if err != nil {
-		return Failure(inputError("Cannot initialize Web Gateway transport"))
+		return nil, inputError("Cannot initialize Web Gateway transport")
 	}
-	defer transport.Close()
+	return &serverlessSession{bound: bound, project: project, instance: instance, transport: transport}, nil
+}
+
+func (r Runner) runServerless(ctx context.Context, o Options) Result {
+	session, e := r.openServerless(ctx, o.ID, "Web instance is not ready for publication")
+	if e != nil {
+		return Failure(e)
+	}
+	defer session.transport.Close()
+	bound := session.bound
+	project := session.project
+	instance := session.instance
+	transport := session.transport
 	request := fetch.Request{Method: "GET", PathQuery: "/_tiana/web/current", BodyLength: 0}
 	publishID := ""
 	digest := ""
@@ -114,7 +134,7 @@ func (r Runner) runServerless(ctx context.Context, o Options) Result {
 		digest = sha
 		request = fetch.Request{Method: "PUT", PathQuery: "/_tiana/web/publish", Body: archive, BodyLength: stat.Size(), Headers: []fetch.Header{{Name: "x-tiana-publish-id", Value: publishID}, {Name: "x-tiana-content-sha256", Value: sha}}}
 		if r.PersistPublication != nil {
-			if err = r.PersistPublication(ctx, PublicationReceipt{Origin: r.Client.Origin(), TenantID: bound.TenantID, UserID: bound.PrincipalID, WebID: project.ID, InstanceID: instance.ID, PublishID: publishID, SHA256: digest, ArchivePath: archivePath, CreatedAt: time.Now().UTC()}); err != nil {
+			if err := r.PersistPublication(ctx, PublicationReceipt{Origin: r.Client.Origin(), TenantID: bound.TenantID, UserID: bound.PrincipalID, WebID: project.ID, InstanceID: instance.ID, PublishID: publishID, SHA256: digest, ArchivePath: archivePath, CreatedAt: time.Now().UTC()}); err != nil {
 				failure := &Error{Code: "PUBLISH_RECEIPT_UNAVAILABLE", Message: "Cannot safely save publication identity; no upload was sent", NextAction: "Check the local receipt directory permissions", ExitCode: 1}
 				var local *localstate.Error
 				if errors.As(err, &local) {

@@ -32,6 +32,9 @@ func (r Runner) Run(ctx context.Context, o Options) Result {
 	if o.Command == "publish" || o.Command == "status" {
 		return r.runServerless(ctx, o)
 	}
+	if o.Command == "pull" {
+		return r.runPull(ctx, o)
+	}
 	id, e := r.currentIdentity(ctx)
 	if e != nil {
 		return Failure(e)

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tianacloud/cli/internal/apppublish"
 	"github.com/tianacloud/cli/internal/authclient"
 )
 
@@ -50,15 +51,93 @@ func TestWebCreateUsesExistingLoginCredential(t *testing.T) {
 }
 
 func TestWebHelpAndValidation(t *testing.T) {
-	for _, args := range [][]string{{"web", "--help"}, {"web", "publish", "--help"}} {
+	for _, args := range [][]string{{"web", "--help"}, {"web", "publish", "--help"}, {"web", "pull", "--help"}} {
 		var out, diagnostics bytes.Buffer
 		if code := runCLI(context.Background(), args, nil, &out, &diagnostics); code != 0 {
-			t.Fatalf("help: %d %s", code, &diagnostics)
+			t.Fatalf("help %v: %d %s", args, code, &diagnostics)
 		}
 	}
 	var out, diagnostics bytes.Buffer
 	if code := runCLI(context.Background(), []string{"web", "publish", "bad/app", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
 		t.Fatalf("invalid Web code=%d", code)
+	}
+	out.Reset()
+	diagnostics.Reset()
+	if code := runCLI(context.Background(), []string{"web", "pull", "bad/app", "--dir", "dist"}, nil, &out, &diagnostics); code != 2 {
+		t.Fatalf("invalid Web pull ID code=%d", code)
+	}
+	out.Reset()
+	diagnostics.Reset()
+	if code := runCLI(context.Background(), []string{"web", "pull", "web-one"}, nil, &out, &diagnostics); code != 2 {
+		t.Fatalf("missing --dir on web pull code=%d", code)
+	}
+}
+
+func TestWebPullExistingTargetFailsBeforeAuthInJSONAndHumanMode(t *testing.T) {
+	existing := t.TempDir()
+	for _, jsonMode := range []bool{false, true} {
+		t.Run(fmt.Sprint(jsonMode), func(t *testing.T) {
+			t.Setenv("TIANA_API_ORIGIN", "http://127.0.0.1:1")
+			args := []string{"web", "pull", "web-one", "--dir", existing}
+			if jsonMode {
+				args = append(args, "--json")
+			}
+			var out, diagnostics bytes.Buffer
+			code := runCLI(context.Background(), args, nil, &out, &diagnostics)
+			if code != 2 {
+				t.Fatalf("code=%d stdout=%s stderr=%s", code, &out, &diagnostics)
+			}
+			if jsonMode {
+				var body struct {
+					Status string `json:"status"`
+					Error  struct {
+						Code string `json:"code"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+					t.Fatalf("invalid JSON %s: %v", &out, err)
+				}
+				if body.Status != "failed" || body.Error.Code != "TARGET_ALREADY_EXISTS" {
+					t.Fatalf("unexpected JSON: %s", &out)
+				}
+			} else if !strings.Contains(diagnostics.String(), "already exists") {
+				t.Fatalf("unexpected stderr: %s", &diagnostics)
+			}
+		})
+	}
+}
+
+func TestWriteAppResultFormatsPullResultHumanAndJSON(t *testing.T) {
+	pulled := apppublish.PullResult{
+		WebID:         "web-one",
+		InstanceID:    "ins-1",
+		Dir:           "/tmp/dest",
+		ServingSHA256: strings.Repeat("a", 64),
+		Entry:         "app.js",
+		FilesCount:    3,
+		TotalBytes:    1024,
+		LooksBundled:  true,
+	}
+	var out, diagnostics bytes.Buffer
+	if code := writeAppResult(apppublish.Success(pulled), false, &out, &diagnostics); code != 0 {
+		t.Fatalf("human code=%d", code)
+	}
+	text := out.String()
+	for _, want := range []string{"Web ID: web-one", "Directory: /tmp/dest", "Files: 3 (1024 bytes)", "Entry: app.js", "compiled/bundled"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("human output missing %q: %s", want, text)
+		}
+	}
+	out.Reset()
+	if code := writeAppResult(apppublish.Success(pulled), true, &out, &diagnostics); code != 0 {
+		t.Fatalf("json code=%d", code)
+	}
+	var envelope struct {
+		Status string                `json:"status"`
+		Data   apppublish.PullResult `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil || envelope.Status != "succeeded" || envelope.Data != pulled {
+		t.Fatalf("unexpected JSON: %s (%v)", &out, err)
 	}
 }
 
