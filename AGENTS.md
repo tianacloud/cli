@@ -80,6 +80,14 @@ allows wss:. Keep generated Function code/provenance aligned with the reviewed
 serverless-js commit; verify native handshakes and HTTP while sockets are open.
 Removing the CLI surface does not remove the server-side resources.
 
+Third-party API discovery and space Key management use the selected account's
+pinned MGR session. Each command makes one management request. Catalogue lists
+present the requested page, `api docs` writes the exact Markdown or places it
+in the standard JSON result, and Key lists mask values in both formats. Only
+successful Key creation returns the full value. Verify filters, exact Markdown,
+masked lists and category/Key mutation receipts. Removing this command leaves
+the space's category settings and Keys in place.
+
 ## Authentication and private local state
 
 SDK auth owns account login/refresh/logout and credential storage. All CLI account

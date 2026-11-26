@@ -957,6 +957,35 @@ uses Site authorization and must be tested separately with another account.
 For private backends, keep SQLite Endpoint/Token in Function parameters and leave
 the Web's database binding empty.
 
+### Third-party services
+
+Use the selected account and space to discover APIs, open a category, and manage
+its space Keys. The target environment must have third-party services enabled.
+
+```sh
+tiana third-party-service category list --json
+tiana third-party-service provider list --json
+tiana third-party-service api list --category CATEGORY_SLUG --provider PROVIDER_SLUG --json
+tiana third-party-service api show API_SLUG --json
+tiana third-party-service api docs API_SLUG > api-usage.md
+tiana third-party-service enable --category CATEGORY_SLUG --json
+tiana third-party-service key list --json
+tiana third-party-service key create NAME --json
+tiana third-party-service key delete KEY_ID --json
+tiana third-party-service disable --category CATEGORY_SLUG --json
+```
+
+Use the slugs from the catalogue as category, provider and API identifiers.
+The filters can be used independently, and list commands support `--page` and
+`--page-size`. `api docs` writes the complete Markdown directly to stdout.
+With `--json`, the standard result envelope includes the slug, title and same
+Markdown under `data`. Key lists show masked values. Creation returns the full
+Key for transfer to the secret store and use through a Function secret parameter.
+Category changes and Key revocation can take up to 30 seconds to reach new calls.
+
+Follow the selected API document to call `third-party-services.tianacloud.com`
+from Function with a standard HTTP or WebSocket client.
+
 ### Function runtime logs
 
 `tiana function runtime-logs FUNCTION_ID` reads one page (up to 100 records) of
