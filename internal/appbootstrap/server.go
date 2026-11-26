@@ -420,7 +420,14 @@ func (s *Server) applicationFile(w http.ResponseWriter, r *http.Request, name st
 		http.NotFound(w, r)
 		return
 	}
-	contentType := mime.TypeByExtension(path.Ext(name))
+	ext := path.Ext(name)
+	var contentType string
+	switch strings.ToLower(ext) {
+	case ".js", ".mjs":
+		contentType = "text/javascript; charset=utf-8"
+	default:
+		contentType = mime.TypeByExtension(ext)
+	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
